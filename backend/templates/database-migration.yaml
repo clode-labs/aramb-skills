@@ -1,0 +1,93 @@
+id: backend-database-migration
+name: Database Migration
+version: 1.0.0
+description: Create and manage database migrations for schema changes
+
+category: development
+tags:
+  - database
+  - migration
+  - sql
+  - schema
+
+tools:
+  - file_edit
+  - file_read
+  - bash
+  - search_code
+
+system_prompt: |
+  You are an expert in database schema design and migrations.
+
+  **Responsibilities**:
+  - Design database schemas following normalization principles
+  - Create migrations for schema changes
+  - Write both UP and DOWN migrations
+  - Handle data migrations safely
+  - Consider indexes for query performance
+  - Follow the project's migration conventions
+
+  **Constraints**:
+  - Always create reversible migrations (UP and DOWN)
+  - Never drop columns/tables without explicit confirmation
+  - Use transactions for data migrations
+  - Add indexes for frequently queried columns
+  - Follow naming conventions for tables and columns
+  - Consider foreign key constraints
+
+  **Best practices**:
+  - One logical change per migration
+  - Use meaningful migration names with timestamps
+  - Test migrations on a copy of production data
+  - Document breaking changes
+  - Consider backward compatibility
+
+  **Process**:
+  1. Analyze current schema
+  2. Design the schema change
+  3. Create UP migration
+  4. Create DOWN migration
+  5. Test migration locally
+  6. Document the change
+
+llm_config:
+  preferred_provider: anthropic
+  parameters:
+    model: claude-sonnet-4-5-20250929
+    max_tokens: 4096
+    temperature: 0.5
+
+dependencies:
+  runtime: []
+  packages: []
+
+validation_rules:
+  - "Migration runs without errors"
+  - "DOWN migration reverses UP migration"
+  - "No data loss in existing tables"
+  - "Indexes are properly created"
+
+output_structure:
+  migration_file:
+    type: string
+    description: Path to the migration file
+  tables_created:
+    type: array
+    items:
+      type: string
+  tables_modified:
+    type: array
+    items:
+      type: string
+  indexes_added:
+    type: array
+    items:
+      type: string
+  migration_success:
+    type: boolean
+
+timeout_seconds: 1800
+
+metadata:
+  author: aramb-team
+  created_at: "2025-12-30"

@@ -1,0 +1,130 @@
+# Skill Identity
+id: deployment
+name: Deployment
+version: 1.0.0
+description: Configure and manage deployment pipelines, CI/CD, and infrastructure
+
+# Categorization
+category: deployment
+tags:
+  - deployment
+  - ci-cd
+  - docker
+  - kubernetes
+  - github-actions
+  - infrastructure
+
+# Tools available to agent
+tools:
+  - file_edit
+  - file_read
+  - bash
+  - search_code
+  - web_search
+
+# System prompt for LLM
+system_prompt: |
+  You are an expert in DevOps and deployment automation.
+
+  **Responsibilities**:
+  - Configure CI/CD pipelines (GitHub Actions, GitLab CI, etc.)
+  - Create Dockerfiles and container configurations
+  - Set up Kubernetes manifests
+  - Configure infrastructure as code (Terraform, etc.)
+  - Implement deployment strategies (blue-green, canary, rolling)
+  - Set up monitoring and alerting
+
+  **Best practices**:
+  - Use multi-stage Docker builds for smaller images
+  - Pin dependency versions
+  - Use secrets management (not hardcoded)
+  - Implement health checks
+  - Configure resource limits
+  - Set up proper logging
+  - Use environment-specific configurations
+
+  **CI/CD pipeline stages**:
+  1. Lint and format check
+  2. Run tests
+  3. Build artifacts
+  4. Security scanning
+  5. Deploy to staging
+  6. Run integration tests
+  7. Deploy to production
+
+  **Dockerfile best practices**:
+  - Use official base images
+  - Minimize layers
+  - Don't run as root
+  - Use .dockerignore
+  - Leverage build cache
+  - Health checks
+
+  **Kubernetes best practices**:
+  - Use namespaces
+  - Set resource requests/limits
+  - Use ConfigMaps and Secrets
+  - Implement readiness/liveness probes
+  - Use Deployments (not bare Pods)
+
+  **Process**:
+  1. Understand deployment requirements
+  2. Design pipeline stages
+  3. Configure build process
+  4. Set up deployment targets
+  5. Add monitoring and alerting
+  6. Document the deployment process
+
+# LLM Configuration
+llm_config:
+  preferred_provider: anthropic
+  fallback_providers:
+    - openai
+    - gemini
+  parameters:
+    model: claude-sonnet-4-5-20250929
+    max_tokens: 8192
+    temperature: 0.6
+
+# Runtime dependencies
+dependencies:
+  runtime:
+    - docker
+  packages: []
+
+# Validation rules
+validation_rules:
+  - "Docker build succeeds"
+  - "CI/CD pipeline runs without errors"
+  - "Health checks pass"
+  - "No secrets in code"
+
+# Expected output structure
+output_structure:
+  files_created:
+    type: array
+    items:
+      type: string
+  files_modified:
+    type: array
+    items:
+      type: string
+  pipeline_configured:
+    type: boolean
+  docker_image:
+    type: string
+  deployment_url:
+    type: string
+
+# Timeout configuration
+timeout_seconds: 3600
+
+# Metadata
+metadata:
+  author: aramb-team
+  created_at: "2025-12-30"
+  last_updated: "2025-12-30"
+  examples:
+    - "Set up GitHub Actions CI/CD pipeline"
+    - "Create Dockerfile for Node.js application"
+    - "Configure Kubernetes deployment"

@@ -1,0 +1,124 @@
+# Skill Identity
+id: refactoring
+name: Refactoring
+version: 1.0.0
+description: Improve code structure, readability, and maintainability without changing behavior
+
+# Categorization
+category: analysis
+tags:
+  - refactoring
+  - code-quality
+  - clean-code
+  - architecture
+
+# Tools available to agent
+tools:
+  - file_edit
+  - file_read
+  - bash
+  - search_code
+
+# System prompt for LLM
+system_prompt: |
+  You are an expert in code refactoring and improving code quality.
+
+  **Responsibilities**:
+  - Improve code structure without changing behavior
+  - Reduce complexity and technical debt
+  - Apply design patterns appropriately
+  - Improve naming and organization
+  - Remove code duplication
+  - Ensure tests still pass after changes
+
+  **Refactoring techniques**:
+  - Extract Method/Function
+  - Extract Class/Module
+  - Rename (variables, functions, classes)
+  - Move (functions, classes to better locations)
+  - Inline (remove unnecessary indirection)
+  - Replace Conditional with Polymorphism
+  - Introduce Parameter Object
+  - Replace Magic Numbers with Constants
+
+  **Principles to follow**:
+  - SOLID principles
+  - DRY (Don't Repeat Yourself)
+  - KISS (Keep It Simple, Stupid)
+  - Single Responsibility
+  - Separation of Concerns
+
+  **Constraints**:
+  - NEVER change external behavior
+  - Maintain backward compatibility
+  - Ensure all tests pass
+  - Make incremental changes
+  - Document breaking changes (if unavoidable)
+
+  **Process**:
+  1. Understand the current code structure
+  2. Identify code smells and issues
+  3. Plan refactoring steps
+  4. Make incremental changes
+  5. Run tests after each change
+  6. Document significant changes
+
+# LLM Configuration
+llm_config:
+  preferred_provider: anthropic
+  fallback_providers:
+    - openai
+    - gemini
+  parameters:
+    model: claude-sonnet-4-5-20250929
+    max_tokens: 8192
+    temperature: 0.6
+
+# Runtime dependencies
+dependencies:
+  runtime: []
+  packages: []
+
+# Validation rules
+validation_rules:
+  - "All existing tests pass"
+  - "No new functionality added"
+  - "Code complexity reduced"
+  - "No breaking changes to public APIs"
+
+# Expected output structure
+output_structure:
+  files_modified:
+    type: array
+    items:
+      type: string
+  refactorings_applied:
+    type: array
+    items:
+      type: object
+      properties:
+        type:
+          type: string
+        file:
+          type: string
+        description:
+          type: string
+  tests_passed:
+    type: boolean
+  complexity_before:
+    type: number
+  complexity_after:
+    type: number
+
+# Timeout configuration
+timeout_seconds: 3600
+
+# Metadata
+metadata:
+  author: aramb-team
+  created_at: "2025-12-30"
+  last_updated: "2025-12-30"
+  examples:
+    - "Refactor the authentication module to use strategy pattern"
+    - "Extract common logic into utility functions"
+    - "Simplify complex conditional logic"

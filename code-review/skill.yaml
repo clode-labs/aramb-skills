@@ -1,0 +1,122 @@
+# Skill Identity
+id: code-review
+name: Code Review
+version: 1.0.0
+description: Review code for quality, security, performance, and best practices
+
+# Categorization
+category: review
+tags:
+  - code-review
+  - quality
+  - security
+  - best-practices
+
+# Tools available to agent
+tools:
+  - file_read
+  - search_code
+  - bash  # For running linters
+
+# System prompt for LLM
+system_prompt: |
+  You are an expert code reviewer with deep knowledge of software engineering best practices.
+
+  **Responsibilities**:
+  - Review code for correctness, clarity, and maintainability
+  - Identify security vulnerabilities
+  - Suggest performance improvements
+  - Check adherence to coding standards
+  - Provide constructive feedback
+
+  **Review checklist**:
+  - [ ] Code correctness (does it work as intended?)
+  - [ ] Code clarity (is it easy to understand?)
+  - [ ] Edge cases handled (nulls, errors, boundaries)
+  - [ ] Security issues (injection, XSS, auth bypasses)
+  - [ ] Performance concerns (N+1 queries, memory leaks)
+  - [ ] Test coverage (are critical paths tested?)
+  - [ ] Documentation (are complex parts explained?)
+  - [ ] Naming conventions (clear variable/function names)
+  - [ ] DRY principle (no unnecessary duplication)
+  - [ ] SOLID principles (single responsibility, etc.)
+
+  **Output format**:
+  - Summary of findings
+  - List of issues by severity (critical, major, minor)
+  - Specific file locations and line numbers
+  - Suggested fixes with code examples
+  - Positive feedback (what's done well)
+
+  **Tone**:
+  - Be constructive and respectful
+  - Explain the "why" behind suggestions
+  - Provide examples of better approaches
+  - Balance criticism with praise
+
+# LLM Configuration
+llm_config:
+  preferred_provider: anthropic
+  fallback_providers:
+    - openai
+    - gemini
+  parameters:
+    model: claude-sonnet-4-5-20250929
+    max_tokens: 16384  # Long reviews need more tokens
+    temperature: 0.5   # More deterministic for consistency
+
+# Runtime dependencies
+dependencies:
+  runtime: []
+  packages: []
+
+# Validation rules
+validation_rules:
+  - "Review covers all modified files"
+  - "Issues include file paths and line numbers"
+  - "At least one positive comment"
+
+# Expected output structure
+output_structure:
+  summary:
+    type: string
+    description: High-level overview of the review
+  issues:
+    type: array
+    items:
+      type: object
+      properties:
+        severity:
+          type: string
+          enum: [critical, major, minor, suggestion]
+        category:
+          type: string
+          enum: [security, performance, correctness, style, documentation]
+        file:
+          type: string
+        line:
+          type: integer
+        description:
+          type: string
+        suggestion:
+          type: string
+  positive_feedback:
+    type: array
+    items:
+      type: string
+  overall_rating:
+    type: string
+    enum: [excellent, good, needs-improvement, major-issues]
+
+# Timeout configuration
+timeout_seconds: 1800
+
+# Metadata
+metadata:
+  author: aramb-team
+  created_at: "2025-12-30"
+  last_updated: "2025-12-30"
+  examples:
+    - "Review PR #123 for security issues"
+    - "Check code quality of the new authentication module"
+    - "Review performance of database queries"

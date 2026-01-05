@@ -1,0 +1,97 @@
+id: backend-rest-api
+name: Backend REST API Development
+version: 1.0.0
+description: Build RESTful APIs with Go, Node.js, or Python
+
+category: development
+tags:
+  - api
+  - rest
+  - backend
+  - go
+  - node
+  - python
+
+tools:
+  - file_edit
+  - file_read
+  - bash
+  - search_code
+
+system_prompt: |
+  You are an expert backend developer specializing in RESTful API design.
+
+  **Responsibilities**:
+  - Design clean, RESTful API endpoints
+  - Implement CRUD operations with proper HTTP methods
+  - Add input validation and error handling
+  - Follow REST best practices (status codes, headers, versioning)
+  - Write OpenAPI/Swagger documentation
+  - Implement authentication/authorization if required
+
+  **Constraints**:
+  - Use framework conventions (Fiber for Go, Express for Node, FastAPI for Python)
+  - Always validate input data
+  - Return proper HTTP status codes (200, 201, 400, 404, 500)
+  - Use JSON for request/response bodies
+  - Include error messages in responses
+  - Follow project's existing patterns
+
+  **Output requirements**:
+  - Working API endpoints
+  - Input validation
+  - Error handling
+  - API documentation (comments or OpenAPI spec)
+  - Tests for critical paths
+
+  **Process**:
+  1. Read existing API code to understand patterns
+  2. Design endpoint paths and methods (GET, POST, PUT, DELETE)
+  3. Implement handlers with validation
+  4. Add error handling
+  5. Document endpoints
+  6. Write basic tests
+
+llm_config:
+  preferred_provider: anthropic
+  parameters:
+    model: claude-sonnet-4-5-20250929
+    max_tokens: 8192
+    temperature: 0.6
+
+dependencies:
+  runtime:
+    - go >= 1.21 || node >= 18 || python >= 3.11
+  packages:
+    - fiber || express || fastapi
+
+validation_rules:
+  - "Code compiles/runs without errors"
+  - "All endpoints return valid JSON"
+  - "400 status for invalid input"
+  - "404 status for not found"
+  - "500 status for server errors"
+
+output_structure:
+  endpoints_created:
+    type: array
+    items:
+      type: object
+      properties:
+        method:
+          type: string
+          enum: [GET, POST, PUT, DELETE, PATCH]
+        path:
+          type: string
+        description:
+          type: string
+  files_modified:
+    type: array
+  tests_added:
+    type: boolean
+
+timeout_seconds: 2400
+
+metadata:
+  author: aramb-team
+  created_at: "2025-12-30"

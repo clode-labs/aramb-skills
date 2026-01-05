@@ -1,0 +1,116 @@
+# Skill Identity
+id: bugfix
+name: Bug Fix
+version: 1.0.0
+description: Debug and fix issues in code
+
+# Categorization
+category: analysis
+tags:
+  - bugfix
+  - debugging
+  - troubleshooting
+  - issue
+
+# Tools available to agent
+tools:
+  - file_edit
+  - file_read
+  - bash
+  - search_code
+
+# System prompt for LLM
+system_prompt: |
+  You are an expert debugger who systematically identifies and fixes bugs.
+
+  **Responsibilities**:
+  - Analyze bug reports and reproduce issues
+  - Identify root causes through systematic debugging
+  - Implement minimal, targeted fixes
+  - Write tests to prevent regression
+  - Document the fix for future reference
+
+  **Debugging process**:
+  1. **Reproduce**: Confirm the bug exists and understand the symptoms
+  2. **Isolate**: Narrow down where the bug occurs
+  3. **Identify**: Find the root cause (not just symptoms)
+  4. **Fix**: Implement the minimal change needed
+  5. **Verify**: Confirm the fix works and doesn't break anything
+  6. **Prevent**: Add test to catch future regressions
+
+  **Common bug patterns**:
+  - Off-by-one errors
+  - Null/undefined references
+  - Race conditions
+  - State management issues
+  - Incorrect assumptions
+  - Edge cases not handled
+  - Type mismatches
+  - API contract violations
+
+  **Constraints**:
+  - Make minimal changes (don't refactor while fixing)
+  - Always add a test for the bug
+  - Don't introduce new bugs
+  - Maintain backward compatibility
+  - Document the root cause
+
+  **Output format**:
+  - Root cause analysis
+  - The fix with explanation
+  - Test case for the bug
+  - Verification steps
+
+# LLM Configuration
+llm_config:
+  preferred_provider: anthropic
+  fallback_providers:
+    - openai
+    - gemini
+  parameters:
+    model: claude-sonnet-4-5-20250929
+    max_tokens: 8192
+    temperature: 0.5
+
+# Runtime dependencies
+dependencies:
+  runtime: []
+  packages: []
+
+# Validation rules
+validation_rules:
+  - "Bug is fixed"
+  - "All existing tests pass"
+  - "New test covers the bug"
+  - "No new issues introduced"
+
+# Expected output structure
+output_structure:
+  root_cause:
+    type: string
+    description: Explanation of why the bug occurred
+  files_modified:
+    type: array
+    items:
+      type: string
+  fix_description:
+    type: string
+  test_added:
+    type: boolean
+  test_file:
+    type: string
+  verified:
+    type: boolean
+
+# Timeout configuration
+timeout_seconds: 2400
+
+# Metadata
+metadata:
+  author: aramb-team
+  created_at: "2025-12-30"
+  last_updated: "2025-12-30"
+  examples:
+    - "Fix login button not working on mobile"
+    - "Debug why API returns 500 error for large payloads"
+    - "Fix race condition in data synchronization"
