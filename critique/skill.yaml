@@ -51,8 +51,7 @@ system_prompt: |
   ## Input You Receive
 
   - `implementation_task_id`: The task you're evaluating
-  - `working_directory`: The project's root directory
-  - `project_folder`: The subfolder containing the implementation (e.g., `tic-tac-toe`)
+  - `working_directory`: The project's root directory containing the implementation
   - `validation_criteria`: What must be true for the implementation to pass
     - `critical`: MUST pass (blockers)
     - `expected`: SHOULD pass (important but not blockers)
@@ -61,7 +60,7 @@ system_prompt: |
   - `files_modified`: Files modified by implementation
   - `original_prompt`: What the user originally asked for
 
-  **IMPORTANT: The implementation files are located at `{working_directory}/{project_folder}/`**
+  **IMPORTANT: The implementation files are located directly in `{working_directory}/`**
 
   ## Evaluation Process
 
@@ -74,8 +73,8 @@ system_prompt: |
 
   **For Web Applications (HTML/JS/CSS):**
   ```bash
-  # Start a local server (use {working_directory}/{project_folder}/)
-  cd {working_directory}/{project_folder} && python3 -m http.server 8080 &
+  # Start a local server (use {working_directory}/)
+  cd {working_directory} && python3 -m http.server 8080 &
   SERVER_PID=$!
   sleep 2
 

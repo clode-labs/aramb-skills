@@ -30,25 +30,19 @@ system_prompt: |
      - Understand implicit requirements from the prompt
      - Determine complexity level (low, medium, high)
 
-  2. **Project Folder Naming** (CRITICAL)
-     - Generate a descriptive, kebab-case folder name based on the prompt
-     - Examples: "tic-tac-toe", "calculator-app", "todo-list", "weather-dashboard"
-     - This folder will be created inside the project's working_directory
-     - Include this as `project_folder` in the analysis and in each task's inputs
-
-  3. **Skill Selection**
+  2. **Skill Selection**
      - Select the most appropriate skills for each task
      - Available skills: frontend, backend, testing, bugfix, code-review, documentation, refactoring, deployment, critique
      - Match skills to task requirements
      - NEVER assign tasks to "planning" skill - planning only runs once at the start
 
-  4. **Task Decomposition**
+  3. **Task Decomposition**
      - Break down the prompt into discrete, executable tasks
      - Each task should map to ONE skill (one LLM session)
      - Tasks should be independently resumable
      - Include a critique task after implementation for QA
 
-  5. **Dependency Management**
+  4. **Dependency Management**
      - Define task execution order
      - Identify dependencies between tasks
      - Ensure parallel tasks have no dependencies on each other
@@ -69,8 +63,7 @@ system_prompt: |
       "intent": "create_new | modify_existing | debug | refactor | document | deploy",
       "domain": "frontend | backend | fullstack | devops | data",
       "complexity": "low | medium | high",
-      "summary": "Brief summary of what needs to be done",
-      "project_folder": "kebab-case-folder-name (e.g., tic-tac-toe, calculator-app)"
+      "summary": "Brief summary of what needs to be done"
     },
     "tasks": [
       {
@@ -81,8 +74,7 @@ system_prompt: |
         "dependencies": [],
         "inputs": {
           "requirements": "Specific requirements for this task",
-          "context": "Any additional context needed",
-          "project_folder": "Same kebab-case folder name from analysis.project_folder"
+          "context": "Any additional context needed"
         },
         "validation_criteria": {
           "critical": ["Must-have criteria that block completion"],
@@ -133,9 +125,7 @@ system_prompt: |
   6. Include a critique task after implementation for QA
   7. timeout_seconds: 1800 for critique, 3600 for implementation, 2400 for testing
   8. Each implementation task MUST have validation_criteria with critical/expected/nice_to_have
-  9. ALWAYS include `project_folder` in analysis AND in each task's inputs - this is CRITICAL
-     - Generate a descriptive kebab-case name from the prompt (e.g., "tic-tac-toe", "weather-app")
-     - All files will be created in `{working_directory}/{project_folder}/`
+  9. All files will be created directly in `{working_directory}/` - DO NOT include project_folder in outputs
 
   ## Example Output
 
@@ -146,8 +136,7 @@ system_prompt: |
       "intent": "create_new",
       "domain": "frontend",
       "complexity": "low",
-      "summary": "Create a web-based calculator application with basic arithmetic operations",
-      "project_folder": "calculator-app"
+      "summary": "Create a web-based calculator application with basic arithmetic operations"
     },
     "tasks": [
       {
@@ -157,8 +146,7 @@ system_prompt: |
         "task_order": 1,
         "dependencies": [],
         "inputs": {
-          "requirements": "Calculator with +, -, *, / operations, digit buttons, clear button, and display",
-          "project_folder": "calculator-app"
+          "requirements": "Calculator with +, -, *, / operations, digit buttons, clear button, and display"
         },
         "validation_criteria": {
           "critical": [
@@ -244,9 +232,6 @@ output_structure:
         enum: [low, medium, high]
       summary:
         type: string
-      project_folder:
-        type: string
-        description: Kebab-case folder name for the project (e.g., tic-tac-toe, calculator-app)
   tasks:
     type: array
     description: List of tasks to execute
