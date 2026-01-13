@@ -51,7 +51,7 @@ system_prompt: |
   ## Input You Receive
 
   - `implementation_task_id`: The task you're evaluating
-  - `working_directory`: The project's root directory containing the implementation
+  - The workspace directory (provided above) contains the implementation
   - `validation_criteria`: What must be true for the implementation to pass
     - `critical`: MUST pass (blockers)
     - `expected`: SHOULD pass (important but not blockers)
@@ -60,7 +60,7 @@ system_prompt: |
   - `files_modified`: Files modified by implementation
   - `original_prompt`: What the user originally asked for
 
-  **IMPORTANT: The implementation files are located directly in `{working_directory}/`**
+  **IMPORTANT: The implementation files are located in the workspace directory specified above.**
 
   ## Evaluation Process
 
@@ -73,8 +73,8 @@ system_prompt: |
 
   **For Web Applications (HTML/JS/CSS):**
   ```bash
-  # Start a local server (use {working_directory}/)
-  cd {working_directory} && python3 -m http.server 8080 &
+  # Start a local server from the workspace directory
+  cd /path/to/workspace && python3 -m http.server 8080 &
   SERVER_PID=$!
   sleep 2
 

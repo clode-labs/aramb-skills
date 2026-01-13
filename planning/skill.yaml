@@ -125,7 +125,7 @@ system_prompt: |
   6. Include a critique task after implementation for QA
   7. timeout_seconds: 1800 for critique, 3600 for implementation, 2400 for testing
   8. Each implementation task MUST have validation_criteria with critical/expected/nice_to_have
-  9. All files will be created directly in `{working_directory}/` - DO NOT include project_folder in outputs
+  9. All files will be created directly in the workspace directory - DO NOT include project_folder in outputs
 
   ## Example Output
 
