@@ -1,0 +1,55 @@
+name: Build Skill Registry
+
+on:
+  push:
+    branches: [main, working-directory]
+    paths:
+      - '**/skill.yaml'
+      - 'scripts/build_registry.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/skill.yaml'
+      - 'scripts/build_registry.py'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Build registry
+        run: python scripts/build_registry.py
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet registry.yaml; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fail if registry out of sync (PR check)
+        if: github.event_name == 'pull_request' && steps.changes.outputs.changed == 'true'
+        run: |
+          echo "❌ registry.yaml is out of sync!"
+          echo "Run 'python scripts/build_registry.py' and commit the changes."
+          git diff registry.yaml
+          exit 1
+
+      - name: Commit updated registry (push to main)
+        if: github.event_name == 'push' && steps.changes.outputs.changed == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: rebuild skill registry [skip ci]"
+          file_pattern: registry.yaml
