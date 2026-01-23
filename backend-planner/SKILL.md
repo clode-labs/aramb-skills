@@ -28,6 +28,14 @@ The critique task always follows its corresponding implementation task and valid
 
 ## Output Format
 
+**CRITICAL**: Your entire response MUST be ONLY the JSON below. Do NOT:
+- Write the JSON to a file
+- Include any text before or after the JSON
+- Wrap the JSON in markdown code blocks
+- Add explanations or commentary
+
+Return the raw JSON as your complete response:
+
 ```json
 {
   "status": "planned",
@@ -282,3 +290,4 @@ Use the `full_id` from search results in your task outputs. The full_id format i
 8. Sequential `task_order` starting from 1
 9. Pass `preceding_task` to critique tasks so they know what they're validating
 10. Copy `validation_criteria` from implementation task to its corresponding critique task
+11. **Return raw JSON only** - your entire response must be the JSON object, no files, no markdown, no commentary
