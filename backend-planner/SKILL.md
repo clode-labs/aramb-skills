@@ -47,7 +47,7 @@ The critique task always follows its corresponding implementation task and valid
     {
       "task_name": "Implement [Feature]",
       "description": "Build the API and services",
-      "skill_id": "<implementation-skill-id>",
+      "skill_id": "<full_id-from-search-results>",
       "task_order": 1,
       "dependencies": [],
       "inputs": {
@@ -66,14 +66,14 @@ The critique task always follows its corresponding implementation task and valid
     {
       "task_name": "QA: Validate [Feature] implementation",
       "description": "Review the implementation against requirements",
-      "skill_id": "backend-critique",
+      "skill_id": "<critique-full_id-from-search>",
       "task_order": 2,
       "dependencies": [1],
       "inputs": {
         "original_prompt": "The user's original request",
         "preceding_task": {
           "task_order": 1,
-          "skill_id": "<skill-id-from-task-1>",
+          "skill_id": "<full_id-from-task-1>",
           "task_name": "<task-name-from-task-1>",
           "description": "<description-from-task-1>"
         },
@@ -104,7 +104,7 @@ When creating a critique task, include `preceding_task` in inputs:
     "original_prompt": "User's original request",
     "preceding_task": {
       "task_order": <order of task being validated>,
-      "skill_id": "<skill that produced the work>",
+      "skill_id": "<full_id of the skill that produced the work>",
       "task_name": "<name of that task>",
       "description": "<what that task did>"
     },
@@ -112,6 +112,8 @@ When creating a critique task, include `preceding_task` in inputs:
   }
 }
 ```
+
+**IMPORTANT:** The `skill_id` must always be the `full_id` from search results (e.g., `"clode-labs/aramb-skills/backend-development"`), NOT the short name.
 
 This tells the critique skill:
 - **What skill produced the work** - so it knows the domain and can apply appropriate validation
@@ -122,6 +124,19 @@ This tells the critique skill:
 
 **Input:** "Build subscription API with Stripe"
 
+**Step 1: Search for skills**
+```
+search_skills(category: "development", tag: "backend")
+→ Returns: full_id: "acme/skills/backend-dev" (use this)
+
+search_skills(category: "critique", tag: "backend")
+→ Returns: full_id: "acme/skills/backend-critique" (use this)
+
+search_skills(category: "testing", tag: "backend")
+→ Returns: full_id: "acme/skills/backend-testing" (use this)
+```
+
+**Step 2: Output plan using full_ids from search**
 ```json
 {
   "status": "planned",
@@ -143,7 +158,7 @@ This tells the critique skill:
     {
       "task_name": "Build subscription service",
       "description": "Create migrations, models, services, and handlers",
-      "skill_id": "backend-development",
+      "skill_id": "acme/skills/backend-dev",
       "task_order": 1,
       "dependencies": [],
       "inputs": {
@@ -165,14 +180,14 @@ This tells the critique skill:
     {
       "task_name": "QA: Validate subscription API",
       "description": "Review subscription implementation for correctness and security",
-      "skill_id": "backend-critique",
+      "skill_id": "acme/skills/backend-critique",
       "task_order": 2,
       "dependencies": [1],
       "inputs": {
         "original_prompt": "Build subscription API with Stripe",
         "preceding_task": {
           "task_order": 1,
-          "skill_id": "backend-development",
+          "skill_id": "acme/skills/backend-dev",
           "task_name": "Build subscription service",
           "description": "Create migrations, models, services, and handlers"
         },
@@ -192,7 +207,7 @@ This tells the critique skill:
     {
       "task_name": "Write subscription tests",
       "description": "Integration tests with mocked Stripe",
-      "skill_id": "backend-testing",
+      "skill_id": "acme/skills/backend-testing",
       "task_order": 3,
       "dependencies": [2],
       "inputs": {
@@ -210,14 +225,14 @@ This tells the critique skill:
     {
       "task_name": "QA: Validate subscription tests",
       "description": "Review test quality and coverage",
-      "skill_id": "backend-critique",
+      "skill_id": "acme/skills/backend-critique",
       "task_order": 4,
       "dependencies": [3],
       "inputs": {
         "original_prompt": "Build subscription API with Stripe",
         "preceding_task": {
           "task_order": 3,
-          "skill_id": "backend-testing",
+          "skill_id": "acme/skills/backend-testing",
           "task_name": "Write subscription tests",
           "description": "Integration tests with mocked Stripe"
         },
@@ -238,13 +253,32 @@ This tells the critique skill:
 }
 ```
 
+## Skill Discovery (REQUIRED)
+
+Before creating tasks, you MUST search for appropriate skills:
+
+```
+# Find implementation skills
+search_skills(category: "development", tag: "backend")
+
+# Find testing skills
+search_skills(category: "testing", tag: "backend")
+
+# Find critique skills
+search_skills(category: "critique", tag: "backend")
+```
+
+Use the `full_id` from search results in your task outputs. The full_id format is `owner/repo/skill-name`.
+
 ## Rules
 
 1. Explore codebase before planning
-2. Output valid JSON only
-3. Include file paths in task inputs
-4. Include security requirements for sensitive operations
-5. Always include critique after each implementation task
-6. Sequential `task_order` starting from 1
-7. Pass `preceding_task` to critique tasks so they know what they're validating
-8. Copy `validation_criteria` from implementation task to its corresponding critique task
+2. **ALWAYS search for skills** using MCP tools before creating tasks
+3. **Use the `full_id` from search results** in task `skill_id` fields - NEVER hardcode skill names
+4. Output valid JSON only
+5. Include file paths in task inputs
+6. Include security requirements for sensitive operations
+7. Always include critique after each implementation task
+8. Sequential `task_order` starting from 1
+9. Pass `preceding_task` to critique tasks so they know what they're validating
+10. Copy `validation_criteria` from implementation task to its corresponding critique task
