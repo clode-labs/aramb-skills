@@ -20,7 +20,10 @@ Analyze complex backend requirements and create executable task plans.
 
 ## Task Sequencing Principle
 
-Every plan follows a **4-task pattern**:
+You have **two patterns** to choose from based on complexity:
+
+### Pattern 1: Standard Tasks (Default)
+Use when the work is relatively focused and sequential:
 
 ```
 1. [implementation skill] → Build the feature
@@ -28,6 +31,37 @@ Every plan follows a **4-task pattern**:
 3. [testing skill]        → Test against user expectations
 4. [critique skill]       → Review the test coverage
 ```
+
+### Pattern 2: Parent Task with Sub-tasks
+Use when complex work benefits from **sequential decomposition with checkpoints**:
+- **Dynamic discovery** - Create sub-tasks as you learn what needs to be done
+- **Resumability** - If sub-task 3 fails, sub-tasks 1 and 2 are preserved
+- **Granular progress** - Users see incremental completion
+- **Mid-work insertion** - Add a sub-task between existing ones when you discover a dependency
+
+Sub-tasks execute **sequentially** - each waits for the previous to complete.
+
+```
+Parent Task: "Build [Feature]"
+  ├── Sub-task 1: "Create [Database Schema]"   ← Runs first
+  ├── Sub-task 2: "Build [Core Service]"       ← Waits for 1
+  ├── Sub-task 3: "Add [Handlers]"             ← Waits for 2
+  └── Sub-task 4: "Wire up routes"             ← Waits for 3
+
+Separate Review Task: "Validate [Feature] Implementation"
+  └── dependencies: [parent-task-id]
+```
+
+**When to use sub-tasks:**
+- Complex feature that benefits from step-by-step decomposition
+- Work where you'll discover scope as you go (investigation → fixes)
+- You want checkpoints so partial progress survives failures
+- Multi-step process with natural phases (schema → service → handlers → routes)
+
+**When NOT to use sub-tasks:**
+- Simple, focused features that don't need decomposition
+- Quick fixes or small enhancements
+- Work that's already well-understood and atomic
 
 **Why this pattern:**
 - **Implementation + Critique**: Ensures the code is correct, follows patterns, and meets requirements
@@ -257,6 +291,150 @@ create_tasks_batch(tasks=[
 **Step 4: Confirm task creation**
 After the MCP tool returns, confirm the tasks were created successfully.
 
+---
+
+## Example 2: Using Sub-tasks for Complex Features
+
+**Input:** "Build a complete e-commerce order management API with orders, inventory, payments, and notifications"
+
+This is a good candidate for sub-tasks because:
+- 4 sequential services that build on each other
+- User benefits from seeing granular progress
+- If service 3 fails, services 1-2 are preserved as checkpoints
+- Natural phases: orders (foundation) → inventory → payments → notifications
+
+**Step 1: Search for skills** (same as before)
+
+**Step 2: Output architecture summary (text)**
+
+> **Architecture**: Order management API with 4 services following domain-driven design.
+> - **Services**: OrderService, InventoryService, PaymentService, NotificationService
+> - **Handlers**: orders.go, inventory.go, payments.go, notifications.go
+> - **Models**: Order, OrderItem, InventoryItem, Payment, Notification
+> - **Flow**: Order created → Inventory reserved → Payment processed → Notification sent
+
+**Step 3: Create parent task with sub-tasks, then review task**
+
+```
+# First, create the parent task
+create_task(
+  skill_id: "acme/skills/backend-dev",
+  task_name: "Build order management services",
+  description: "Create order management API with orders, inventory, payments, and notifications",
+  task_order: 1,
+  inputs: {
+    "requirements": "Complete e-commerce order management API",
+    "patterns_to_follow": "See existing services in internal/services/"
+  },
+  validation_criteria: {
+    "critical": ["All services implemented", "Database migrations work", "Endpoints respond correctly"],
+    "expected": ["Authentication enforced", "Input validation", "Error handling"],
+    "nice_to_have": ["Logging", "Metrics"]
+  }
+)
+→ Returns: parent_task_id
+
+# Then create sub-tasks under the parent
+create_subtask(parent_task_id, {
+  skill_id: "acme/skills/backend-dev",
+  task_name: "Build OrderService",
+  description: "Create order service with CRUD operations and order lifecycle management",
+  inputs: {
+    "files_to_create": ["internal/services/order_service.go", "internal/handlers/orders.go", "migrations/00X_create_orders.sql"],
+    "requirements": "Order creation, status updates, history tracking"
+  }
+})
+
+create_subtask(parent_task_id, {
+  skill_id: "acme/skills/backend-dev",
+  task_name: "Build InventoryService",
+  description: "Create inventory service with stock management and reservation",
+  inputs: {
+    "files_to_create": ["internal/services/inventory_service.go", "internal/handlers/inventory.go", "migrations/00X_create_inventory.sql"],
+    "requirements": "Stock levels, reservations, availability checks"
+  }
+})
+
+create_subtask(parent_task_id, {
+  skill_id: "acme/skills/backend-dev",
+  task_name: "Build PaymentService",
+  description: "Create payment service with Stripe integration",
+  inputs: {
+    "files_to_create": ["internal/services/payment_service.go", "internal/handlers/payments.go"],
+    "requirements": "Payment processing, refunds, webhook handling"
+  }
+})
+
+create_subtask(parent_task_id, {
+  skill_id: "acme/skills/backend-dev",
+  task_name: "Build NotificationService",
+  description: "Create notification service for order updates",
+  inputs: {
+    "files_to_create": ["internal/services/notification_service.go", "internal/handlers/notifications.go"],
+    "requirements": "Email notifications, webhook callbacks"
+  }
+})
+
+# Finally, create the review task with dependency on parent
+create_task(
+  skill_id: "acme/skills/backend-critique",
+  task_name: "QA: Validate order management API",
+  description: "Review the complete order management implementation",
+  task_order: 2,
+  dependencies: [parent_task_id],
+  inputs: {
+    "original_prompt": "Build a complete e-commerce order management API",
+    "preceding_task": {
+      "task_order": 1,
+      "skill_id": "acme/skills/backend-dev",
+      "task_name": "Build order management services",
+      "description": "Create order management API with orders, inventory, payments, and notifications"
+    },
+    "validation_criteria": {
+      "critical": ["All services implemented", "Database migrations work", "Endpoints respond correctly"],
+      "expected": ["Authentication enforced", "Input validation", "Error handling"],
+      "nice_to_have": ["Logging", "Metrics"]
+    }
+  }
+)
+```
+
+**Key differences with sub-tasks:**
+- Parent task is created first, then sub-tasks are added to it
+- Sub-tasks execute **sequentially** in order (each waits for the previous)
+- Sub-tasks inherit context (project_id, user_id, etc.) from parent
+- Review task depends on the parent task, not individual sub-tasks
+- Parent's `subtasks_completed` flag auto-updates when all sub-tasks complete
+- If sub-task 3 fails, sub-tasks 1-2 remain completed (checkpoints)
+
+---
+
+## Example 3: Dynamic Discovery with Sub-tasks
+
+Sub-tasks are also useful when you **don't know the full scope upfront**. The agent can create sub-tasks as it discovers what needs to be done.
+
+**Input:** "Fix the API rate limiting issues"
+
+**Agent workflow:**
+1. Create parent task: "Fix rate limiting issues"
+2. Investigate the codebase...
+3. Discover there are actually 3 separate issues
+4. Create sub-tasks dynamically:
+
+```
+Parent Task: "Fix rate limiting issues"
+  ├── Sub-task 1: "Fix Redis connection pool exhaustion" (created after investigation)
+  ├── Sub-task 2: "Fix rate limit not resetting after window" (created after investigation)
+  └── Sub-task 3: "Fix missing rate limit headers in response" (created after investigation)
+```
+
+This pattern is powerful because:
+- Agent doesn't need to know all the work upfront
+- Each fix is a checkpoint - if fix 3 fails, fixes 1-2 are preserved
+- User sees granular progress as issues are discovered and fixed
+
+---
+
 ## Skill Discovery (REQUIRED)
 
 Before creating tasks, search for exactly **3 skills** to build the 4-task plan:
@@ -284,9 +462,13 @@ Use the `full_id` from search results in your task definitions. The full_id form
 
 1. Explore codebase before planning
 2. **Search for 3 skills**: development, critique, and testing
-3. **Create exactly 4 tasks**: implement → critique → test → critique
+3. **Choose the right pattern**:
+   - Standard 4-task pattern for focused features
+   - Parent + sub-tasks pattern for complex work needing checkpoints or dynamic discovery
 4. **Use the `full_id` from search results** in task `skill_id` fields - NEVER hardcode skill names
-5. **Use `create_tasks_batch` MCP tool** to create all tasks - do NOT output raw JSON
+5. **Use MCP tools** to create tasks - do NOT output raw JSON
+   - `create_tasks_batch` for standard pattern
+   - `create_task` + `create_subtask` for sub-task pattern
 6. Include file paths in task inputs
 7. Include security requirements for sensitive operations
 8. **Testing task must validate USER requirements** - not just test that code runs
@@ -294,3 +476,4 @@ Use the `full_id` from search results in your task definitions. The full_id form
 10. Pass `preceding_task` to critique tasks so they know what they're validating
 11. Copy `validation_criteria` from implementation task to its corresponding critique task
 12. Use dependency placeholders (`$1`, `$2`, etc.) to reference tasks within the batch
+13. **Sub-tasks cannot have sub-tasks** - only one level of nesting allowed
