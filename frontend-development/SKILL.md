@@ -21,6 +21,7 @@ license: MIT
 - Single responsibility per component
 - Semantic HTML elements
 - Mobile-first responsive design
+- **Do NOT create documentation files** (README.md, ARCHITECTURE.md, etc.) unless explicitly requested
 
 ## Workflow
 
@@ -28,6 +29,7 @@ license: MIT
 2. Plan component structure
 3. Implement with proper types
 4. Handle edge cases (loading, errors, empty states)
+5. **For new projects**: Include test dependencies in package.json (vitest, @testing-library/react) so testing task doesn't need to set up infrastructure
 
 ## Patterns
 
