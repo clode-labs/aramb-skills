@@ -24,14 +24,30 @@ Write comprehensive tests for frontend applications.
 - Use the project's established testing framework
 - Keep tests focused and independent
 - Don't over-mock - test real behavior when possible
+- **Do NOT create documentation files** (TEST_SUMMARY.md, README.md, guides) - only create test files
+- **Do NOT set up test infrastructure from scratch** - if vitest/jest is not configured, add minimal config to existing files (package.json, vite.config.ts) rather than creating elaborate setups
 
 ## Workflow
 
-1. **Read existing tests** to understand patterns
-2. **Identify test cases** based on requirements
-3. **Write unit tests** for individual components/hooks
-4. **Write integration tests** for feature flows
-5. **Run tests** to verify they pass
+1. **Check test setup first**
+   - Look at package.json for existing test dependencies (vitest, jest, @testing-library/react)
+   - If missing, add minimal dependencies - don't create elaborate configs
+   - Check if vite.config.ts already has test config
+
+2. **Read existing tests** to understand patterns
+   - If no existing tests, use simple patterns from this skill
+
+3. **Identify test cases** based on requirements
+   - Focus on critical paths from validation_criteria
+   - Don't over-test - cover what's specified
+
+4. **Write tests carefully the first time**
+   - Think through test logic before writing
+   - Avoid obvious errors that will require re-runs
+   - Use correct selectors (check component source for actual text/roles)
+
+5. **Run tests once** to verify they pass
+   - If tests fail, fix the actual issue - don't blindly iterate
 
 ## Test Types
 

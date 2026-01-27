@@ -46,27 +46,28 @@ You will receive:
 
 ## Workflow
 
-1. **Understand the context**
+1. **Understand the context** (read only, no commands)
    - Read `preceding_task` to know what skill produced the work
    - Read `original_prompt` to understand the overall goal
    - Read `validation_criteria` to know what must be verified
 
-2. **Locate the work**
-   - Find files created/modified by the preceding task
-   - Read the implementation to understand what was built
+2. **Locate the work efficiently**
+   - Check `inputs.files_to_create` or `inputs.files_to_modify` if available
+   - Otherwise, use targeted glob patterns (don't scan entire codebase)
+   - Read only the files relevant to validation
 
-3. **Prepare validation scenario**
-   - Based on the skill type, determine how to validate
-   - For code: run it, render it, test interactions
-   - For tests: run the test suite, check coverage
-   - For other: verify output matches expectations
+3. **Validate with minimal commands**
+   - **Only run npm install if package.json was modified** by the preceding task
+   - **Only run build if you need to verify it compiles** - skip if just reviewing code
+   - **For tests**: run `npm test` once - don't run multiple times
+   - If tests already pass (from testing task), focus on test quality review instead of re-running
 
-4. **Check criteria systematically**
-   - **Critical**: All must pass for a passing verdict
-   - **Expected**: Should pass for quality implementation
-   - **Nice to have**: Note but don't fail for these
+4. **Check criteria as a checklist** (be concise)
+   - **Critical**: Quick pass/fail check for each
+   - **Expected**: Note status briefly
+   - **Nice to have**: Only mention if notably present or absent
 
-5. **Output structured verdict**
+5. **Output structured verdict** (JSON only, no prose explanation)
 
 ## Validation Reference
 
@@ -128,5 +129,6 @@ You will receive:
 3. **Be specific** - Include file paths and line numbers in issues
 4. **Be actionable** - Provide clear suggestions for how to fix issues
 5. **Score objectively** - 100 = perfect, 70+ = acceptable
-6. **Run the work** - Don't just read code, actually run/render/test it when possible
-7. **Output valid JSON only**
+6. **Run only what's necessary** - Don't reinstall packages or rebuild unless needed to verify a specific criterion
+7. **Output valid JSON only** - No prose before or after the JSON block
+8. **Be efficient** - A critique should take less time than the work it's validating

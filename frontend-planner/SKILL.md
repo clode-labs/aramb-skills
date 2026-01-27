@@ -78,11 +78,12 @@ After exploring the codebase, designing the architecture, and searching for skil
 
 **Architecture Summary**: Before creating tasks, output a brief text summary of your planned architecture. This provides context for the tasks.
 
-**Task Creation**: Use `create_tasks_batch` with dependency placeholders (`$1`, `$2`, etc.) to reference tasks by their position in the batch:
+**Task Creation**: Use `create_tasks_batch` with `uniqueId` and `logicalDependencies` to define task relationships:
 
 ```
 create_tasks_batch(tasks=[
   {
+    "uniqueId": 1,
     "skill_id": "<full_id from search>",
     "task_name": "Implement [Feature]",
     "description": "Build the components and logic",
@@ -101,11 +102,12 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 3600
   },
   {
+    "uniqueId": 2,
     "skill_id": "<critique-full_id from search>",
     "task_name": "QA: Validate [Feature] implementation",
     "description": "Review the implementation against requirements",
     "task_order": 2,
-    "dependencies": ["$1"],
+    "logicalDependencies": [1],
     "inputs": {
       "original_prompt": "The user's original request",
       "preceding_task": {
@@ -130,7 +132,7 @@ create_tasks_batch(tasks=[
 ])
 ```
 
-**Dependency Placeholders**: Use `$1`, `$2`, etc. to reference tasks by their position in the batch (1-indexed). The system resolves these to actual task IDs after creation.
+**Logical Dependencies**: Use `uniqueId` (integer) to identify tasks within the batch, and `logicalDependencies` (array of integers) to reference other tasks by their uniqueId. The server validates for circular dependencies and missing references, returning a 400 error if validation fails.
 
 ## Critique Task Construction
 
@@ -185,6 +187,7 @@ search_skills(category: "testing", tag: "frontend")
 ```
 create_tasks_batch(tasks=[
   {
+    "uniqueId": 1,
     "skill_id": "acme/skills/frontend-dev",
     "task_name": "Build profile page components",
     "description": "Create ProfilePage, AvatarUpload, and ProfileForm components",
@@ -202,11 +205,12 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 3600
   },
   {
+    "uniqueId": 2,
     "skill_id": "acme/skills/frontend-critique",
     "task_name": "QA: Validate profile page implementation",
     "description": "Review profile components against requirements",
     "task_order": 2,
-    "dependencies": ["$1"],
+    "logicalDependencies": [1],
     "inputs": {
       "original_prompt": "Build a user profile page with avatar upload",
       "preceding_task": {
@@ -229,11 +233,12 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 1800
   },
   {
+    "uniqueId": 3,
     "skill_id": "acme/skills/frontend-testing",
     "task_name": "Test profile page against user requirements",
     "description": "Write tests that validate the USER's original request: profile page with avatar upload. Tests should prove the feature works as the user expects.",
     "task_order": 3,
-    "dependencies": ["$2"],
+    "logicalDependencies": [2],
     "inputs": {
       "original_prompt": "Build a user profile page with avatar upload",
       "user_expectations": [
@@ -253,11 +258,12 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 3600
   },
   {
+    "uniqueId": 4,
     "skill_id": "acme/skills/frontend-critique",
     "task_name": "QA: Validate tests cover user requirements",
     "description": "Review that tests actually validate what the user asked for, not just implementation details",
     "task_order": 4,
-    "dependencies": ["$3"],
+    "logicalDependencies": [3],
     "inputs": {
       "original_prompt": "Build a user profile page with avatar upload",
       "preceding_task": {
@@ -469,5 +475,7 @@ Use the `full_id` from search results in your task definitions. The full_id form
 9. Sequential `task_order` starting from 1
 10. Pass `preceding_task` to critique tasks so they know what they're validating
 11. Copy `validation_criteria` from implementation task to its corresponding critique task
-12. Use dependency placeholders (`$1`, `$2`, etc.) to reference tasks within the batch
+12. **Use `uniqueId` and `logicalDependencies`** to define task relationships within a batch:
+    - `uniqueId`: Sequential integers (1, 2, 3, ...) to identify tasks
+    - `logicalDependencies`: Array of integers referencing other tasks' uniqueId
 13. **Sub-tasks cannot have sub-tasks** - only one level of nesting allowed
