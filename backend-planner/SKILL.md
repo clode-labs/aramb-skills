@@ -1,6 +1,6 @@
 ---
 name: backend-planner
-description: Plan complex backend work by analyzing requirements and creating executable task sequences. Use this skill when breaking down API features, service architectures, database changes, or backend integrations into development, testing, and validation tasks.
+description: Plan complex backend work by analyzing requirements and creating executable task sequences. Use this skill when breaking down API features, service architectures, database changes, or backend integrations into development and QA tasks with self-validation.
 category: planner
 tags: [backend, api, golang, python, planning, server]
 license: MIT
@@ -14,7 +14,7 @@ Analyze complex backend requirements and create executable task plans.
 
 1. **Explore codebase** - Identify language, framework, conventions
 2. **Design architecture** - Plan endpoints, models, services (output as text summary)
-3. **Search for skills** - Use `search_skills` MCP tool to find development, testing, and critique skills
+3. **Search for skills** - Use `search_skills` MCP tool to find development and QA skills
 4. **Create tasks via MCP** - Use `create_tasks_batch` to create all tasks with dependencies
 5. **Confirm creation** - Verify the MCP tool successfully created the tasks
 
@@ -26,11 +26,17 @@ You have **two patterns** to choose from based on complexity:
 Use when the work is relatively focused and sequential:
 
 ```
-1. [implementation skill] → Build the feature
-2. [critique skill]       → Review the implementation
-3. [testing skill]        → Test against user expectations
-4. [critique skill]       → Review the test coverage
+1. [development skill] → Build the feature (self-validates: compiles, runs, migrations work)
+2. [testing/critique skill] → QA against user expectations (self-validates: tests pass, coverage good)
 ```
+
+**The Correctness Loop:**
+- Each task validates itself using its `validation_criteria`
+- **Build task** validates: code compiles, runs without errors, migrations succeed, endpoints work
+- **QA task** validates: tests pass, coverage adequate, edge cases covered, security tested
+- If QA finds implementation issues → QA fails with detailed `feedback_for_rebuild`
+- System re-triggers the build task with the QA feedback
+- Loop continues until QA passes
 
 ### Pattern 2: Parent Task with Sub-tasks
 Use when complex work benefits from **sequential decomposition with checkpoints**:
@@ -48,7 +54,7 @@ Parent Task: "Build [Feature]"
   ├── Sub-task 3: "Add [Handlers]"             ← Waits for 2
   └── Sub-task 4: "Wire up routes"             ← Waits for 3
 
-Separate Review Task: "Validate [Feature] Implementation"
+QA Task: "Test [Feature]"
   └── dependencies: [parent-task-id]
 ```
 
@@ -63,14 +69,15 @@ Separate Review Task: "Validate [Feature] Implementation"
 - Quick fixes or small enhancements
 - Work that's already well-understood and atomic
 
-**Why this pattern:**
-- **Implementation + Critique**: Ensures the code is correct, follows patterns, and meets requirements
-- **Testing + Critique**: Ensures tests actually validate what the user asked for, not just what was built
+**Why this simplified pattern:**
+- **Build task self-validates**: Code compiles, runs, migrations work - immediate feedback
+- **QA task self-validates**: Tests written, pass, cover requirements
+- **No separate critique tasks**: Eliminates redundant QA layers
+- **Correctness loop**: QA failure triggers re-build with specific feedback
 
 **Required skills to search for:**
 1. A **development skill** (category: "development", tag: "backend") - to build the feature
-2. A **critique skill** (category: "critique", tag: "backend") - to review work (used twice)
-3. A **testing skill** (category: "testing", tag: "backend") - to write tests validating user expectations
+2. A **QA skill** (category: "testing" OR "critique", tag: "backend") - to test/validate user expectations
 
 ## Task Creation with MCP
 
@@ -84,7 +91,7 @@ After exploring the codebase, designing the architecture, and searching for skil
 create_tasks_batch(tasks=[
   {
     "uniqueId": 1,
-    "skill_id": "<full_id from search>",
+    "skill_id": "<development-full_id from search>",
     "task_name": "Implement [Feature]",
     "description": "Build the API and services",
     "task_order": 1,
@@ -95,70 +102,87 @@ create_tasks_batch(tasks=[
       "patterns_to_follow": "Reference to existing code patterns"
     },
     "validation_criteria": {
-      "critical": ["Must-pass criteria for this task"],
-      "expected": ["Should-pass criteria"],
-      "nice_to_have": ["Optional improvements"]
+      "critical": ["Code compiles", "Migrations run successfully", "Endpoints respond correctly"],
+      "expected": ["Auth enforced", "Input validation", "Error handling"],
+      "nice_to_have": ["Logging", "Metrics"]
     },
     "timeout_seconds": 3600
   },
   {
     "uniqueId": 2,
-    "skill_id": "<critique-full_id from search>",
-    "task_name": "QA: Validate [Feature] implementation",
-    "description": "Review the implementation against requirements",
+    "skill_id": "<testing-or-critique-full_id from search>",
+    "task_name": "QA: Test [Feature]",
+    "description": "Write and run tests validating user requirements. If implementation has issues, fail with detailed feedback.",
     "task_order": 2,
     "logicalDependencies": [1],
     "inputs": {
+      "critiques_tasks": [1],  // ← CRITICAL: References uniqueId of task(s) this QA validates
       "original_prompt": "The user's original request",
       "preceding_task": {
         "task_order": 1,
-        "skill_id": "<full_id-from-task-1>",
+        "skill_id": "<development-full_id>",
         "task_name": "<task-name-from-task-1>",
         "description": "<description-from-task-1>"
       },
-      "validation_criteria": {
-        "critical": ["Same criteria passed to task 1"],
-        "expected": ["Same criteria"],
-        "nice_to_have": ["Same criteria"]
-      }
+      "user_expectations": [
+        "User can do X via API",
+        "Y is returned when...",
+        "Z error is returned when..."
+      ],
+      "files_to_test": ["internal/handlers/resource.go", "internal/services/resource_service.go"]
     },
     "validation_criteria": {
-      "critical": ["Returns structured verdict with actionable feedback"],
-      "expected": [],
-      "nice_to_have": []
+      "critical": ["Tests pass", "Critical API paths covered", "No broken functionality found"],
+      "expected": ["Error cases tested", "Auth tested"],
+      "nice_to_have": ["High coverage", "Performance tested"]
     },
-    "timeout_seconds": 1800
+    "timeout_seconds": 3600
   }
 ])
 ```
 
 **Logical Dependencies**: Use `uniqueId` (integer) to identify tasks within the batch, and `logicalDependencies` (array of integers) to reference other tasks by their uniqueId. The server validates for circular dependencies and missing references, returning a 400 error if validation fails.
 
-## Critique Task Construction
+## QA Task Construction
 
-When creating a critique task, include `preceding_task` in inputs:
+The QA task is responsible for:
+1. **Writing tests** that validate user requirements
+2. **Running tests** to verify implementation works
+3. **Validating its own criteria**: coverage, edge cases, security tests
+4. **Outputting verdict** with `feedback_for_rebuild` if implementation has issues
+
+**CRITICAL:** Include `critiques_tasks` in inputs - this tells brahmi which task(s) to retry if QA fails:
 
 ```json
 {
   "inputs": {
+    "critiques_tasks": [1],  // ← REQUIRED: uniqueId(s) of task(s) this QA validates
     "original_prompt": "User's original request",
     "preceding_task": {
-      "task_order": <order of task being validated>,
-      "skill_id": "<full_id of the skill that produced the work>",
+      "task_order": 1,
+      "skill_id": "<full_id of the skill that built the feature>",
       "task_name": "<name of that task>",
       "description": "<what that task did>"
     },
-    "validation_criteria": { ... }
+    "user_expectations": ["List of what user expects to work"]
+  },
+  "validation_criteria": {
+    "critical": ["Tests pass", "User requirements validated"],
+    "expected": ["Security tested", "Error cases covered"],
+    "nice_to_have": ["High coverage"]
   }
 }
 ```
 
-**IMPORTANT:** The `skill_id` must always be the `full_id` from search results (e.g., `"clode-labs/aramb-skills/backend-development"`), NOT the short name.
+**How the correctness loop works:**
+1. QA task completes with `verdict: fail` and `feedback_for_rebuild` in outputs
+2. Brahmi reads `critiques_tasks` from QA task inputs
+3. Brahmi retries those task(s) with the feedback injected into their inputs
+4. QA task resets to "planned" (waiting for dependency)
+5. After retried task completes, QA runs again
+6. Loop continues until `verdict: pass` or max retries exceeded
 
-This tells the critique skill:
-- **What skill produced the work** - so it knows the domain and can apply appropriate validation
-- **What the task was supposed to do** - so it can verify the work matches intent
-- **What criteria to check** - explicit validation requirements
+**IMPORTANT:** The `skill_id` must always be the `full_id` from search results (e.g., `"clode-labs/aramb-skills/backend-development"`), NOT the short name.
 
 ## Example
 
@@ -169,11 +193,11 @@ This tells the critique skill:
 search_skills(category: "development", tag: "backend")
 → Returns: full_id: "acme/skills/backend-dev" (use this)
 
-search_skills(category: "critique", tag: "backend")
-→ Returns: full_id: "acme/skills/backend-critique" (use this)
-
 search_skills(category: "testing", tag: "backend")
 → Returns: full_id: "acme/skills/backend-testing" (use this)
+# OR
+search_skills(category: "critique", tag: "backend")
+→ Returns: full_id: "acme/skills/backend-critique" (use this)
 ```
 
 **Step 2: Output architecture summary (text)**
@@ -191,7 +215,7 @@ create_tasks_batch(tasks=[
     "uniqueId": 1,
     "skill_id": "acme/skills/backend-dev",
     "task_name": "Build subscription service",
-    "description": "Create migrations, models, services, and handlers",
+    "description": "Create migrations, models, services, and handlers for Stripe subscription API",
     "task_order": 1,
     "inputs": {
       "requirements": "Subscription API with Stripe integration, migrations, handlers",
@@ -203,20 +227,21 @@ create_tasks_batch(tasks=[
       "files_to_modify": ["internal/routes/routes.go"]
     },
     "validation_criteria": {
-      "critical": ["Migration runs", "Endpoints work", "Webhook signature verification"],
+      "critical": ["Code compiles", "Migration runs", "Endpoints respond", "Webhook signature verified"],
       "expected": ["Auth enforced", "Input validation", "Error handling"],
-      "nice_to_have": ["Logging"]
+      "nice_to_have": ["Logging", "Idempotency keys"]
     },
     "timeout_seconds": 3600
   },
   {
     "uniqueId": 2,
-    "skill_id": "acme/skills/backend-critique",
-    "task_name": "QA: Validate subscription API",
-    "description": "Review subscription implementation for correctness and security",
+    "skill_id": "acme/skills/backend-testing",
+    "task_name": "QA: Test subscription API",
+    "description": "Write and run tests for subscription API. Validate create, status check, and webhook handling work. If implementation has issues, fail with detailed feedback for rebuild.",
     "task_order": 2,
     "logicalDependencies": [1],
     "inputs": {
+      "critiques_tasks": [1],  // ← Triggers correctness loop if verdict=fail
       "original_prompt": "Build subscription API with Stripe",
       "preceding_task": {
         "task_order": 1,
@@ -224,72 +249,20 @@ create_tasks_batch(tasks=[
         "task_name": "Build subscription service",
         "description": "Create migrations, models, services, and handlers"
       },
-      "validation_criteria": {
-        "critical": ["Migration runs", "Endpoints work", "Webhook signature verification"],
-        "expected": ["Auth enforced", "Input validation", "Error handling"],
-        "nice_to_have": ["Logging"]
-      }
-    },
-    "validation_criteria": {
-      "critical": ["Returns structured verdict", "Security issues identified"],
-      "expected": [],
-      "nice_to_have": []
-    },
-    "timeout_seconds": 1800
-  },
-  {
-    "uniqueId": 3,
-    "skill_id": "acme/skills/backend-testing",
-    "task_name": "Test subscription API against user requirements",
-    "description": "Write tests that validate the USER's original request: subscription API with Stripe. Tests should prove the feature works as the user expects.",
-    "task_order": 3,
-    "logicalDependencies": [2],
-    "inputs": {
-      "original_prompt": "Build subscription API with Stripe",
       "user_expectations": [
         "User can create a subscription",
         "User can check subscription status",
         "Stripe webhooks are handled correctly",
         "Subscription state is persisted"
       ],
-      "files_to_test": ["internal/handlers/subscription_handlers.go", "internal/services/stripe_service.go"],
-      "test_types": ["unit", "integration"]
+      "files_to_test": ["internal/handlers/subscription_handlers.go", "internal/services/stripe_service.go"]
     },
     "validation_criteria": {
-      "critical": ["Tests validate user requirements", "Stripe integration works end-to-end"],
-      "expected": ["Error cases tested", "Webhook signature verified"],
-      "nice_to_have": ["Edge cases covered"]
+      "critical": ["All tests pass", "User requirements validated", "Stripe integration tested"],
+      "expected": ["Error cases tested", "Webhook signature verified in tests"],
+      "nice_to_have": ["High coverage", "Idempotency tested"]
     },
     "timeout_seconds": 3600
-  },
-  {
-    "uniqueId": 4,
-    "skill_id": "acme/skills/backend-critique",
-    "task_name": "QA: Validate tests cover user requirements",
-    "description": "Review that tests actually validate what the user asked for, not just implementation details",
-    "task_order": 4,
-    "logicalDependencies": [3],
-    "inputs": {
-      "original_prompt": "Build subscription API with Stripe",
-      "preceding_task": {
-        "task_order": 3,
-        "skill_id": "acme/skills/backend-testing",
-        "task_name": "Test subscription API against user requirements",
-        "description": "Write tests that validate the USER's original request"
-      },
-      "validation_criteria": {
-        "critical": ["Tests validate user requirements", "Stripe integration works end-to-end"],
-        "expected": ["Error cases tested", "Webhook signature verified"],
-        "nice_to_have": ["Edge cases covered"]
-      },
-      "focus": "Do the tests prove the user got what they asked for?"
-    },
-    "validation_criteria": {
-      "critical": ["Tests cover user's actual requirements", "Not just implementation smoke tests"],
-      "expected": [],
-      "nice_to_have": []
-    },
-    "timeout_seconds": 1800
   }
 ])
 ```
@@ -319,7 +292,7 @@ This is a good candidate for sub-tasks because:
 > - **Models**: Order, OrderItem, InventoryItem, Payment, Notification
 > - **Flow**: Order created → Inventory reserved → Payment processed → Notification sent
 
-**Step 3: Create parent task with sub-tasks, then review task**
+**Step 3: Create parent task with sub-tasks, then QA task**
 
 ```
 # First, create the parent task
@@ -333,8 +306,8 @@ create_task(
     "patterns_to_follow": "See existing services in internal/services/"
   },
   validation_criteria: {
-    "critical": ["All services implemented", "Database migrations work", "Endpoints respond correctly"],
-    "expected": ["Authentication enforced", "Input validation", "Error handling"],
+    "critical": ["All services compile", "Migrations run", "Endpoints respond correctly"],
+    "expected": ["Auth enforced", "Input validation", "Error handling"],
     "nice_to_have": ["Logging", "Metrics"]
   }
 )
@@ -381,11 +354,11 @@ create_subtask(parent_task_id, {
   }
 })
 
-# Finally, create the review task with dependency on parent
+# Finally, create the QA task with dependency on parent
 create_task(
-  skill_id: "acme/skills/backend-critique",
-  task_name: "QA: Validate order management API",
-  description: "Review the complete order management implementation",
+  skill_id: "acme/skills/backend-testing",
+  task_name: "QA: Test order management API",
+  description: "Write and run tests for complete order flow. If issues found, fail with feedback for rebuild.",
   task_order: 2,
   dependencies: [parent_task_id],
   inputs: {
@@ -396,11 +369,17 @@ create_task(
       "task_name": "Build order management services",
       "description": "Create order management API with orders, inventory, payments, and notifications"
     },
-    "validation_criteria": {
-      "critical": ["All services implemented", "Database migrations work", "Endpoints respond correctly"],
-      "expected": ["Authentication enforced", "Input validation", "Error handling"],
-      "nice_to_have": ["Logging", "Metrics"]
-    }
+    "user_expectations": [
+      "User can create orders",
+      "Inventory is reserved on order",
+      "Payment is processed",
+      "Notifications are sent"
+    ]
+  },
+  validation_criteria: {
+    "critical": ["All tests pass", "Complete order flow works end-to-end"],
+    "expected": ["Error cases tested", "Concurrent access handled"],
+    "nice_to_have": ["High coverage", "Performance tested"]
   }
 )
 ```
@@ -409,7 +388,7 @@ create_task(
 - Parent task is created first, then sub-tasks are added to it
 - Sub-tasks execute **sequentially** in order (each waits for the previous)
 - Sub-tasks inherit context (project_id, user_id, etc.) from parent
-- Review task depends on the parent task, not individual sub-tasks
+- QA task depends on the parent task, not individual sub-tasks
 - Parent's `subtasks_completed` flag auto-updates when all sub-tasks complete
 - If sub-task 3 fails, sub-tasks 1-2 remain completed (checkpoints)
 
@@ -443,33 +422,64 @@ This pattern is powerful because:
 
 ## Skill Discovery (REQUIRED)
 
-Before creating tasks, search for exactly **3 skills** to build the 4-task plan:
+Before creating tasks, search for **2 skills** to build the task plan:
 
 ```
 # 1. Find a skill to BUILD the feature
 search_skills(category: "development", tag: "backend")
 → Use for Task 1: Implementation
 
-# 2. Find a skill to REVIEW work
-search_skills(category: "critique", tag: "backend")
-→ Use for Task 2: Review implementation
-→ Use for Task 4: Review tests
-
-# 3. Find a skill to TEST against user expectations
+# 2. Find a skill to QA/TEST the feature
 search_skills(category: "testing", tag: "backend")
-→ Use for Task 3: Write tests that validate what the USER asked for
+→ Use for Task 2: QA
+# OR
+search_skills(category: "critique", tag: "backend")
+→ Use for Task 2: QA (if testing skill not found)
 ```
 
 Use the `full_id` from search results in your task definitions. The full_id format is `owner/repo/skill-name`.
 
-**Important**: The testing task should validate the **user's original requirements**, not just test that the implementation works. The tests prove the user got what they asked for.
+**Important**: The QA task validates the **user's original requirements** AND its own criteria (coverage, tests meaningful, security). If implementation is broken, QA fails with `feedback_for_rebuild` to trigger the correctness loop.
+
+## The Correctness Loop Explained
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                 │
+│  1. BUILD TASK runs                                             │
+│     - Implements feature                                        │
+│     - Self-validates: compiles, runs, migrations work           │
+│     - Completes successfully                                    │
+│                          ↓                                      │
+│  2. QA TASK runs                                                │
+│     - Writes tests for user requirements                        │
+│     - Runs tests                                                 │
+│     - Self-validates: tests pass, coverage good, secure         │
+│                          ↓                                      │
+│  3. QA VERDICT                                                  │
+│     ├─ PASS → Done! Feature complete with tests                 │
+│     └─ FAIL → Provides `feedback_for_rebuild`                   │
+│                          ↓                                      │
+│  4. SYSTEM re-triggers BUILD TASK                               │
+│     - Build receives QA feedback in inputs                      │
+│     - Fixes the issues identified by QA                         │
+│     - Loop back to step 1                                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key points:**
+- No separate critique tasks - reduces overhead
+- Each task validates itself using `validation_criteria`
+- QA task failure triggers rebuild with specific feedback
+- Loop continues until QA passes (or max retries exceeded)
 
 ## Rules
 
 1. Explore codebase before planning
-2. **Search for 3 skills**: development, critique, and testing
+2. **Search for 2 skills**: development and testing/critique (for QA)
 3. **Choose the right pattern**:
-   - Standard 4-task pattern for focused features
+   - Standard 2-task pattern for focused features
    - Parent + sub-tasks pattern for complex work needing checkpoints or dynamic discovery
 4. **Use the `full_id` from search results** in task `skill_id` fields - NEVER hardcode skill names
 5. **Use MCP tools** to create tasks - do NOT output raw JSON
@@ -477,11 +487,13 @@ Use the `full_id` from search results in your task definitions. The full_id form
    - `create_task` + `create_subtask` for sub-task pattern
 6. Include file paths in task inputs
 7. Include security requirements for sensitive operations
-8. **Testing task must validate USER requirements** - not just test that code runs
+8. **QA task validates user requirements** AND its own criteria (coverage, security)
 9. Sequential `task_order` starting from 1
-10. Pass `preceding_task` to critique tasks so they know what they're validating
-11. Copy `validation_criteria` from implementation task to its corresponding critique task
-12. **Use `uniqueId` and `logicalDependencies`** to define task relationships within a batch:
-    - `uniqueId`: Sequential integers (1, 2, 3, ...) to identify tasks
+10. Pass `preceding_task` to QA task so it knows what to validate
+11. **Use `uniqueId` and `logicalDependencies`** to define task relationships within a batch:
+    - `uniqueId`: Sequential integers (1, 2, ...) to identify tasks
     - `logicalDependencies`: Array of integers referencing other tasks' uniqueId
-13. **Sub-tasks cannot have sub-tasks** - only one level of nesting allowed
+12. **Sub-tasks cannot have sub-tasks** - only one level of nesting allowed
+13. **validation_criteria** defines what each task validates about itself:
+    - Build: compiles, runs, migrations work, endpoints respond
+    - QA: tests pass, coverage adequate, security tested

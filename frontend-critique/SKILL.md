@@ -1,134 +1,74 @@
 ---
 name: frontend-critique
-description: Validate frontend work against requirements and best practices. Use this skill to review any frontend-related implementation including UI components, tests, styling, or integrations.
+description: QA skill for frontend work. Validate implementation against requirements, run/test the feature, and trigger rebuilds when issues found. Use this skill to review UI components, test functionality, verify accessibility, and ensure quality.
 category: critique
-tags: [frontend, react, typescript, validation, review, qa]
+tags: [frontend, react, typescript, validation, review, qa, testing]
 license: MIT
 ---
 
-# Frontend Critique
+# Frontend QA (Critique)
 
-Review and validate frontend work against requirements and quality standards.
+Validate frontend work against requirements. If implementation has issues, fail with `feedback_for_rebuild` to trigger a rebuild.
 
 ## Inputs
 
-You will receive:
-- `original_prompt`: The user's original request (overall goal)
-- `preceding_task`: Information about the task you're validating:
-  - `skill_id`: Which skill produced this work (tells you what type of work to validate)
-  - `task_name`: What the task was called
-  - `description`: What the task was supposed to do
-- `validation_criteria`: Specific criteria to check (critical, expected, nice_to_have)
-
-## Context-Aware Validation
-
-**Read `preceding_task.skill_id` to understand what you're validating.** Different types of work require different validation approaches:
-
-### When validating code implementation (development skills)
-- Run/render the implementation to verify it works
-- Check that it meets the functional requirements
-- Verify code quality, patterns, and conventions
-- Check accessibility and responsiveness
-- Look for common issues: missing error states, hardcoded values, etc.
-
-### When validating tests (testing skills)
-- Run the test suite to verify tests pass
-- Check that tests actually verify the stated criteria
-- Verify test quality: readable, maintainable, no false positives
-- Check coverage of critical paths
-- Look for common issues: missing assertions, flaky tests, implementation testing vs behavior testing
-
-### When validating other skill types
-- Read the skill_id and task description to understand the work
-- Focus on whether the output matches what the task was supposed to produce
-- Apply the validation_criteria provided
-- Use your judgment for domain-specific quality checks
+- `original_prompt`: User's original request
+- `preceding_task`: Info about the build task you're validating
+- `user_expectations`: What user expects to work
+- `files_to_test`: Files created by build task
+- `validation_criteria`: Self-validation criteria
+  - `critical`: MUST pass before completing
+  - `expected`: SHOULD pass (log warning if not)
+  - `nice_to_have`: Optional improvements
 
 ## Workflow
 
-1. **Understand the context** (read only, no commands)
-   - Read `preceding_task` to know what skill produced the work
-   - Read `original_prompt` to understand the overall goal
-   - Read `validation_criteria` to know what must be verified
+1. Read `original_prompt` and `preceding_task` to understand context
+2. Locate and read the files (check `files_to_test` or `inputs.files_to_create`)
+3. Run the feature to verify it works
+4. Check against `user_expectations`
+5. Self-validate your review (was it thorough? actionable?)
+6. Output verdict
 
-2. **Locate the work efficiently**
-   - Check `inputs.files_to_create` or `inputs.files_to_modify` if available
-   - Otherwise, use targeted glob patterns (don't scan entire codebase)
-   - Read only the files relevant to validation
+## Constraints
 
-3. **Validate with minimal commands**
-   - **Only run npm install if package.json was modified** by the preceding task
-   - **Only run build if you need to verify it compiles** - skip if just reviewing code
-   - **For tests**: run `npm test` once - don't run multiple times
-   - If tests already pass (from testing task), focus on test quality review instead of re-running
+- **Do NOT create documentation files** or write tests (that's for testing skill)
+- Only run npm install if package.json was modified
+- Only run build if you need to verify it compiles
 
-4. **Check criteria as a checklist** (be concise)
-   - **Critical**: Quick pass/fail check for each
-   - **Expected**: Note status briefly
-   - **Nice to have**: Only mention if notably present or absent
+## Output
 
-5. **Output structured verdict** (JSON only, no prose explanation)
-
-## Validation Reference
-
-### For UI Components
-- Renders without errors
-- Handles user interactions correctly
-- Loading and error states work
-- Accessible (semantic HTML, labels, focus states)
-- Responsive across breakpoints
-
-### For Tests
-- All tests pass when run
-- Tests verify behavior, not implementation details
-- Critical user paths are covered
-- No skipped tests without justification
-- Tests are readable and maintainable
-
-### For Styling/CSS
-- Styles apply correctly
-- No layout issues or overflow
-- Works across target browsers
-- Follows design system if one exists
-
-### For State Management
-- State updates correctly on actions
-- No stale state issues
-- Handles async operations properly
-- Edge cases handled (empty, loading, error)
-
-## Output Format
+### PASS (implementation works)
 
 ```json
 {
-  "verdict": "pass | fail",
+  "verdict": "pass",
   "score": 85,
-  "context": {
-    "validating": "<skill_id from preceding_task>",
-    "task": "<task_name from preceding_task>"
-  },
-  "summary": "Brief overall assessment of the work",
-  "critical_issues": [
-    {
-      "criterion": "Which criterion failed",
-      "issue": "What's wrong",
-      "location": "File and line if applicable",
-      "suggestion": "How to fix"
-    }
-  ],
-  "expected_issues": [...],
-  "nice_to_have_suggestions": [...],
-  "feedback_for_retry": "Clear instructions if verdict is fail - what specifically needs to change"
+  "summary": "All user requirements validated successfully",
+  "files_reviewed": ["src/components/Feature.tsx"],
+  "what_works": ["Feature renders", "Form submits correctly"]
 }
 ```
 
-## Rules
+### FAIL (triggers correctness loop)
 
-1. **Critical issues = fail** - Any critical criterion not met results in fail verdict
-2. **Adapt to context** - Use `preceding_task.skill_id` to apply appropriate validation
-3. **Be specific** - Include file paths and line numbers in issues
-4. **Be actionable** - Provide clear suggestions for how to fix issues
-5. **Score objectively** - 100 = perfect, 70+ = acceptable
-6. **Run only what's necessary** - Don't reinstall packages or rebuild unless needed to verify a specific criterion
-7. **Output valid JSON only** - No prose before or after the JSON block
-8. **Be efficient** - A critique should take less time than the work it's validating
+```json
+{
+  "verdict": "fail",
+  "feedback_for_rebuild": {
+    "summary": "Brief description of what's broken",
+    "issues": [
+      {
+        "what": "Avatar preview doesn't show after upload",
+        "expected": "Preview should appear after selecting image",
+        "actual": "No preview renders",
+        "location": "src/components/AvatarUpload.tsx:45",
+        "suggestion": "Add useEffect to create object URL from File"
+      }
+    ],
+    "files_reviewed": ["src/components/AvatarUpload.tsx"],
+    "what_works": ["File picker opens"],
+    "what_doesnt_work": ["Preview doesn't render"]
+  }
+}
+```

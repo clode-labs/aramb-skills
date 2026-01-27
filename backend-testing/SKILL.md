@@ -1,162 +1,68 @@
 ---
 name: backend-testing
-description: Write comprehensive tests for backend code. Use this skill for creating unit tests for services and utilities, integration tests for APIs and database operations, and e2e tests using pytest, Go testing, Jest, or similar frameworks.
+description: QA skill for backend code. Write tests, validate user requirements, and trigger rebuilds when implementation has issues. Use this skill for unit tests, integration tests, and API tests using pytest, Go testing, Jest, or similar frameworks.
 category: testing
-tags: [backend, testing, golang, pytest, integration, unit-tests]
+tags: [backend, testing, golang, pytest, integration, unit-tests, qa, critique]
 license: MIT
 ---
 
-# Backend Testing
+# Backend QA (Testing)
 
-Write comprehensive tests for backend applications.
+Write tests that validate user requirements. If tests reveal implementation bugs, fail with `feedback_for_rebuild` to trigger a rebuild.
 
-## Responsibilities
+## Inputs
 
-- Write unit tests for services and utilities
-- Write integration tests for API endpoints
-- Write database integration tests
-- Ensure adequate test coverage
-- Follow testing best practices
+- `original_prompt`: User's original request
+- `preceding_task`: Info about the build task you're validating
+- `user_expectations`: What user expects to work
+- `files_to_test`: Files created by build task
+- `validation_criteria`: Self-validation criteria
+  - `critical`: MUST pass before completing
+  - `expected`: SHOULD pass (log warning if not)
+  - `nice_to_have`: Optional improvements
+
+## Workflow
+
+1. Read `original_prompt` and `preceding_task` to understand context
+2. Read existing tests to understand patterns
+3. Write tests for `user_expectations` - focus on API behavior
+4. **Always include security tests**: auth required, authorization, input validation
+5. Run tests
+   - If tests fail due to **implementation bugs** → fail with `feedback_for_rebuild`
+   - If tests fail due to **test bugs** → fix tests and re-run
+6. Self-validate: coverage adequate? security tested?
+7. Output verdict
 
 ## Constraints
 
 - Follow existing test patterns in the codebase
-- Use the project's established testing framework
-- Keep tests focused and independent
 - Use test fixtures and factories for data setup
 - Clean up test data after tests
 
-## Workflow
+## Output
 
-1. **Read existing tests** to understand patterns
-2. **Identify test cases** based on requirements
-3. **Write unit tests** for business logic
-4. **Write integration tests** for APIs and database
-5. **Run tests** to verify they pass
+### PASS (tests written and passing)
 
-## Test Types
+Complete the task successfully.
 
-### Unit Tests (Go)
-Test business logic in isolation.
+### FAIL (implementation bugs found)
 
-```go
-func TestCalculateTotal(t *testing.T) {
-    items := []Item{
-        {Price: 10.00},
-        {Price: 20.00},
-    }
-
-    total := CalculateTotal(items)
-
-    if total != 30.00 {
-        t.Errorf("expected 30.00, got %f", total)
-    }
+```json
+{
+  "verdict": "fail",
+  "feedback_for_rebuild": {
+    "summary": "Brief description of what's broken",
+    "issues": [
+      {
+        "what": "Subscription creation endpoint returns 500",
+        "expected": "POST /api/v1/subscriptions returns 201",
+        "actual": "Returns 500, nil pointer in stripe_service.go:45",
+        "location": "internal/services/stripe_service.go:45",
+        "suggestion": "Add nil check for customer before calling Stripe API"
+      }
+    ],
+    "tests_written": ["internal/handlers/subscription_handlers_test.go"],
+    "tests_failing": ["TestCreateSubscription_Success"]
+  }
 }
 ```
-
-### Table-Driven Tests (Go)
-Test multiple cases efficiently.
-
-```go
-func TestValidateEmail(t *testing.T) {
-    tests := []struct {
-        name    string
-        email   string
-        wantErr bool
-    }{
-        {"valid email", "user@example.com", false},
-        {"missing @", "userexample.com", true},
-        {"missing domain", "user@", true},
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            err := ValidateEmail(tt.email)
-            if (err != nil) != tt.wantErr {
-                t.Errorf("ValidateEmail() error = %v, wantErr %v", err, tt.wantErr)
-            }
-        })
-    }
-}
-```
-
-### API Integration Tests (Go)
-Test HTTP handlers with real requests.
-
-```go
-func TestCreateUser(t *testing.T) {
-    router := setupTestRouter()
-
-    body := `{"email": "test@example.com", "name": "Test User"}`
-    req := httptest.NewRequest("POST", "/api/v1/users", strings.NewReader(body))
-    req.Header.Set("Content-Type", "application/json")
-    w := httptest.NewRecorder()
-
-    router.ServeHTTP(w, req)
-
-    assert.Equal(t, http.StatusCreated, w.Code)
-
-    var response UserResponse
-    json.Unmarshal(w.Body.Bytes(), &response)
-    assert.Equal(t, "test@example.com", response.Email)
-}
-```
-
-### Database Tests (Go)
-Test database operations with test database.
-
-```go
-func TestUserRepository_Create(t *testing.T) {
-    db := setupTestDB(t)
-    defer db.Close()
-
-    repo := NewUserRepository(db)
-
-    user := &User{Email: "test@example.com"}
-    err := repo.Create(context.Background(), user)
-
-    assert.NoError(t, err)
-    assert.NotZero(t, user.ID)
-}
-```
-
-### Python Tests (pytest)
-
-```python
-def test_calculate_total():
-    items = [{"price": 10.0}, {"price": 20.0}]
-    assert calculate_total(items) == 30.0
-
-@pytest.mark.asyncio
-async def test_create_user(client: AsyncClient):
-    response = await client.post("/api/v1/users", json={
-        "email": "test@example.com",
-        "name": "Test User"
-    })
-    assert response.status_code == 201
-    assert response.json()["email"] == "test@example.com"
-```
-
-## Best Practices
-
-- **AAA Pattern**: Arrange, Act, Assert
-- **Test one thing per test**: Single assertion focus
-- **Use descriptive names**: Describe the scenario and expected outcome
-- **Test edge cases**: Empty inputs, nulls, boundaries
-- **Mock external services**: APIs, message queues
-- **Use transactions**: Rollback database changes after tests
-
-## Security Tests
-
-- Test authentication is required on protected routes
-- Test authorization (users can't access others' data)
-- Test input validation (SQL injection, XSS)
-- Test rate limiting if applicable
-
-## Output Validation
-
-- All tests pass
-- No skipped tests without explanation
-- Tests cover happy path and error cases
-- Coverage meets project requirements
-- Tests run in reasonable time

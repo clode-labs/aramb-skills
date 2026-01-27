@@ -8,79 +8,42 @@ license: MIT
 
 # Backend Development
 
-## Responsibilities
+Build APIs following project patterns. Implement proper validation, error handling, and security.
 
-- Build APIs following project patterns
-- Implement proper validation and error handling
-- Write secure, maintainable code
-- Follow existing conventions
+## Inputs
+
+- `requirements`: What to build
+- `files_to_create`: Files to create
+- `files_to_modify`: Existing files to modify
+- `patterns_to_follow`: Reference patterns in codebase
+- `validation_criteria`: Self-validation criteria
+  - `critical`: MUST pass before completing
+  - `expected`: SHOULD pass (log warning if not)
+  - `nice_to_have`: Optional improvements
 
 ## Constraints
 
 - Always validate input data
-- Use parameterized queries (never string concatenation)
+- Use parameterized queries (never string concatenation for SQL)
 - Follow OWASP security guidelines
-- Include structured logging
+- **Do NOT create documentation files** unless explicitly requested
 
-## Workflow
+## Self-Validation
 
-1. Read existing code to understand patterns
-2. Design data models and API contracts
-3. Implement with validation
-4. Add error handling with proper status codes
-5. Write tests for critical paths
+Before completing, verify `validation_criteria.critical` items pass:
+1. Run each critical check (e.g., `go build ./...`, `go test ./...`, start server)
+2. If a check fails, fix and re-run
+3. Only complete when all critical criteria pass
 
-## Patterns
+## Output
 
-### REST API Structure
-```
-GET    /api/v1/users          # List
-GET    /api/v1/users/:id      # Get
-POST   /api/v1/users          # Create
-PUT    /api/v1/users/:id      # Update
-DELETE /api/v1/users/:id      # Delete
-```
-
-### Input Validation
-```go
-type CreateUserRequest struct {
-    Email    string `json:"email" validate:"required,email"`
-    Password string `json:"password" validate:"required,min=8"`
+```json
+{
+  "files_created": ["internal/handlers/resource.go", "migrations/00X_create_resource.sql"],
+  "files_modified": ["internal/routes/routes.go"],
+  "self_validation": {
+    "critical_passed": true,
+    "checks_run": ["Go compiles", "Tests pass", "Server starts", "Migrations run"]
+  }
 }
 ```
-
-### Error Response
-```go
-type ErrorResponse struct {
-    Error   string `json:"error"`
-    Message string `json:"message"`
-    Code    int    `json:"code"`
-}
-```
-
-### Parameterized Queries
-```go
-// GOOD
-query := "SELECT * FROM users WHERE email = $1"
-row := db.QueryRow(query, email)
-
-// BAD - SQL injection risk
-// query := "SELECT * FROM users WHERE email = '" + email + "'"
-```
-
-## Security Checklist
-
-- Input validation on all endpoints
-- Parameterized database queries
-- Authentication on protected routes
-- Authorization checks (users access only their data)
-- Sensitive data not logged
-- Passwords hashed (bcrypt/argon2)
-
-## Validation
-
-- Code compiles/runs without errors
-- Tests pass
-- No security vulnerabilities
-- Proper HTTP status codes
-- Migrations run successfully

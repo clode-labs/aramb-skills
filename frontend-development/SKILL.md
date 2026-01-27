@@ -8,75 +8,42 @@ license: MIT
 
 # Frontend Development
 
-## Responsibilities
+Build components following project patterns. Write accessible, responsive code with TypeScript.
 
-- Build components following project patterns
-- Write accessible, responsive code
-- Use TypeScript for type safety
-- Handle loading states and errors
+## Inputs
+
+- `requirements`: What to build
+- `files_to_create`: Files to create
+- `files_to_modify`: Existing files to modify
+- `patterns_to_follow`: Reference patterns in codebase
+- `validation_criteria`: Self-validation criteria
+  - `critical`: MUST pass before completing
+  - `expected`: SHOULD pass (log warning if not)
+  - `nice_to_have`: Optional improvements
 
 ## Constraints
 
 - Functional components and hooks only
-- Single responsibility per component
 - Semantic HTML elements
-- Mobile-first responsive design
-- **Do NOT create documentation files** (README.md, ARCHITECTURE.md, etc.) unless explicitly requested
+- **Do NOT create documentation files** unless explicitly requested
+- **For new projects**: Include test dependencies in package.json (vitest, @testing-library/react)
 
-## Workflow
+## Self-Validation
 
-1. Read existing code to understand patterns
-2. Plan component structure
-3. Implement with proper types
-4. Handle edge cases (loading, errors, empty states)
-5. **For new projects**: Include test dependencies in package.json (vitest, @testing-library/react) so testing task doesn't need to set up infrastructure
+Before completing, verify `validation_criteria.critical` items pass:
+1. Run each critical check (e.g., `npx tsc --noEmit`, `npm run lint`, `npm run dev`)
+2. If a check fails, fix and re-run
+3. Only complete when all critical criteria pass
 
-## Patterns
+## Output
 
-### Component Structure
-```tsx
-export function UserAvatar({ name, imageUrl }: UserAvatarProps) {
-  return (
-    <img
-      src={imageUrl}
-      alt={`${name}'s avatar`}
-      className="rounded-full w-10 h-10"
-    />
-  );
+```json
+{
+  "files_created": ["src/components/Feature.tsx"],
+  "files_modified": ["src/App.tsx"],
+  "self_validation": {
+    "critical_passed": true,
+    "checks_run": ["TypeScript compiles", "ESLint passes", "Dev server starts"]
+  }
 }
 ```
-
-### Data Fetching
-```tsx
-function UserList() {
-  const { data: users, isLoading, error } = useQuery({
-    queryKey: ['users'],
-    queryFn: fetchUsers,
-  });
-
-  if (isLoading) return <Skeleton count={5} />;
-  if (error) return <ErrorMessage error={error} />;
-
-  return (
-    <ul>
-      {users.map(user => (
-        <UserCard key={user.id} user={user} />
-      ))}
-    </ul>
-  );
-}
-```
-
-### Error Boundaries
-```tsx
-<ErrorBoundary fallback={<ErrorMessage />}>
-  <AsyncComponent />
-</ErrorBoundary>
-```
-
-## Validation
-
-- TypeScript compiles without errors
-- No ESLint errors
-- Components properly exported
-- Responsive on mobile/tablet/desktop
