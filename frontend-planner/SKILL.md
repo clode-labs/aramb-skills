@@ -28,6 +28,7 @@ Use when the work is relatively focused and sequential:
 ```
 1. [development skill] → Build the feature (self-validates: compiles, runs, meets requirements)
 2. [testing/critique skill] → QA against user expectations (self-validates: coverage, tests pass)
+3. [metadata skill] → Create/update aramb.toml (self-validates: TOML syntax, services detected)
 ```
 
 **The Correctness Loop:**
@@ -56,6 +57,9 @@ Parent Task: "Build [Feature]"
 
 QA Task: "Test [Feature]"
   └── dependencies: [parent-task-id]
+
+Metadata Task: "Create/update aramb.toml"
+  └── dependencies: [qa-task-id]
 ```
 
 **When to use sub-tasks:**
@@ -78,6 +82,7 @@ QA Task: "Test [Feature]"
 **Required skills to search for:**
 1. A **development skill** (category: "development", tag: "frontend") - to build the feature
 2. A **QA skill** (category: "testing" OR "critique", tag: "frontend") - to test/validate user expectations
+3. A **metadata skill** (category: "development", tag: "metadata") - to create/update aramb.toml configuration
 
 ## Task Creation with MCP
 
@@ -137,6 +142,24 @@ create_tasks_batch(tasks=[
       "nice_to_have": ["High coverage", "Performance tested"]
     },
     "timeout_seconds": 3600
+  },
+  {
+    "uniqueId": 3,
+    "skill_id": "<metadata-full_id from search>",
+    "task_name": "Create/update aramb.toml",
+    "description": "Generate or update aramb.toml configuration by analyzing project structure, docker-compose, and codebase",
+    "task_order": 3,
+    "logicalDependencies": [2],
+    "inputs": {
+      "requirements": "Analyze project and create/update aramb.toml with service configurations",
+      "project_path": "."
+    },
+    "validation_criteria": {
+      "critical": ["TOML syntax valid", "Services detected", "Service types valid"],
+      "expected": ["Dependencies mapped", "Environment vars extracted"],
+      "nice_to_have": ["Service references configured"]
+    },
+    "timeout_seconds": 1800
   }
 ])
 ```
@@ -198,6 +221,9 @@ search_skills(category: "testing", tag: "frontend")
 # OR
 search_skills(category: "critique", tag: "frontend")
 → Returns: full_id: "acme/skills/frontend-critique" (use this)
+
+search_skills(category: "development", tag: "metadata")
+→ Returns: full_id: "acme/skills/aramb-metadata" (use this)
 ```
 
 **Step 2: Output architecture summary (text)**
@@ -258,6 +284,24 @@ create_tasks_batch(tasks=[
       "nice_to_have": ["Edge cases covered", "Accessibility tested"]
     },
     "timeout_seconds": 3600
+  },
+  {
+    "uniqueId": 3,
+    "skill_id": "acme/skills/aramb-metadata",
+    "task_name": "Create/update aramb.toml",
+    "description": "Generate aramb.toml with project services and configuration",
+    "task_order": 3,
+    "logicalDependencies": [2],
+    "inputs": {
+      "requirements": "Analyze project structure and create/update aramb.toml",
+      "project_path": "."
+    },
+    "validation_criteria": {
+      "critical": ["TOML syntax valid", "Services detected", "Frontend service configured"],
+      "expected": ["Environment vars extracted", "Dependencies mapped"],
+      "nice_to_have": ["Service references configured"]
+    },
+    "timeout_seconds": 1800
   }
 ])
 ```
@@ -416,7 +460,7 @@ This pattern is powerful because:
 
 ## Skill Discovery (REQUIRED)
 
-Before creating tasks, search for **2 skills** to build the task plan:
+Before creating tasks, search for **3 skills** to build the task plan:
 
 ```
 # 1. Find a skill to BUILD the feature
@@ -429,6 +473,10 @@ search_skills(category: "testing", tag: "frontend")
 # OR
 search_skills(category: "critique", tag: "frontend")
 → Use for Task 2: QA (if testing skill not found)
+
+# 3. Find a skill to CREATE/UPDATE metadata
+search_skills(category: "development", tag: "metadata")
+→ Use for Task 3: Metadata generation
 ```
 
 Use the `full_id` from search results in your task definitions. The full_id format is `owner/repo/skill-name`.
@@ -471,7 +519,7 @@ Use the `full_id` from search results in your task definitions. The full_id form
 ## Rules
 
 1. Explore codebase before planning
-2. **Search for 2 skills**: development and testing/critique (for QA)
+2. **Search for 3 skills**: development, testing/critique (for QA), and metadata (for aramb.toml)
 3. **Choose the right pattern**:
    - Standard 2-task pattern for focused features
    - Parent + sub-tasks pattern for complex work needing checkpoints or dynamic discovery
