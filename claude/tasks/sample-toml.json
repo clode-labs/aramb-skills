@@ -1,0 +1,100 @@
+{
+  "services": [
+    {
+      "uniqueIdentifier": 1,
+      "name": "postgres-db",
+      "type": "postgres",
+      "configuration": {
+        "vars": [
+          {
+            "key": "POSTGRES_HOST",
+            "value": "db"
+          },
+          {
+            "key": "POSTGRES_PORT",
+            "value": "5432"
+          },
+          {
+            "key": "POSTGRES_USER",
+            "value": "postgres"
+          },
+          {
+            "key": "POSTGRES_DB",
+            "value": "note_db"
+          }
+        ],
+        "secrets": [
+          {
+            "key": "POSTGRES_PASSWORD",
+            "value": ""
+          }
+        ]
+      },
+      "generated": {
+        "detected_from": [
+          "docker-compose.yml",
+          "Dockerfile"
+        ],
+        "dependencies": []
+      }
+    },
+    {
+      "uniqueIdentifier": 2,
+      "name": "api-backend",
+      "type": "backend",
+      "configuration": {
+        "vars": [
+          {
+            "key": "PORT",
+            "value": "8080"
+          },
+          {
+            "key": "DB_HOST",
+            "value": "${1.vars.POSTGRES_HOST}"
+          },
+          {
+            "key": "DB_PORT",
+            "value": "${1.vars.POSTGRES_PORT}"
+          },
+          {
+            "key": "DB_USER",
+            "value": "${1.vars.POSTGRES_USER}"
+          },
+          {
+            "key": "DB_NAME",
+            "value": "${1.vars.POSTGRES_DB}"
+          },
+          {
+            "key": "DB_DSN",
+            "value": "postgres://${1.vars.POSTGRES_USER}:${1.secrets.POSTGRES_PASSWORD}@${1.vars.POSTGRES_HOST}:${1.vars.POSTGRES_PORT}/${1.vars.POSTGRES_DB}?sslmode=disable"
+          }
+        ],
+        "secrets": [
+          {
+            "key": "DB_PASSWORD",
+            "value": "${1.secrets.POSTGRES_PASSWORD}"
+          }
+        ]
+      },
+      "generated": {
+        "detected_from": [
+          "docker-compose.yml",
+          "Dockerfile",
+          "cmd/api/main.go"
+        ],
+        "dependencies": [
+          1
+        ]
+      }
+    }
+  ],
+  "config_status": {
+    "status": "complete",
+    "completed": [
+      1,
+      2
+    ],
+    "incomplete": [],
+    "message": "All services detected and configured successfully. PostgreSQL database and Go API backend with proper dependency mapping."
+  }
+}
