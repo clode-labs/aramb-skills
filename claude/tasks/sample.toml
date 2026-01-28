@@ -1,0 +1,116 @@
+# Aramb Configuration File
+# Auto-generated from project analysis
+
+# Project Definition
+[[project]]
+uniqueIdentifier = 1
+name = "Notes API Project"
+description = "A RESTful notes management application with FastAPI backend and React frontend"
+tags = ["notes", "fastapi", "react", "typescript"]
+
+# Application Definition
+[[application]]
+uniqueIdentifier = 10
+name = "Notes Application"
+project = 1
+description = "Full-stack notes management application with search and tagging capabilities"
+tags = ["web-app", "rest-api", "frontend"]
+
+# Service 1: Backend API (FastAPI)
+[[services]]
+uniqueIdentifier = 100
+name = "notes-api-backend"
+type = "backend"
+application = 10
+
+[services.configuration]
+  [services.configuration.settings]
+  repoUrl = ""  # Add your Git repository URL here
+  buildPath = "."
+  cmd = "python main.py"
+  commandPort = 8000
+  publicNet = true
+  targetBranches = ["main"]
+
+  # Backend Configuration Variables
+  [[services.configuration.vars]]
+  key = "HOST"
+  value = "0.0.0.0"
+
+  [[services.configuration.vars]]
+  key = "PORT"
+  value = "8000"
+
+  [[services.configuration.vars]]
+  key = "LOG_LEVEL"
+  value = "info"
+
+  [[services.configuration.vars]]
+  key = "API_TITLE"
+  value = "Notes API"
+
+  [[services.configuration.vars]]
+  key = "API_VERSION"
+  value = "1.0.0"
+
+  [[services.configuration.vars]]
+  key = "CORS_ORIGINS"
+  value = "*"
+
+  # Backend Secrets (for future database/auth integration)
+  [[services.configuration.secrets]]
+  key = "API_SECRET_KEY"
+  value = ""
+
+  [[services.configuration.secrets]]
+  key = "DATABASE_URL"
+  value = ""
+
+# Service 2: Frontend (React + Vite)
+[[services]]
+uniqueIdentifier = 101
+name = "notes-app-frontend"
+type = "frontend"
+application = 10
+
+[services.configuration]
+  [services.configuration.settings]
+  repoUrl = ""  # Add your Git repository URL here
+  buildPath = "."
+  cmd = "npm run dev -- --host"
+  commandPort = 3000
+  publicNet = true
+  targetBranches = ["main"]
+
+  # Frontend Configuration Variables
+  [[services.configuration.vars]]
+  key = "VITE_PORT"
+  value = "3000"
+
+  [[services.configuration.vars]]
+  key = "VITE_API_BASE_URL"
+  value = "/api"
+
+  [[services.configuration.vars]]
+  key = "VITE_BACKEND_HOST"
+  value = "${100.vars.HOST}"
+
+  [[services.configuration.vars]]
+  key = "VITE_BACKEND_PORT"
+  value = "${100.vars.PORT}"
+
+  [[services.configuration.vars]]
+  key = "NODE_ENV"
+  value = "development"
+
+  # Frontend Secrets (if needed for future API authentication)
+  [[services.configuration.secrets]]
+  key = "VITE_API_KEY"
+  value = ""
+
+# Configuration Status
+[config_status]
+status = "incomplete"
+completed = []
+incomplete = [100, 101]
+message = "Configuration generated. Please update: 1) Add repository URLs (repoUrl) for both services, 2) Review and fill in empty secrets if needed for future database integration or API authentication, 3) Adjust CORS_ORIGINS in backend for production deployment, 4) Update buildPath if deploying from subdirectory"

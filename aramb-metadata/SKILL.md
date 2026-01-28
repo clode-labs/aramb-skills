@@ -34,6 +34,24 @@ Analyze project structure and generate aramb.toml configuration with service def
 
 ## Workflow
 
+### Critical: Build vs Non-Build Services
+
+**Before starting, understand the deployment approaches:**
+
+1. **Non-Build Services** (use pre-built Docker images):
+   - **Always non-build**: `postgres`, `redis`, `mongodb` (databases)
+   - **Can be non-build**: `backend` (when using pre-built container image)
+   - Settings: Use `image` field (e.g., "postgres:15", "redis:7", "node:18-alpine")
+   - Do NOT use: `repoUrl`, `buildPath`, `targetBranches`, `installationId`
+
+2. **Build Services** (built from Git source code):
+   - **Type "build"**: REQUIRES `repoUrl` - specifically for building from source
+   - **Can be build**: `backend`, `frontend`, `aramb-agent`, `onboarding`, `template` (when deploying from Git repo)
+   - Settings: Use `repoUrl`, `buildPath`, `cmd`, `targetBranches`, optionally `installationId`
+   - Do NOT use: `image` field (service is compiled from source code)
+
+**Key Rule**: Only service type `"build"` MUST use repo details. Other types choose based on deployment method.
+
 ### 1. Discover Services
 
 **Priority 1: Docker Compose Analysis**
@@ -58,17 +76,23 @@ Analyze project structure and generate aramb.toml configuration with service def
 
 Map discovered services to supported types:
 
-| Detected Pattern | Service Type |
-|-----------------|--------------|
-| postgres:* image, PostgreSQL | postgres |
-| mongo:* image, MongoDB | mongodb |
-| redis:* image, Redis | redis |
-| Frontend framework (React, Vue) | frontend |
-| Backend framework (Express, FastAPI, Gin) | backend |
-| Dockerfile with build context | build |
-| aramb-agent specific | aramb-agent |
-| Onboarding/setup scripts | onboarding |
-| Generic service | template |
+| Detected Pattern | Service Type | Deployment Method |
+|-----------------|--------------|-------------------|
+| postgres:* image, PostgreSQL | postgres | **Always Non-Build** (use `image`) |
+| mongo:* image, MongoDB | mongodb | **Always Non-Build** (use `image`) |
+| redis:* image, Redis | redis | **Always Non-Build** (use `image`) |
+| Backend framework (Express, FastAPI, Gin, Django) | backend | **Flexible**: `image` OR `repoUrl` |
+| Frontend framework (React, Vue, Angular) | frontend | **Usually Build** (use `repoUrl`) |
+| Dockerfile with explicit build context | build | **Must Build** (use `repoUrl`) |
+| aramb-agent specific | aramb-agent | **Usually Build** (use `repoUrl`) |
+| Onboarding/setup scripts | onboarding | **Usually Build** (use `repoUrl`) |
+| Generic service | template | **Flexible**: `image` OR `repoUrl` |
+
+**Deployment Method Rules:**
+- **Always Non-Build** (databases): postgres, redis, mongodb → Must use `image`
+- **Must Build** (type "build"): Services specifically for building from source → Must use `repoUrl`
+- **Flexible** (backend, template): Can use `image` for pre-built containers OR `repoUrl` for building from source
+- **Usually Build** (frontend, aramb-agent, onboarding): Typically use `repoUrl` but can use `image` if pre-built
 
 ### 3. Extract Configuration
 
@@ -121,7 +145,7 @@ project = 1
 description = "Auto-detected application"
 tags = []
 
-# Service 1: Database
+# Service 1: Database (always uses pre-built Docker image)
 [[services]]
 uniqueIdentifier = 100
 name = "postgres-db"
@@ -129,9 +153,9 @@ type = "postgres"
 application = 10
 
 [services.configuration]
-  # Settings are OPTIONAL - only include image for non-build services
+  # Database services: Use image (REQUIRED), do NOT use repoUrl/targetBranches
   [services.configuration.settings]
-  image = "postgres:15"        # Required for non-build services
+  image = "postgres:15"        # REQUIRED for database services
   commandPort = 5432           # Optional - defaults will be applied
   publicNet = false            # Optional
 
@@ -149,7 +173,7 @@ application = 10
   key = "POSTGRES_PASSWORD"
   value = ""
 
-# Service 2: Backend API
+# Service 2: Backend API (built from Git source code)
 [[services]]
 uniqueIdentifier = 101
 name = "api-backend"
@@ -157,14 +181,15 @@ type = "backend"
 application = 10
 
 [services.configuration]
-  # For build services with repoUrl, image is optional
+  # Backend built from Git: Use repoUrl/buildPath/cmd/targetBranches, do NOT use image
   [services.configuration.settings]
-  repoUrl = "https://github.com/user/repo"  # If building from source
-  buildPath = "."
-  cmd = "npm start"
+  repoUrl = "https://github.com/user/repo"  # REQUIRED when building from source
+  buildPath = "."                           # Build context path
+  cmd = "npm start"                         # Start command
   commandPort = 8080
   publicNet = true
-  targetBranches = ["main"]
+  targetBranches = ["main"]                 # Git branches to deploy
+  # installationId = "123456"               # Optional: GitHub App installation ID
 
   # Vars extracted from codebase analysis
   [[services.configuration.vars]]
@@ -177,7 +202,7 @@ application = 10
 
   [[services.configuration.vars]]
   key = "DB_HOST"
-  value = "${100.vars.POSTGRES_DB}"    # Reference to postgres service
+  value = "localhost"
 
   [[services.configuration.vars]]
   key = "DB_USER"
@@ -191,6 +216,25 @@ application = 10
   [[services.configuration.secrets]]
   key = "JWT_SECRET"
   value = ""
+
+# Alternative: Backend using pre-built Docker image (less common for backend)
+# [[services]]
+# uniqueIdentifier = 102
+# name = "api-backend-prebuilt"
+# type = "backend"
+# application = 10
+#
+# [services.configuration]
+#   # Backend with pre-built image: Use image, do NOT use repoUrl
+#   [services.configuration.settings]
+#   image = "myorg/backend:latest"  # REQUIRED - Pre-built container image
+#   cmd = "npm start"
+#   commandPort = 8080
+#   publicNet = true
+#
+#   [[services.configuration.vars]]
+#   key = "PORT"
+#   value = "8080"
 
 [config_status]
 status = "incomplete"
@@ -220,13 +264,39 @@ If aramb.toml exists:
 - **Project & Application**: Always create one project and one application that contains all services
 - **uniqueIdentifiers**: Use 1 for project, 10 for application, 100+ for services (sequential)
 - **Service Types**: Only use supported types: aramb-agent, backend, build, frontend, mongodb, onboarding, postgres, redis, template
-- **Settings Section**: All fields are OPTIONAL with defaults applied, EXCEPT:
-  - `image` is REQUIRED for non-build services (e.g., postgres, redis, mongodb)
-  - For build services (with `repoUrl`), image is optional
-- **Vars & Secrets**: CRITICAL - Extract from codebase analysis:
-  - Database connections, API endpoints, ports, environment configs
-  - NEVER hardcode sensitive values (passwords, API keys, tokens)
-  - Leave secrets with empty values (`""`) for user to fill
+
+### Settings Section Rules
+
+**Non-Build Deployment** (using pre-built Docker images):
+- **Always non-build**: `postgres`, `redis`, `mongodb` (database services)
+- **Can be non-build**: `backend` (when using pre-built container)
+- **Use**: `image` (REQUIRED) - e.g., "postgres:15", "redis:7", "mongo:6", "node:18-alpine"
+- **Do NOT use**: `repoUrl`, `targetBranches`, `installationId`, `buildPath`
+- These services run from Docker images directly without compilation
+
+**Build Deployment** (building from Git source code):
+- **Type "build"**: MUST use this approach (it's specifically for building from source)
+- **Can use build**: `backend`, `frontend`, `aramb-agent`, `onboarding`, `template`
+- **Use**: `repoUrl` (REQUIRED), `buildPath`, `cmd`, `targetBranches`, optionally `installationId`
+- **Do NOT use**: `image` field (service is compiled from source code)
+- These services are built from Git repositories
+
+**Decision Guide**:
+- Database services (postgres, redis, mongodb): Always use `image`
+- Type "build": Always use `repoUrl` (it's for building)
+- Backend/frontend/other: Choose based on deployment strategy:
+  - Use `image` if deploying pre-built container
+  - Use `repoUrl` if building from source code
+
+**Common Optional Settings** (all services):
+- `commandPort`, `publicNet`, `cpu`, `memory`, `restartPolicy`, etc. (defaults applied if omitted)
+
+### Vars & Secrets Rules
+
+- **CRITICAL**: Extract from codebase analysis (env files, config files, source code)
+- Database connections, API endpoints, ports, environment configs
+- NEVER hardcode sensitive values (passwords, API keys, tokens)
+- Leave secrets with empty values (`""`) for user to fill
 - **Service References**: Use `${uniqueIdentifier.vars.KEY}` or `${uniqueIdentifier.secrets.KEY}` to avoid duplication
 - **Dependencies**: Services are ordered by uniqueIdentifier (dependent services have higher IDs)
 
@@ -318,31 +388,62 @@ key = "DATABASE_URL"
 value = "postgres://${100.vars.POSTGRES_USER}:${100.secrets.POSTGRES_PASSWORD}@${100.vars.POSTGRES_HOST}:5432/${100.vars.POSTGRES_DB}"
 ```
 
-### Settings: When to Include vs Omit
+### Settings: Build vs Non-Build Deployment
 
-**Always Include (Required for non-build services):**
+**Non-Build Deployment** (using pre-built Docker images):
 ```toml
+# Example 1: Database service (always non-build)
 [services.configuration.settings]
-image = "postgres:15"     # Required for postgres, redis, mongodb, etc.
+image = "postgres:15"            # REQUIRED - Docker image to use
+commandPort = 5432               # Optional - port service listens on
+publicNet = false                # Optional - public network access
+# Do NOT include: repoUrl, buildPath, targetBranches, installationId
+
+# Example 2: Backend using pre-built image (non-build)
+[services.configuration.settings]
+image = "node:18-alpine"         # REQUIRED - Pre-built Node.js image
+cmd = "npm start"                # Start command
+commandPort = 8080
+publicNet = true
+# Do NOT include: repoUrl, buildPath, targetBranches, installationId
 ```
 
-**Include for Build Services:**
+**Build Deployment** (building from Git source code):
 ```toml
+# Example 1: Type "build" service (must use repoUrl)
 [services.configuration.settings]
-repoUrl = "https://github.com/user/repo"  # For git-based builds
+repoUrl = "https://github.com/user/repo"  # REQUIRED - Git repo URL
+buildPath = "."                           # Build context (default: ".")
+cmd = "make build && ./app"               # Build and start commands
+commandPort = 8080
+targetBranches = ["main"]                 # Branches to deploy
+installationId = "123456"                 # Optional - GitHub App ID
+# Do NOT include: image (service is built from source, not pulled)
+
+# Example 2: Backend built from source (using repoUrl)
+[services.configuration.settings]
+repoUrl = "https://github.com/user/backend"
 buildPath = "."
 cmd = "npm start"
+commandPort = 8080
+publicNet = true
 targetBranches = ["main"]
+# Do NOT include: image (building from source)
 ```
 
-**Optional (defaults applied - only include if customizing):**
+**Deployment Method by Service Type:**
+- **Always use `image`**: postgres, redis, mongodb (databases cannot be built)
+- **Must use `repoUrl`**: build (specifically for building from source)
+- **Choose `image` OR `repoUrl`**: backend, frontend, template, aramb-agent, onboarding
+  - Use `image` if deploying pre-built container
+  - Use `repoUrl` if building from Git source
+
+**Optional for All Services** (defaults applied - only include if customizing):
 ```toml
 [services.configuration.settings]
-cpu = 1000.0              # Default: reasonable allocation
-memory = 512.0            # Default: reasonable allocation
-publicNet = true          # Default: false for databases, true for web services
-commandPort = 8080        # Default: service-specific
-restartPolicy = "Always"  # Default: "Always"
+cpu = 1000.0              # CPU millicores (default: reasonable allocation)
+memory = 512.0            # Memory in MB (default: reasonable allocation)
+restartPolicy = "Always"  # "Always", "OnFailure", "Never" (default: "Always")
 ```
 
 ## Self-Validation
@@ -363,9 +464,17 @@ Before completing, verify critical criteria:
    - Application: uniqueIdentifier, name, project
    - Service: uniqueIdentifier, name, type, application
 6. **Settings validation**:
-   - Non-build services (postgres, redis, mongodb) have `image` field
-   - Build services have `repoUrl` field
-   - Optional fields are only included when needed
+   - **Database services** (postgres, redis, mongodb):
+     - MUST have `image` field (e.g., "postgres:15", "redis:7")
+     - MUST NOT have `repoUrl`, `targetBranches`, `installationId`, `buildPath`
+   - **Type "build" services**:
+     - MUST have `repoUrl` field
+     - MUST NOT have `image` field
+     - Should have `buildPath`, `cmd`, `targetBranches`
+   - **Other services** (backend, frontend, template, etc.):
+     - Have EITHER `image` (if using pre-built container) OR `repoUrl` (if building from source)
+     - NEVER both `image` and `repoUrl` together
+   - Optional fields are only included when customizing beyond defaults
 7. **Vars and secrets extracted from codebase** - Not just empty, but populated based on actual code analysis
 8. **Service references are valid** - `${N.vars.KEY}` points to existing service uniqueIdentifier
 9. **Secrets are empty or use references** - Never hardcoded sensitive values
@@ -449,6 +558,7 @@ uniqueIdentifier = 10
 name = "My Application"
 project = 1
 
+# SERVICE 1: Postgres Database (always uses image)
 [[services]]
 uniqueIdentifier = 100
 name = "postgres-db"
@@ -456,8 +566,11 @@ type = "postgres"
 application = 10
 
 [services.configuration]
+  # Database services ALWAYS use 'image' field
   [services.configuration.settings]
-  image = "postgres:15"
+  image = "postgres:15"          # REQUIRED for database services
+  commandPort = 5432             # Optional
+  # Do NOT include: repoUrl, buildPath, targetBranches, installationId
 
   [[services.configuration.vars]]
   key = "POSTGRES_DB"
@@ -471,6 +584,7 @@ application = 10
   key = "POSTGRES_PASSWORD"
   value = ""
 
+# SERVICE 2: Backend API (built from Git source)
 [[services]]
 uniqueIdentifier = 101
 name = "backend-api"
@@ -478,19 +592,27 @@ type = "backend"
 application = 10
 
 [services.configuration]
+  # Backend building from Git: use 'repoUrl' (NOT image)
   [services.configuration.settings]
-  repoUrl = "https://github.com/user/backend"
+  repoUrl = "https://github.com/user/backend"  # REQUIRED when building from source
+  buildPath = "."
   cmd = "npm start"
   commandPort = 8080
   targetBranches = ["main"]
+  # installationId = "123456"    # Optional: GitHub App installation ID
+  # Do NOT include: image (service is built from source code)
 
   [[services.configuration.vars]]
   key = "PORT"
   value = "8080"
 
   [[services.configuration.vars]]
+  key = "NODE_ENV"
+  value = "production"
+
+  [[services.configuration.vars]]
   key = "DB_HOST"
-  value = "${100.vars.POSTGRES_HOST}"
+  value = "localhost"
 
   [[services.configuration.vars]]
   key = "DATABASE_URL"
