@@ -1,116 +1,104 @@
-# Aramb Configuration File
-# Auto-generated from project analysis
+# Aramb Configuration for Tic-Tac-Toe Game
+# Auto-generated from codebase analysis
 
 # Project Definition
 [[project]]
 uniqueIdentifier = 1
-name = "Notes API Project"
-description = "A RESTful notes management application with FastAPI backend and React frontend"
-tags = ["notes", "fastapi", "react", "typescript"]
+name = "Tic-Tac-Toe Game"
+description = "A complete tic-tac-toe game application with Node.js backend API and vanilla JavaScript frontend"
+tags = ["game", "nodejs", "express", "javascript"]
 
 # Application Definition
 [[application]]
 uniqueIdentifier = 10
-name = "Notes Application"
+name = "Tic-Tac-Toe Application"
 project = 1
-description = "Full-stack notes management application with search and tagging capabilities"
-tags = ["web-app", "rest-api", "frontend"]
+description = "Interactive tic-tac-toe game with REST API backend and static frontend"
+tags = ["web-game", "api", "frontend"]
 
-# Service 1: Backend API (FastAPI)
+# Service 1: Backend Build Service (Builds Docker Image)
 [[services]]
 uniqueIdentifier = 100
-name = "notes-api-backend"
+name = "backend-build"
+type = "build"
+application = 10
+
+[services.configuration]
+  # Build service for creating backend Docker image
+  [services.configuration.settings]
+  repoUrl = "https://github.com/user/tic-tac-toe"  # UPDATE: Replace with actual Git repo URL
+  buildPath = "backend"                             # Build context is the backend directory
+  targetBranches = ["main"]                         # Deploy from main branch
+  installationId = ""                               # UPDATE: GitHub App installation ID
+  # Outputs: outputs.IMAGE_URL (Docker image URL)
+
+# Service 2: Backend API (Node.js/Express)
+[[services]]
+uniqueIdentifier = 101
+name = "backend-api"
 type = "backend"
 application = 10
 
 [services.configuration]
+  # Backend service uses the image built by service 100
   [services.configuration.settings]
-  repoUrl = ""  # Add your Git repository URL here
-  buildPath = "."
-  cmd = "python main.py"
-  commandPort = 8000
-  publicNet = true
-  targetBranches = ["main"]
+  image = "${100.outputs.IMAGE_URL}"                # Reference build service output
+  cmd = "npm install && npm start"                  # Install dependencies and start server
+  commandPort = 3000                                # API server port
+  publicNet = true                                  # Expose API publicly
 
-  # Backend Configuration Variables
-  [[services.configuration.vars]]
-  key = "HOST"
-  value = "0.0.0.0"
-
+  # Vars - Non-sensitive configuration
   [[services.configuration.vars]]
   key = "PORT"
-  value = "8000"
+  value = "3000"
 
   [[services.configuration.vars]]
-  key = "LOG_LEVEL"
-  value = "info"
+  key = "NODE_ENV"
+  value = "production"
 
-  [[services.configuration.vars]]
-  key = "API_TITLE"
-  value = "Notes API"
-
-  [[services.configuration.vars]]
-  key = "API_VERSION"
-  value = "1.0.0"
-
-  [[services.configuration.vars]]
-  key = "CORS_ORIGINS"
-  value = "*"
-
-  # Backend Secrets (for future database/auth integration)
-  [[services.configuration.secrets]]
-  key = "API_SECRET_KEY"
-  value = ""
-
-  [[services.configuration.secrets]]
-  key = "DATABASE_URL"
-  value = ""
-
-# Service 2: Frontend (React + Vite)
+# Service 3: Frontend Build Service (Builds Static Files)
 [[services]]
-uniqueIdentifier = 101
-name = "notes-app-frontend"
+uniqueIdentifier = 102
+name = "frontend-build"
+type = "build"
+application = 10
+
+[services.configuration]
+  # Build service for creating frontend static files
+  [services.configuration.settings]
+  repoUrl = "https://github.com/user/tic-tac-toe"  # UPDATE: Replace with actual Git repo URL
+  buildPath = "frontend"                            # Build context is the frontend directory
+  targetBranches = ["main"]                         # Deploy from main branch
+  installationId = ""                               # UPDATE: GitHub App installation ID
+  # Outputs: outputs.PATH (Static files path)
+
+# Service 4: Frontend (Static HTML/CSS/JS)
+[[services]]
+uniqueIdentifier = 103
+name = "frontend-web"
 type = "frontend"
 application = 10
 
 [services.configuration]
+  # Frontend service uses the static files built by service 102
   [services.configuration.settings]
-  repoUrl = ""  # Add your Git repository URL here
-  buildPath = "."
-  cmd = "npm run dev -- --host"
-  commandPort = 3000
-  publicNet = true
-  targetBranches = ["main"]
+  staticPath = "${102.outputs.PATH}"                # Reference build service output
+  cmd = "npx http-server -p 8080"                   # Serve static files with http-server
+  commandPort = 8080                                # Frontend server port
+  publicNet = true                                  # Expose frontend publicly
 
-  # Frontend Configuration Variables
+  # Vars - Non-sensitive configuration
   [[services.configuration.vars]]
-  key = "VITE_PORT"
-  value = "3000"
+  key = "API_URL"
+  value = "http://localhost:3000"                   # UPDATE: Replace with actual backend service URL after deployment
 
   [[services.configuration.vars]]
-  key = "VITE_API_BASE_URL"
-  value = "/api"
-
-  [[services.configuration.vars]]
-  key = "VITE_BACKEND_HOST"
-  value = "${100.vars.HOST}"
-
-  [[services.configuration.vars]]
-  key = "VITE_BACKEND_PORT"
-  value = "${100.vars.PORT}"
-
-  [[services.configuration.vars]]
-  key = "NODE_ENV"
-  value = "development"
-
-  # Frontend Secrets (if needed for future API authentication)
-  [[services.configuration.secrets]]
-  key = "VITE_API_KEY"
-  value = ""
+  key = "PORT"
+  value = "8080"
 
 # Configuration Status
 [config_status]
 status = "incomplete"
 completed = []
-incomplete = [100, 101]
-message = "Configuration generated. Please update: 1) Add repository URLs (repoUrl) for both services, 2) Review and fill in empty secrets if needed for future database integration or API authentication, 3) Adjust CORS_ORIGINS in backend for production deployment, 4) Update buildPath if deploying from subdirectory"
+incomplete = [100, 101, 102, 103]
+message = "Configuration created. ACTION REQUIRED: 1) Update 'repoUrl' fields in build services (100, 102) with actual Git repository URL. 2) Add GitHub App 'installationId' to build services (100, 102). 3) Build service 100 outputs IMAGE_URL for backend service 101. 4) Build service 102 outputs PATH for frontend service 103. 5) Update frontend 'API_URL' to point to deployed backend service URL."
