@@ -18,21 +18,23 @@ Analyze project structure and generate aramb.toml configuration with service def
 
 ## CRITICAL RULE: Build Service Separation
 
-**When ANY code needs to be built (backend, frontend, microservices), you MUST create TWO services:**
+**When backend code needs to be built, you MUST create TWO services:**
 
-### 1. Build Service (type="build")
+### 1. Build Service (type="build") - Backend Only
 - **Settings**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`
-- **Outputs**: `outputs.IMAGE_URL` (Docker images) OR `outputs.PATH` (static files)
+- **Outputs**: `outputs.IMAGE_URL` (Docker images)
 - **Excludes**: `image`, `cmd`, `commandPort`, `publicNet`, vars, secrets
 
-### 2. Runtime Service (type="backend"/"frontend"/etc.)
-- **Settings**: `image` = `${buildServiceId.outputs.IMAGE_URL}` OR `staticPath` = `${buildServiceId.outputs.PATH}`
+### 2. Runtime Service (type="backend")
+- **Settings**: `image` = `${buildServiceId.outputs.IMAGE_URL}`
 - **Settings**: `cmd`, `commandPort`, `publicNet`
 - **Includes**: vars, secrets as needed
 - **Excludes**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`
 
-### Exception
-**Only** databases (postgres, redis, mongodb) and pre-built containers use `image` directly without build service.
+### Exceptions
+- **Databases** (postgres, redis, mongodb) use `image` directly without build service
+- **Pre-built containers** use `image` directly without build service
+- **Frontend services** are created as single services (type="frontend") with static build configuration, NO separate build service
 
 ## Workflow
 
@@ -56,17 +58,18 @@ Analyze project structure and generate aramb.toml configuration with service def
 | Detected Pattern | Services to Create | Output |
 |-----------------|-------------------|--------|
 | Backend framework (Express, FastAPI, Gin, Django, etc.) | Build service (type="build")<br>Backend service (type="backend") | `outputs.IMAGE_URL` |
-| Frontend framework (React, Vue, Angular, Next.js, etc.) | Build service (type="build")<br>Frontend service (type="frontend") | `outputs.PATH` |
+| Frontend framework (React, Vue, Angular, Next.js, etc.) | Single frontend service (type="frontend") | N/A |
 | Microservice with Dockerfile | Build service (type="build")<br>Backend/template service | `outputs.IMAGE_URL` |
 | Aramb agent code | Build service (type="build")<br>Aramb-agent service (type="aramb-agent") | `outputs.IMAGE_URL` |
 | Database (postgres, redis, mongodb) | Single service with `image` field | N/A |
 | Pre-built container | Single service with `image` field | N/A |
 
 **Rules**:
-- **Any code to build**: TWO services (build + runtime)
+- **Backend code to build**: TWO services (build + runtime)
+- **Frontend code**: Single service (type="frontend") with static build configuration
 - **Databases**: Single service with `image` only
 - **Pre-built containers**: Single service with `image` only
-- **Build service ID < Runtime service ID** (sequential ordering)
+- **Build service ID < Runtime service ID** (sequential ordering for backends)
 
 ### 3. Extract Configuration
 
@@ -178,29 +181,15 @@ value = ""
 key = "DB_PASSWORD"
 value = "${100.secrets.POSTGRES_PASSWORD}"
 
-# Example: Frontend Build Service
+# Example: Frontend Service (Single Service - No Build Service)
 [[services]]
 uniqueIdentifier = 103
-name = "frontend-build"
-type = "build"
-application = 10
-
-[services.configuration.settings]
-repoUrl = "https://github.com/user/repo"
-buildPath = "frontend"
-targetBranches = ["main"]
-installationId = "123456"
-# Outputs: outputs.PATH
-
-# Example: Frontend Runtime Service
-[[services]]
-uniqueIdentifier = 104
 name = "frontend-web"
 type = "frontend"
 application = 10
 
 [services.configuration.settings]
-staticPath = "${103.outputs.PATH}"
+staticPath = "./frontend/dist"  # Local build output directory
 cmd = "npx http-server"
 commandPort = 8080
 publicNet = true
@@ -212,8 +201,8 @@ value = "http://localhost:8080"
 [config_status]
 status = "incomplete"
 completed = []
-incomplete = [100, 101, 102, 103, 104]
-message = "Build services (101, 103) output artifacts for runtime services (102, 104). Fill in secrets and installationId."
+incomplete = [100, 101, 102, 103]
+message = "Build service (101) outputs IMAGE_URL for runtime service (102). Frontend (103) uses local static files. Fill in secrets and installationId."
 ```
 
 ### 5. Update Existing TOML
@@ -241,15 +230,21 @@ If aramb.toml exists:
 
 ### Settings Validation
 
-**Build Service (type="build")**:
+**Build Service (type="build")** - Backend Only:
 - **MUST have**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`
 - **MUST NOT have**: `image`, `cmd`, `commandPort`, `publicNet`, vars, secrets
 
-**Runtime Service (backend, frontend, etc.)**:
-- **MUST have**: `image` (reference to build output) OR `staticPath` (for frontend)
+**Backend Runtime Service (type="backend")**:
+- **MUST have**: `image` (reference to build output, e.g., `${101.outputs.IMAGE_URL}`)
 - **MUST have**: `cmd`, `commandPort`
 - **MUST NOT have**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`
 - **MUST have**: Corresponding build service with lower uniqueIdentifier
+
+**Frontend Service (type="frontend")** - Single Service:
+- **MUST have**: `staticPath` (local path to build output, e.g., "./frontend/dist")
+- **MUST have**: `cmd`, `commandPort`
+- **MUST NOT have**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`, `image`
+- **NO build service required** - frontend builds happen locally
 
 **Database Service (postgres, redis, mongodb)**:
 - **MUST have**: `image` (direct, e.g., "postgres:15")
@@ -276,14 +271,18 @@ If aramb.toml exists:
 3. Service types valid: aramb-agent, backend, build, frontend, mongodb, onboarding, postgres, redis, template
 4. uniqueIdentifiers sequential: 1, 10, 100, 101, 102, ...
 5. Required fields present (project: name; application: name, project; service: name, type, application)
-6. Build service pattern followed:
-   - Build services have `repoUrl`, no `cmd`
-   - Runtime services reference build outputs, no `repoUrl`
-   - Build service ID < Runtime service ID
-7. Database services have `image`, no `repoUrl`
-8. Vars and secrets extracted from codebase (not empty)
-9. Service references valid (`${N.vars.KEY}` points to existing service)
-10. Secrets empty or use references (never hardcoded)
+6. Build service pattern followed for backends:
+   - Build services (type="build") have `repoUrl`, no `cmd`
+   - Backend runtime services reference build outputs, no `repoUrl`
+   - Build service ID < Backend runtime service ID
+7. Frontend services (type="frontend"):
+   - Have `staticPath` pointing to local build directory
+   - NO separate build service required
+   - Have `cmd` and `commandPort`
+8. Database services have `image`, no `repoUrl`
+9. Vars and secrets extracted from codebase (not empty)
+10. Service references valid (`${N.vars.KEY}` points to existing service)
+11. Secrets empty or use references (never hardcoded)
 
 ## Error Handling
 
@@ -301,23 +300,24 @@ Return JSON summary:
   "structure": {
     "projects": 1,
     "applications": 1,
-    "services": 5
+    "services": 4
   },
   "services_detected": [
     {"uniqueIdentifier": 100, "name": "postgres-db", "type": "postgres"},
     {"uniqueIdentifier": 101, "name": "backend-build", "type": "build"},
     {"uniqueIdentifier": 102, "name": "backend-api", "type": "backend"},
-    {"uniqueIdentifier": 103, "name": "frontend-build", "type": "build"},
-    {"uniqueIdentifier": 104, "name": "frontend-web", "type": "frontend"}
+    {"uniqueIdentifier": 103, "name": "frontend-web", "type": "frontend"}
   ],
   "build_outputs": {
-    "101": "outputs.IMAGE_URL → service 102",
-    "103": "outputs.PATH → service 104"
+    "101": "outputs.IMAGE_URL → service 102"
+  },
+  "frontend_static_builds": {
+    "103": "staticPath: ./frontend/dist (local build)"
   },
   "vars_extracted": {
     "100": ["POSTGRES_DB", "POSTGRES_USER"],
     "102": ["PORT", "NODE_ENV", "DB_HOST", "DATABASE_URL"],
-    "104": ["API_URL"]
+    "103": ["API_URL"]
   },
   "secrets_identified": {
     "100": ["POSTGRES_PASSWORD"],
@@ -329,8 +329,8 @@ Return JSON summary:
   ],
   "config_status": {
     "status": "incomplete",
-    "incomplete_services": [100, 101, 102, 103, 104],
-    "reason": "Fill secrets: POSTGRES_PASSWORD, JWT_SECRET. Add installationId to build services."
+    "incomplete_services": [100, 101, 102, 103],
+    "reason": "Fill secrets: POSTGRES_PASSWORD, JWT_SECRET. Add installationId to build service (101). Frontend (103) builds locally."
   },
   "validation_passed": true
 }
