@@ -29,6 +29,23 @@ This skill orchestrates a complete local build and deployment workflow:
 
 ## Prerequisites
 
+**Required Tools:**
+- **Go 1.21+** - Required to install aramb-cli
+- **Docker** - For building images
+- **BuildKit** - For advanced Docker builds
+
+**Install aramb-cli:**
+```bash
+# Install aramb-cli using go install
+go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
+
+# Verify installation
+aramb --version
+
+# Ensure $GOPATH/bin is in your PATH
+export PATH=$PATH:$(go env GOPATH)/bin
+```
+
 **Required Environment Variables:**
 - `BUILDKIT_HOST` - BuildKit server endpoint (for Docker builds)
 - `ARAMB_API_TOKEN` - API token for Aramb services
@@ -43,6 +60,39 @@ This skill orchestrates a complete local build and deployment workflow:
 
 **Required Files:**
 - `aramb.toml` - Service configuration file (use aramb-metadata skill to generate)
+
+## Quick Setup
+
+Before using this skill for the first time:
+
+```bash
+# 1. Install Go (if not already installed)
+# Ubuntu/Debian:
+sudo apt-get update && sudo apt-get install -y golang
+
+# macOS:
+brew install go
+
+# 2. Install aramb-cli
+go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
+
+# 3. Add GOPATH/bin to PATH
+echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.bashrc
+source ~/.bashrc
+
+# 4. Set required environment variables
+export BUILDKIT_HOST="tcp://your-buildkit-host:1234"
+export ARAMB_API_TOKEN="your-api-token"
+export ARAMB_SERVICE_ID="your-service-id"
+
+# 5. Generate aramb.toml (if not exists)
+# Use the aramb-metadata skill: /aramb-metadata
+
+# 6. Verify setup
+aramb --version
+docker version
+echo $BUILDKIT_HOST
+```
 
 ## Workflow
 
@@ -240,6 +290,21 @@ publicNet = false
 ### Step 1: Validate Environment
 
 ```bash
+# Check if aramb-cli is installed
+if ! command -v aramb &> /dev/null; then
+  echo "Error: aramb-cli not found. Installing..."
+  go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
+
+  # Verify installation succeeded
+  if ! command -v aramb &> /dev/null; then
+    echo "Error: Failed to install aramb-cli. Ensure Go is installed and GOPATH/bin is in PATH"
+    exit 1
+  fi
+fi
+
+# Verify aramb-cli version
+aramb --version
+
 # Check required environment variables
 if [ -z "$BUILDKIT_HOST" ]; then
   echo "Error: BUILDKIT_HOST not set"
@@ -253,7 +318,7 @@ fi
 
 # Verify aramb.toml exists
 if [ ! -f "aramb.toml" ]; then
-  echo "Error: aramb.toml not found"
+  echo "Error: aramb.toml not found. Use /aramb-metadata to generate it."
   exit 1
 fi
 ```
@@ -428,9 +493,11 @@ This skill works seamlessly with aramb-metadata:
 ## Constraints and Limitations
 
 1. **Local Build Environment:**
+   - Requires Go 1.21+ (for aramb-cli installation)
    - Requires Docker and BuildKit installed locally
    - Sufficient disk space for images
    - Network access to pull base images
+   - `$GOPATH/bin` must be in `$PATH` to access aramb-cli
 
 2. **Service Dependencies:**
    - Build services must complete before runtime services deploy
@@ -455,6 +522,32 @@ This skill works seamlessly with aramb-metadata:
 
 ## Troubleshooting
 
+### aramb-cli Not Found
+
+```bash
+# Check if Go is installed
+go version
+
+# If Go is not installed, install it first
+# On Ubuntu/Debian:
+sudo apt-get update && sudo apt-get install -y golang
+
+# On macOS:
+brew install go
+
+# Install aramb-cli
+go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
+
+# Add GOPATH/bin to PATH (add to ~/.bashrc or ~/.zshrc)
+export PATH=$PATH:$(go env GOPATH)/bin
+
+# Reload shell configuration
+source ~/.bashrc  # or source ~/.zshrc
+
+# Verify installation
+aramb --version
+```
+
 ### Build Fails
 
 ```bash
@@ -466,6 +559,9 @@ ls -la <buildPath>/Dockerfile
 
 # Check build logs
 aramb build --name <service> --tag test
+
+# Test aramb-cli connectivity
+aramb --help
 ```
 
 ### Deployment Fails
@@ -479,6 +575,10 @@ aramb deploy history --service <service-name>
 
 # Check service configuration
 cat aramb.toml | grep -A 20 "name = \"<service-name>\""
+
+# Verify aramb-cli can connect to Aramb services
+echo $ARAMB_API_TOKEN
+echo $ARAMB_SERVICE_ID
 ```
 
 ### Missing Environment Variables
@@ -492,6 +592,12 @@ echo $ARAMB_SERVICE_ID
 # Set missing variables
 export BUILDKIT_HOST="tcp://localhost:1234"
 export ARAMB_API_TOKEN="your-token"
+export ARAMB_SERVICE_ID="your-service-id"
+
+# Make permanent by adding to ~/.bashrc or ~/.zshrc
+echo 'export BUILDKIT_HOST="tcp://localhost:1234"' >> ~/.bashrc
+echo 'export ARAMB_API_TOKEN="your-token"' >> ~/.bashrc
+echo 'export ARAMB_SERVICE_ID="your-service-id"' >> ~/.bashrc
 ```
 
 ## See Also
