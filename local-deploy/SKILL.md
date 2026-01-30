@@ -26,7 +26,7 @@ You are a deployment orchestrator that builds Docker images and static files loc
 
 ## Constraints
 
-- **MUST** have aramb-cli installed: `go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest`
+- **MUST** have aramb-cli installed from: https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1
 - **MUST** have aramb.toml in project root (use aramb-metadata skill to create)
 - **MUST** validate BUILDKIT_HOST and ARAMB_API_TOKEN before starting
 - **Do NOT** push to registry unless `push_registry: true`
@@ -46,7 +46,11 @@ You are a deployment orchestrator that builds Docker images and static files loc
 
 ```bash
 # Check aramb-cli installed
-command -v aramb || go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
+if ! command -v aramb &> /dev/null; then
+  echo "aramb-cli not found. Install from:"
+  echo "https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1"
+  exit 1
+fi
 
 # Verify required environment variables
 [ -n "$BUILDKIT_HOST" ] || exit 1

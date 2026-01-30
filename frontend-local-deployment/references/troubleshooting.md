@@ -270,13 +270,30 @@ bash: aramb: command not found
 
 ### Solution
 
-See [installation.md](installation.md) for complete setup instructions.
+Download aramb-cli v0.0.11-beta1 from GitHub:
 
-Quick fix:
+**Linux:**
 ```bash
-go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
-export PATH=$PATH:$(go env GOPATH)/bin
+curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-linux-amd64
+chmod +x aramb-linux-amd64
+sudo mv aramb-linux-amd64 /usr/local/bin/aramb
 ```
+
+**macOS (Intel):**
+```bash
+curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-amd64
+chmod +x aramb-darwin-amd64
+sudo mv aramb-darwin-amd64 /usr/local/bin/aramb
+```
+
+**macOS (Apple Silicon):**
+```bash
+curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-arm64
+chmod +x aramb-darwin-arm64
+sudo mv aramb-darwin-arm64 /usr/local/bin/aramb
+```
+
+See [installation.md](installation.md) for complete setup instructions.
 
 ## Build Output in Wrong Directory
 

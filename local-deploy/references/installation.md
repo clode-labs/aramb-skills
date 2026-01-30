@@ -6,7 +6,7 @@ Complete setup instructions for local-deploy skill.
 
 ### Required Tools
 
-- **Go 1.21+** - Required to install aramb-cli
+- **aramb-cli** - Aramb command-line tool (from GitHub release)
 - **Docker** - For building images
 - **BuildKit** - For advanced Docker builds
 
@@ -26,54 +26,66 @@ Complete setup instructions for local-deploy skill.
 
 ## Quick Setup
 
-### Step 1: Install Go
+### Step 1: Install aramb-cli
 
-**Ubuntu/Debian:**
+Download the appropriate binary for your platform from the GitHub release:
+
+**Release:** https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1
+
+**Linux (amd64):**
 ```bash
-sudo apt-get update && sudo apt-get install -y golang
+# Download binary
+curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-linux-amd64
 
-# Verify installation
-go version
-```
+# Make executable
+chmod +x aramb-linux-amd64
 
-**macOS:**
-```bash
-brew install go
-
-# Verify installation
-go version
-```
-
-**Other platforms:**
-Visit https://go.dev/doc/install
-
-### Step 2: Install aramb-cli
-
-```bash
-# Install aramb-cli using go install
-go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
+# Move to PATH
+sudo mv aramb-linux-amd64 /usr/local/bin/aramb
 
 # Verify installation
 aramb --version
 ```
 
-### Step 3: Configure PATH
-
-Ensure `$GOPATH/bin` is in your `$PATH`:
-
+**macOS (amd64/Intel):**
 ```bash
-# Add to ~/.bashrc or ~/.zshrc
-echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.bashrc
+# Download binary
+curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-amd64
 
-# Reload shell configuration
-source ~/.bashrc
+# Make executable
+chmod +x aramb-darwin-amd64
 
-# Verify aramb is accessible
-which aramb
+# Move to PATH
+sudo mv aramb-darwin-amd64 /usr/local/bin/aramb
+
+# Verify installation
 aramb --version
 ```
 
-### Step 4: Set Environment Variables
+**macOS (arm64/Apple Silicon):**
+```bash
+# Download binary
+curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-arm64
+
+# Make executable
+chmod +x aramb-darwin-arm64
+
+# Move to PATH
+sudo mv aramb-darwin-arm64 /usr/local/bin/aramb
+
+# Verify installation
+aramb --version
+```
+
+**Windows:**
+```powershell
+# Download from:
+# https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-windows-amd64.exe
+
+# Rename to aramb.exe and add to PATH
+```
+
+### Step 2: Set Environment Variables
 
 **Temporary (current session only):**
 ```bash
@@ -102,7 +114,7 @@ echo $ARAMB_API_TOKEN
 echo $ARAMB_SERVICE_ID
 ```
 
-### Step 5: Generate aramb.toml
+### Step 3: Generate aramb.toml
 
 If you don't have an aramb.toml file:
 
@@ -113,14 +125,11 @@ If you don't have an aramb.toml file:
 
 This will analyze your project and generate the configuration.
 
-### Step 6: Verify Setup
+### Step 4: Verify Setup
 
 Run all verification checks:
 
 ```bash
-# Check Go installation
-go version
-
 # Check aramb-cli installation
 aramb --version
 
@@ -139,10 +148,17 @@ ls -la aramb.toml
 
 ## Updating aramb-cli
 
-To update to the latest version:
+To update to the latest version, download the new binary from GitHub releases:
 
 ```bash
-go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
+# Check current version
+aramb --version
+
+# Download new version from:
+# https://github.com/aramb-ai/release-beta/releases
+
+# Replace existing binary
+sudo mv aramb-<platform> /usr/local/bin/aramb
 aramb --version
 ```
 
@@ -199,8 +215,7 @@ export DOCKER_PASSWORD="your-password"
 
 ## Verification Checklist
 
-- [ ] Go 1.21+ installed
-- [ ] aramb-cli installed and in PATH
+- [ ] aramb-cli v0.0.11-beta1 installed and in PATH
 - [ ] Docker installed and running
 - [ ] BuildKit configured
 - [ ] BUILDKIT_HOST environment variable set

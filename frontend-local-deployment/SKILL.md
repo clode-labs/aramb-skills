@@ -26,7 +26,7 @@ You are a frontend deployment specialist that detects build requirements, builds
 ## Constraints
 
 - **MUST** have APPLICATION_ID environment variable set
-- **MUST** have aramb-cli installed
+- **MUST** have aramb-cli v0.0.11-beta1 installed from: https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1
 - **Frontend only** - No backend, no database, no aramb.toml
 - **Do NOT** create aramb.toml
 - **Do NOT** deploy backend services
@@ -48,7 +48,11 @@ You are a frontend deployment specialist that detects build requirements, builds
 [ -n "$APPLICATION_ID" ] || exit 1
 
 # Check aramb-cli installed
-command -v aramb || go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
+if ! command -v aramb &> /dev/null; then
+  echo "aramb-cli not found. Install from:"
+  echo "https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1"
+  exit 1
+fi
 
 # Verify ARAMB_API_TOKEN
 [ -n "$ARAMB_API_TOKEN" ] || exit 1

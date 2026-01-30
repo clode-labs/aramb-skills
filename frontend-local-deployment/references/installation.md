@@ -6,9 +6,8 @@ Setup guide for frontend-local-deployment skill.
 
 ### Required Tools
 
-- **aramb-cli** - Aramb command-line tool
+- **aramb-cli v0.0.11-beta1** - Aramb command-line tool (from GitHub release)
 - **Node.js 16+** - For building frontend applications (if build needed)
-- **Go 1.21+** - For installing aramb-cli
 
 ### Required Environment Variables
 
@@ -19,16 +18,36 @@ Setup guide for frontend-local-deployment skill.
 
 ### Step 1: Install aramb-cli
 
+Download the appropriate binary for your platform:
+
+**Release:** https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1
+
+**Linux (amd64):**
 ```bash
-# Install via go install
-go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
-
-# Add to PATH
-export PATH=$PATH:$(go env GOPATH)/bin
-
-# Verify
+curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-linux-amd64
+chmod +x aramb-linux-amd64
+sudo mv aramb-linux-amd64 /usr/local/bin/aramb
 aramb --version
 ```
+
+**macOS (Intel):**
+```bash
+curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-amd64
+chmod +x aramb-darwin-amd64
+sudo mv aramb-darwin-amd64 /usr/local/bin/aramb
+aramb --version
+```
+
+**macOS (Apple Silicon):**
+```bash
+curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-arm64
+chmod +x aramb-darwin-arm64
+sudo mv aramb-darwin-arm64 /usr/local/bin/aramb
+aramb --version
+```
+
+**Windows:**
+Download from: https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-windows-amd64.exe
 
 ### Step 2: Get Application ID
 
@@ -177,8 +196,7 @@ npm install
 
 ## Verification Checklist
 
-- [ ] Go 1.21+ installed
-- [ ] aramb-cli installed and in PATH
+- [ ] aramb-cli v0.0.11-beta1 installed and in PATH
 - [ ] Node.js 16+ installed
 - [ ] APPLICATION_ID environment variable set
 - [ ] ARAMB_API_TOKEN environment variable set

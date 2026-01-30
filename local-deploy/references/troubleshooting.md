@@ -11,39 +11,32 @@ bash: aramb: command not found
 
 ### Solution
 
-1. **Check if Go is installed:**
+1. **Download aramb-cli binary:**
+
+   Visit: https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1
+
+   **Linux:**
    ```bash
-   go version
+   curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-linux-amd64
+   chmod +x aramb-linux-amd64
+   sudo mv aramb-linux-amd64 /usr/local/bin/aramb
    ```
 
-   If Go is not installed, install it first:
+   **macOS (Intel):**
    ```bash
-   # Ubuntu/Debian
-   sudo apt-get update && sudo apt-get install -y golang
-
-   # macOS
-   brew install go
+   curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-amd64
+   chmod +x aramb-darwin-amd64
+   sudo mv aramb-darwin-amd64 /usr/local/bin/aramb
    ```
 
-2. **Install aramb-cli:**
+   **macOS (Apple Silicon):**
    ```bash
-   go install github.com/aramb-dev/aramb-cli/cmd/aramb@latest
+   curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-arm64
+   chmod +x aramb-darwin-arm64
+   sudo mv aramb-darwin-arm64 /usr/local/bin/aramb
    ```
 
-3. **Configure PATH:**
-   ```bash
-   # Check if GOPATH/bin is in PATH
-   echo $PATH | grep "$(go env GOPATH)/bin"
-
-   # If not found, add it
-   export PATH=$PATH:$(go env GOPATH)/bin
-
-   # Make permanent
-   echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.bashrc
-   source ~/.bashrc
-   ```
-
-4. **Verify installation:**
+2. **Verify installation:**
    ```bash
    which aramb
    aramb --version
