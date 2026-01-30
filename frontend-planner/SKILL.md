@@ -29,6 +29,7 @@ Use when the work is relatively focused and sequential:
 1. [development skill] → Build the feature (self-validates: compiles, runs, meets requirements)
 2. [testing/critique skill] → QA against user expectations (self-validates: coverage, tests pass)
 3. [metadata skill] → Create/update aramb.toml (self-validates: TOML syntax, services detected)
+4. [deployment skill] → Deploy frontend (self-validates: builds static files, deploys successfully)
 ```
 
 **The Correctness Loop:**
@@ -60,6 +61,9 @@ QA Task: "Test [Feature]"
 
 Metadata Task: "Create/update aramb.toml"
   └── dependencies: [qa-task-id]
+
+Deployment Task: "Deploy frontend"
+  └── dependencies: [metadata-task-id]
 ```
 
 **When to use sub-tasks:**
@@ -83,6 +87,7 @@ Metadata Task: "Create/update aramb.toml"
 1. A **development skill** (category: "development", tag: "frontend") - to build the feature
 2. A **QA skill** (category: "testing" OR "critique", tag: "frontend") - to test/validate user expectations
 3. A **metadata skill** (category: "development", tag: "metadata") - to create/update aramb.toml configuration
+4. A **deployment skill** (category: "deployment", tag: "frontend") - to deploy the frontend application
 
 ## Task Creation with MCP
 
@@ -224,6 +229,9 @@ search_skills(category: "critique", tag: "frontend")
 
 search_skills(category: "development", tag: "metadata")
 → Returns: full_id: "acme/skills/aramb-metadata" (use this)
+
+search_skills(category: "deployment", tag: "frontend")
+→ Returns: full_id: "acme/skills/frontend-local-deployment" (use this)
 ```
 
 **Step 2: Output architecture summary (text)**
@@ -300,6 +308,24 @@ create_tasks_batch(tasks=[
       "critical": ["TOML syntax valid", "Services detected", "Frontend service configured"],
       "expected": ["Environment vars extracted", "Dependencies mapped"],
       "nice_to_have": ["Service references configured"]
+    },
+    "timeout_seconds": 1800
+  },
+  {
+    "uniqueId": 4,
+    "skill_id": "acme/skills/frontend-local-deployment",
+    "task_name": "Deploy frontend application",
+    "description": "Build static files and deploy frontend to service",
+    "task_order": 4,
+    "logicalDependencies": [3],
+    "inputs": {
+      "project_path": ".",
+      "force_build": false
+    },
+    "validation_criteria": {
+      "critical": ["Static files built successfully", "Service created", "Deployment completes", "Service is accessible"],
+      "expected": ["Framework detected correctly", "Build optimized"],
+      "nice_to_have": ["Fast deployment", "CDN configured"]
     },
     "timeout_seconds": 1800
   }
@@ -460,7 +486,7 @@ This pattern is powerful because:
 
 ## Skill Discovery (REQUIRED)
 
-Before creating tasks, search for **3 skills** to build the task plan:
+Before creating tasks, search for **4 skills** to build the task plan:
 
 ```
 # 1. Find a skill to BUILD the feature
@@ -477,6 +503,10 @@ search_skills(category: "critique", tag: "frontend")
 # 3. Find a skill to CREATE/UPDATE metadata
 search_skills(category: "development", tag: "metadata")
 → Use for Task 3: Metadata generation
+
+# 4. Find a skill to DEPLOY the frontend
+search_skills(category: "deployment", tag: "frontend")
+→ Use for Task 4: Frontend deployment
 ```
 
 Use the `full_id` from search results in your task definitions. The full_id format is `owner/repo/skill-name`.
@@ -519,9 +549,9 @@ Use the `full_id` from search results in your task definitions. The full_id form
 ## Rules
 
 1. Explore codebase before planning
-2. **Search for 3 skills**: development, testing/critique (for QA), and metadata (for aramb.toml)
+2. **Search for 4 skills**: development, testing/critique (for QA), metadata (for aramb.toml), and deployment (for frontend)
 3. **Choose the right pattern**:
-   - Standard 2-task pattern for focused features
+   - Standard 4-task pattern for focused features
    - Parent + sub-tasks pattern for complex work needing checkpoints or dynamic discovery
 4. **Use the `full_id` from search results** in task `skill_id` fields - NEVER hardcode skill names
 5. **Use MCP tools** to create tasks - do NOT output raw JSON
