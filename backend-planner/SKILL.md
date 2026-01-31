@@ -29,6 +29,7 @@ Use when the work is relatively focused and sequential:
 1. [development skill] → Build the feature (self-validates: compiles, runs, migrations work)
 2. [testing/critique skill] → QA against user expectations (self-validates: tests pass, coverage good)
 3. [metadata skill] → Create/update aramb.toml (self-validates: TOML syntax, services detected)
+4. [deployment skill] → Deploy backend services (self-validates: images built, services deployed, PUBLIC_URL returned)
 ```
 
 **The Correctness Loop:**
@@ -60,6 +61,9 @@ QA Task: "Test [Feature]"
 
 Metadata Task: "Create/update aramb.toml"
   └── dependencies: [qa-task-id]
+
+Deployment Task: "Deploy backend services"
+  └── dependencies: [metadata-task-id]
 ```
 
 **When to use sub-tasks:**
@@ -83,6 +87,7 @@ Metadata Task: "Create/update aramb.toml"
 1. A **development skill** (category: "development", tag: "backend") - to build the feature
 2. A **QA skill** (category: "testing" OR "critique", tag: "backend") - to test/validate user expectations
 3. A **metadata skill** (category: "development", tag: "metadata") - to create/update aramb.toml configuration
+4. A **deployment skill** (category: "deployment", tag: "backend") - to deploy backend services and return PUBLIC_URL
 
 ## Task Creation with MCP
 
@@ -160,6 +165,25 @@ create_tasks_batch(tasks=[
       "nice_to_have": ["Service references configured"]
     },
     "timeout_seconds": 1800
+  },
+  {
+    "uniqueId": 4,
+    "skill_id": "<deployment-full_id from search>",
+    "task_name": "Deploy backend services",
+    "description": "Build Docker images with DOCKER_REPOSITORY naming and deploy backend services via aramb.toml",
+    "task_order": 4,
+    "logicalDependencies": [3],
+    "inputs": {
+      "project_path": ".",
+      "skip_build": false,
+      "push_registry": false
+    },
+    "validation_criteria": {
+      "critical": ["APPLICATION_ID set", "DOCKER_REPOSITORY set for build services", "Backend images built", "Services deployed", "Backend healthy", "PUBLIC_URL returned"],
+      "expected": ["Build optimized", "Databases deployed", "Backend accessible"],
+      "nice_to_have": ["Fast deployment", "Logs accessible"]
+    },
+    "timeout_seconds": 3600
   }
 ])
 ```
@@ -307,6 +331,25 @@ create_tasks_batch(tasks=[
       "nice_to_have": ["Service references configured"]
     },
     "timeout_seconds": 1800
+  },
+  {
+    "uniqueId": 4,
+    "skill_id": "acme/skills/backend-deployment",
+    "task_name": "Deploy backend services",
+    "description": "Build Docker images and deploy backend services to get PUBLIC_URL",
+    "task_order": 4,
+    "logicalDependencies": [3],
+    "inputs": {
+      "project_path": ".",
+      "skip_build": false,
+      "push_registry": false
+    },
+    "validation_criteria": {
+      "critical": ["APPLICATION_ID set", "DOCKER_REPOSITORY set", "Backend deployed", "PUBLIC_URL returned"],
+      "expected": ["Databases healthy", "Backend healthy"],
+      "nice_to_have": ["Fast deployment"]
+    },
+    "timeout_seconds": 3600
   }
 ])
 ```
@@ -466,7 +509,7 @@ This pattern is powerful because:
 
 ## Skill Discovery (REQUIRED)
 
-Before creating tasks, search for **3 skills** to build the task plan:
+Before creating tasks, search for **4 skills** to build the task plan:
 
 ```
 # 1. Find a skill to BUILD the feature
@@ -483,6 +526,10 @@ search_skills(category: "critique", tag: "backend")
 # 3. Find a skill to CREATE/UPDATE metadata
 search_skills(category: "development", tag: "metadata")
 → Use for Task 3: Metadata generation
+
+# 4. Find a skill to DEPLOY backend services
+search_skills(category: "deployment", tag: "backend")
+→ Use for Task 4: Backend deployment
 ```
 
 Use the `full_id` from search results in your task definitions. The full_id format is `owner/repo/skill-name`.
@@ -525,9 +572,9 @@ Use the `full_id` from search results in your task definitions. The full_id form
 ## Rules
 
 1. Explore codebase before planning
-2. **Search for 3 skills**: development, testing/critique (for QA), and metadata (for aramb.toml)
+2. **Search for 4 skills**: development, testing/critique (for QA), metadata (for aramb.toml), and deployment (for backend)
 3. **Choose the right pattern**:
-   - Standard 2-task pattern for focused features
+   - Standard 4-task pattern for focused features
    - Parent + sub-tasks pattern for complex work needing checkpoints or dynamic discovery
 4. **Use the `full_id` from search results** in task `skill_id` fields - NEVER hardcode skill names
 5. **Use MCP tools** to create tasks - do NOT output raw JSON
