@@ -30,12 +30,12 @@ Complete setup instructions for local-deploy skill.
 
 Download the appropriate binary for your platform from the GitHub release:
 
-**Release:** https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1
+**Release:** https://github.com/aramb-ai/release-beta/releases/latest
 
 **Linux (amd64):**
 ```bash
 # Download binary
-curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-linux-amd64
+curl -LO https://github.com/aramb-ai/release-beta/releases/latest/download/aramb-linux-amd64
 
 # Make executable
 chmod +x aramb-linux-amd64
@@ -50,7 +50,7 @@ aramb --version
 **macOS (amd64/Intel):**
 ```bash
 # Download binary
-curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-amd64
+curl -LO https://github.com/aramb-ai/release-beta/releases/latest/download/aramb-darwin-amd64
 
 # Make executable
 chmod +x aramb-darwin-amd64
@@ -65,7 +65,7 @@ aramb --version
 **macOS (arm64/Apple Silicon):**
 ```bash
 # Download binary
-curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-arm64
+curl -LO https://github.com/aramb-ai/release-beta/releases/latest/download/aramb-darwin-arm64
 
 # Make executable
 chmod +x aramb-darwin-arm64
@@ -80,9 +80,69 @@ aramb --version
 **Windows:**
 ```powershell
 # Download from:
-# https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-windows-amd64.exe
+# https://github.com/aramb-ai/release-beta/releases/latest/download/aramb-windows-amd64.exe
 
 # Rename to aramb.exe and add to PATH
+```
+
+### Alternative: Always Get Latest Release (Advanced)
+
+**⚠️ Warning**: Using latest release may introduce breaking changes. Pin to specific version for production.
+
+**Linux (amd64):**
+```bash
+# Get latest release URL using GitHub API
+LATEST_URL=$(curl -s https://api.github.com/repos/aramb-ai/release-beta/releases/latest | \
+  grep "browser_download_url.*aramb-linux-amd64" | \
+  cut -d '"' -f 4)
+
+# Download latest
+curl -LO "$LATEST_URL"
+
+# Make executable and move to PATH
+chmod +x aramb-linux-amd64
+sudo mv aramb-linux-amd64 /usr/local/bin/aramb
+
+aramb --version
+```
+
+**macOS (Intel):**
+```bash
+LATEST_URL=$(curl -s https://api.github.com/repos/aramb-ai/release-beta/releases/latest | \
+  grep "browser_download_url.*aramb-darwin-amd64" | \
+  cut -d '"' -f 4)
+
+curl -LO "$LATEST_URL"
+chmod +x aramb-darwin-amd64
+sudo mv aramb-darwin-amd64 /usr/local/bin/aramb
+
+aramb --version
+```
+
+**macOS (Apple Silicon):**
+```bash
+LATEST_URL=$(curl -s https://api.github.com/repos/aramb-ai/release-beta/releases/latest | \
+  grep "browser_download_url.*aramb-darwin-arm64" | \
+  cut -d '"' -f 4)
+
+curl -LO "$LATEST_URL"
+chmod +x aramb-darwin-arm64
+sudo mv aramb-darwin-arm64 /usr/local/bin/aramb
+
+aramb --version
+```
+
+**Simplified Latest Release (Direct):**
+```bash
+# GitHub redirects /latest/download/ to the actual latest version
+# Linux
+curl -LO https://github.com/aramb-ai/release-beta/releases/latest/download/aramb-linux-amd64
+
+# macOS (Intel)
+curl -LO https://github.com/aramb-ai/release-beta/releases/latest/download/aramb-darwin-amd64
+
+# macOS (Apple Silicon)
+curl -LO https://github.com/aramb-ai/release-beta/releases/latest/download/aramb-darwin-arm64
 ```
 
 ### Step 2: Set Environment Variables
@@ -215,7 +275,7 @@ export DOCKER_PASSWORD="your-password"
 
 ## Verification Checklist
 
-- [ ] aramb-cli v0.0.11-beta1 installed and in PATH
+- [ ] aramb-cli (latest) installed and in PATH
 - [ ] Docker installed and running
 - [ ] BuildKit configured
 - [ ] BUILDKIT_HOST environment variable set

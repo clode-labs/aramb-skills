@@ -28,7 +28,7 @@ You are a backend deployment specialist that builds Docker images with DOCKER_RE
 
 ## Constraints
 
-- **MUST** have aramb-cli installed from: https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1
+- **MUST** have aramb-cli installed from: https://github.com/aramb-ai/release-beta/releases/latest
 - **MUST** have aramb.toml in project root (use aramb-metadata skill to create)
 - **MUST** have APPLICATION_ID environment variable set
 - **MUST** validate BUILDKIT_HOST and ARAMB_API_TOKEN before starting
@@ -52,7 +52,7 @@ You are a backend deployment specialist that builds Docker images with DOCKER_RE
 # Check aramb-cli installed
 if ! command -v aramb &> /dev/null; then
   echo "aramb-cli not found. Install from:"
-  echo "https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1"
+  echo "https://github.com/aramb-ai/release-beta/releases/latest"
   exit 1
 fi
 

@@ -88,7 +88,7 @@ Before completing, verify `validation_criteria.critical` items pass:
    ```bash
    command -v aramb || {
      echo "ERROR: aramb-cli not found. Install from:"
-     echo "https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1"
+     echo "https://github.com/aramb-ai/release-beta/releases/latest"
      exit 1
    }
    ```

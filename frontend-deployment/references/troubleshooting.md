@@ -270,25 +270,25 @@ bash: aramb: command not found
 
 ### Solution
 
-Download aramb-cli v0.0.11-beta1 from GitHub:
+Download aramb-cli (latest) from GitHub:
 
 **Linux:**
 ```bash
-curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-linux-amd64
+curl -LO https://github.com/aramb-ai/release-beta/releases/latest/download/aramb-linux-amd64
 chmod +x aramb-linux-amd64
 sudo mv aramb-linux-amd64 /usr/local/bin/aramb
 ```
 
 **macOS (Intel):**
 ```bash
-curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-amd64
+curl -LO https://github.com/aramb-ai/release-beta/releases/latest/download/aramb-darwin-amd64
 chmod +x aramb-darwin-amd64
 sudo mv aramb-darwin-amd64 /usr/local/bin/aramb
 ```
 
 **macOS (Apple Silicon):**
 ```bash
-curl -LO https://github.com/aramb-ai/release-beta/releases/download/v0.0.11-beta1/aramb-darwin-arm64
+curl -LO https://github.com/aramb-ai/release-beta/releases/latest/download/aramb-darwin-arm64
 chmod +x aramb-darwin-arm64
 sudo mv aramb-darwin-arm64 /usr/local/bin/aramb
 ```
