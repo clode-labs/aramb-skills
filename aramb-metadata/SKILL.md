@@ -8,13 +8,25 @@ license: MIT
 
 # Aramb Metadata Generator
 
-Analyze project structure and generate aramb.toml configuration with service definitions, environment variables, and dependencies.
+Analyze project structure and generate aramb.toml configuration with service definitions only. Uses APPLICATION_ID from environment variable.
 
 ## Inputs
 
 - `requirements`: What metadata to generate or update
 - `project_path`: Root directory to analyze (defaults to current directory)
 - `validation_criteria`: Self-validation criteria (critical, expected, nice_to_have)
+
+## Prerequisites
+
+**CRITICAL**: APPLICATION_ID environment variable MUST be set:
+
+```bash
+if [ -z "$APPLICATION_ID" ]; then
+  echo "ERROR: APPLICATION_ID environment variable not set"
+  echo "Set it with: export APPLICATION_ID=your-app-id"
+  exit 1
+fi
+```
 
 ## CRITICAL RULE: Build Service Separation
 
@@ -37,6 +49,18 @@ Analyze project structure and generate aramb.toml configuration with service def
 - **Frontend services** are created as single services (type="frontend") with static build configuration, NO separate build service
 
 ## Workflow
+
+### 0. Validate APPLICATION_ID (CRITICAL FIRST STEP)
+
+```bash
+if [ -z "$APPLICATION_ID" ]; then
+  echo "ERROR: APPLICATION_ID environment variable not set"
+  echo "Set it with: export APPLICATION_ID=your-app-id"
+  exit 1
+fi
+
+echo "Using APPLICATION_ID: $APPLICATION_ID"
+```
 
 ### 1. Discover Services
 
@@ -94,28 +118,15 @@ Analyze project structure and generate aramb.toml configuration with service def
 
 ### 4. Generate TOML Structure
 
+**CRITICAL**: Only create services. Do NOT create project or application sections.
+
 ```toml
-# Project Definition
-[[project]]
-uniqueIdentifier = 1
-name = "Project Name"
-description = "Auto-detected project"
-tags = []
-
-# Application Definition
-[[application]]
-uniqueIdentifier = 10
-name = "Application Name"
-project = 1
-description = "Auto-detected application"
-tags = []
-
 # Example: Database Service (pre-built image)
 [[services]]
 uniqueIdentifier = 100
 name = "postgres-db"
 type = "postgres"
-application = 10
+applicationID = "{applicationID}"  # From APPLICATION_ID env var
 
 [services.configuration.settings]
 image = "postgres:15"
@@ -139,7 +150,7 @@ value = ""
 uniqueIdentifier = 101
 name = "backend-build"
 type = "build"
-application = 10
+applicationID = "{applicationID}"  # From APPLICATION_ID env var
 
 [services.configuration.settings]
 repoUrl = "https://github.com/user/repo"
@@ -153,7 +164,7 @@ installationId = "123456"
 uniqueIdentifier = 102
 name = "backend-api"
 type = "backend"
-application = 10
+applicationID = "{applicationID}"  # From APPLICATION_ID env var
 
 [services.configuration.settings]
 image = "${101.outputs.IMAGE_URL}"
@@ -186,7 +197,7 @@ value = "${100.secrets.POSTGRES_PASSWORD}"
 uniqueIdentifier = 103
 name = "frontend-web"
 type = "frontend"
-application = 10
+applicationID = "{applicationID}"  # From APPLICATION_ID env var
 
 [services.configuration.settings]
 staticPath = "./frontend/dist"  # Local build output directory
@@ -217,10 +228,13 @@ If aramb.toml exists:
 ## Constraints
 
 ### uniqueIdentifiers
-- **Project**: 1
-- **Application**: 10
 - **Services**: 100, 101, 102, ... (sequential, no gaps, no duplicates)
 - **Build service ID < Runtime service ID**
+
+### APPLICATION_ID
+- **MUST** be set in environment variable
+- **MUST** exit with error if not found
+- **MUST** use `applicationID = "{applicationID}"` in all services (replaced with actual APPLICATION_ID value)
 
 ### Service Types
 - Supported: aramb-agent, backend, build, frontend, mongodb, onboarding, postgres, redis, template
@@ -266,23 +280,25 @@ If aramb.toml exists:
 ## Self-Validation
 
 **Critical checks** (MUST pass):
-1. TOML syntax is valid
-2. Structure complete: One project (ID=1), one application (ID=10), services (100+)
-3. Service types valid: aramb-agent, backend, build, frontend, mongodb, onboarding, postgres, redis, template
-4. uniqueIdentifiers sequential: 1, 10, 100, 101, 102, ...
-5. Required fields present (project: name; application: name, project; service: name, type, application)
-6. Build service pattern followed for backends:
+1. APPLICATION_ID environment variable is set
+2. TOML syntax is valid
+3. Structure complete: Only services (100+), NO project or application sections
+4. Service types valid: aramb-agent, backend, build, frontend, mongodb, onboarding, postgres, redis, template
+5. uniqueIdentifiers sequential: 100, 101, 102, ...
+6. Required fields present (service: name, type, applicationID)
+7. All services use `applicationID = "{applicationID}"` (literal string, will be replaced at runtime)
+8. Build service pattern followed for backends:
    - Build services (type="build") have `repoUrl`, no `cmd`
    - Backend runtime services reference build outputs, no `repoUrl`
    - Build service ID < Backend runtime service ID
-7. Frontend services (type="frontend"):
+9. Frontend services (type="frontend"):
    - Have `staticPath` pointing to local build directory
    - NO separate build service required
    - Have `cmd` and `commandPort`
-8. Database services have `image`, no `repoUrl`
-9. Vars and secrets extracted from codebase (not empty)
-10. Service references valid (`${N.vars.KEY}` points to existing service)
-11. Secrets empty or use references (never hardcoded)
+10. Database services have `image`, no `repoUrl`
+11. Vars and secrets extracted from codebase (not empty)
+12. Service references valid (`${N.vars.KEY}` points to existing service)
+13. Secrets empty or use references (never hardcoded)
 
 ## Error Handling
 
@@ -297,16 +313,15 @@ Return JSON summary:
 ```json
 {
   "file_created": "aramb.toml",
+  "application_id": "app-xyz789",
   "structure": {
-    "projects": 1,
-    "applications": 1,
     "services": 4
   },
   "services_detected": [
-    {"uniqueIdentifier": 100, "name": "postgres-db", "type": "postgres"},
-    {"uniqueIdentifier": 101, "name": "backend-build", "type": "build"},
-    {"uniqueIdentifier": 102, "name": "backend-api", "type": "backend"},
-    {"uniqueIdentifier": 103, "name": "frontend-web", "type": "frontend"}
+    {"uniqueIdentifier": 100, "name": "postgres-db", "type": "postgres", "applicationID": "{applicationID}"},
+    {"uniqueIdentifier": 101, "name": "backend-build", "type": "build", "applicationID": "{applicationID}"},
+    {"uniqueIdentifier": 102, "name": "backend-api", "type": "backend", "applicationID": "{applicationID}"},
+    {"uniqueIdentifier": 103, "name": "frontend-web", "type": "frontend", "applicationID": "{applicationID}"}
   ],
   "build_outputs": {
     "101": "outputs.IMAGE_URL → service 102"
