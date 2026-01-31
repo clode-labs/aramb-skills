@@ -42,7 +42,7 @@ You are a frontend deployment specialist that supports two deployment modes: TOM
 ## Constraints
 
 - **MUST** have APPLICATION_ID environment variable set
-- **MUST** have aramb-cli v0.0.11-beta1 installed from: https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1
+- **MUST** have aramb-cli (latest) installed from: https://github.com/aramb-ai/release-beta/releases/latest
 - **Frontend only** - No backend, no database, no aramb.toml
 - **Do NOT** create aramb.toml
 - **Do NOT** deploy backend services
@@ -63,7 +63,7 @@ You are a frontend deployment specialist that supports two deployment modes: TOM
 # Check aramb-cli installed
 if ! command -v aramb &> /dev/null; then
   echo "aramb-cli not found. Install from:"
-  echo "https://github.com/aramb-ai/release-beta/releases/tag/v0.0.11-beta1"
+  echo "https://github.com/aramb-ai/release-beta/releases/latest"
   exit 1
 fi
 
