@@ -104,7 +104,7 @@ Error: Failed to create service
 
 2. **Check application exists:**
    ```bash
-   aramb application get --id $APPLICATION_ID
+   aramb applications get -i $APPLICATION_ID -o json
    ```
 
 3. **Check service name conflicts:**

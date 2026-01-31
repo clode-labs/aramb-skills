@@ -66,7 +66,7 @@ fi
 
 # Get application slug for DOCKER_REPOSITORY
 echo "Fetching application slug..."
-APP_SLUG=$(aramb services get --service "$APPLICATION_ID" --output json | jq -r '.slug')
+APP_SLUG=$(aramb applications get -i "$APPLICATION_ID" -o json | jq -r '.slug')
 
 if [ -z "$APP_SLUG" ]; then
   echo "ERROR: Could not retrieve application slug"
@@ -287,7 +287,7 @@ PUBLIC_URL=$(echo "$BACKEND_DETAILS" | jq -r '.outputs.PUBLIC_URL')
 
 1. **Get Application Slug**:
    ```bash
-   APP_SLUG=$(aramb services get --service "$APPLICATION_ID" --output json | jq -r '.slug')
+   APP_SLUG=$(aramb applications get -i "$APPLICATION_ID" -o json | jq -r '.slug')
    ```
 
    Example response:
@@ -351,7 +351,7 @@ PUBLIC_URL=$(echo "$BACKEND_DETAILS" | jq -r '.outputs.PUBLIC_URL')
 
 ```bash
 # Example full workflow
-APP_SLUG=$(aramb services get --service "$APPLICATION_ID" --output json | jq -r '.slug')
+APP_SLUG=$(aramb applications get -i "$APPLICATION_ID" -o json | jq -r '.slug')
 export DOCKER_REPOSITORY="${APP_SLUG}/backend-build"
 COMMIT_SHA=$(git rev-parse --short HEAD)
 
@@ -366,7 +366,7 @@ aramb build --name "$DOCKER_REPOSITORY" --tag "$COMMIT_SHA"
 ### Backend Runtime Services (type="backend")
 
 **Process**:
-1. Get application slug: `aramb services get --service $APPLICATION_ID --output json`
+1. Get application slug: `aramb applications get -i $APPLICATION_ID -o json`
 2. Extract app slug from JSON
 3. Set DOCKER_REPOSITORY: `export DOCKER_REPOSITORY="${APP_SLUG}/${BUILD_SERVICE_SLUG}"`
 4. Build service creates Docker image with DOCKER_REPOSITORY naming
