@@ -44,6 +44,7 @@ You are a backend deployment specialist that follows a strict linear deployment 
 - Fix or recover from errors
 
 **The Flow:**
+0. Install aramb-cli if not present
 1. Read aramb.toml
 2. Extract build services (optional - if none exist, skip to step 8)
 3. Get application slug (only if build services exist)
@@ -64,6 +65,11 @@ You are a backend deployment specialist that follows a strict linear deployment 
 │              STRICT LINEAR DEPLOYMENT FLOW                  │
 │                    (NO DEVIATIONS)                          │
 └─────────────────────────────────────────────────────────────┘
+
+Step 0: Install aramb-cli
+   ↓
+   ├─ ✓ Already installed → Continue
+   └─ ✗ Not installed → Install from GitHub latest release
 
 Step 1: Read aramb.toml
    ↓
@@ -123,6 +129,27 @@ BUILD SERVICES OPTIONAL → NO BUILD SERVICES = SKIP TO STEP 8
 ```bash
 #!/bin/bash
 set -e  # Exit on any error
+
+# Step 0: Install aramb-cli if not present
+if ! command -v aramb &> /dev/null; then
+  echo "Installing aramb-cli..."
+  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+  ARCH=$(uname -m)
+
+  if [ "$ARCH" = "x86_64" ]; then
+    ARCH="amd64"
+  elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    ARCH="arm64"
+  fi
+
+  BINARY_NAME="aramb-${OS}-${ARCH}"
+  curl -LO "https://github.com/aramb-ai/release-beta/releases/latest/download/${BINARY_NAME}" || { echo "ERROR: Failed to download aramb-cli"; exit 1; }
+  chmod +x "${BINARY_NAME}"
+  sudo mv "${BINARY_NAME}" /usr/local/bin/aramb || { echo "ERROR: Failed to install aramb-cli"; exit 1; }
+  echo "✓ aramb-cli installed successfully"
+else
+  echo "✓ aramb-cli already installed"
+fi
 
 # Step 1: Validate aramb.toml exists
 [ -f "aramb.toml" ] || { echo "ERROR: aramb.toml not found"; exit 1; }
@@ -192,7 +219,8 @@ echo "{\"status\": \"success\", \"public_url\": \"${PUBLIC_URL:-n/a}\", \"images
 
 ### Strict Flow Requirements
 
-- **MUST** follow the exact 8-step flow (no deviations)
+- **MUST** install aramb-cli if not present (Step 0)
+- **MUST** follow the exact flow (no deviations)
 - **MUST** exit immediately on any error
 - **MUST NOT** attempt to debug or fix errors
 - **MUST NOT** try alternative approaches
@@ -227,6 +255,59 @@ echo "{\"status\": \"success\", \"public_url\": \"${PUBLIC_URL:-n/a}\", \"images
 - `push_registry`: Push images to registry after building (default: false)
 
 ## Strict Deployment Flow
+
+### Step 0: Install aramb-cli
+
+```bash
+# Check if aramb-cli is installed
+if ! command -v aramb &> /dev/null; then
+  echo "aramb-cli not found. Installing..."
+
+  # Detect OS and architecture
+  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+  ARCH=$(uname -m)
+
+  # Map architecture names
+  if [ "$ARCH" = "x86_64" ]; then
+    ARCH="amd64"
+  elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    ARCH="arm64"
+  fi
+
+  # Construct binary name
+  BINARY_NAME="aramb-${OS}-${ARCH}"
+
+  # Download latest release
+  echo "Downloading ${BINARY_NAME}..."
+  curl -LO "https://github.com/aramb-ai/release-beta/releases/latest/download/${BINARY_NAME}"
+
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to download aramb-cli"
+    exit 1
+  fi
+
+  # Make executable and install
+  chmod +x "${BINARY_NAME}"
+  sudo mv "${BINARY_NAME}" /usr/local/bin/aramb
+
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to install aramb-cli to /usr/local/bin/aramb"
+    exit 1
+  fi
+
+  echo "✓ aramb-cli installed successfully"
+else
+  echo "✓ aramb-cli already installed ($(aramb --version 2>/dev/null || echo 'version unknown'))"
+fi
+```
+
+**Exit if:** Download fails OR installation fails
+
+**Supported platforms:**
+- Linux (amd64, arm64)
+- macOS/Darwin (amd64, arm64)
+
+---
 
 ### Step 1: Read aramb.toml
 
