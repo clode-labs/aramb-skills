@@ -10,32 +10,214 @@ license: MIT
 
 Build Docker images and deploy backend services using aramb.toml configuration.
 
+## Quick Reference
+
+**Two Deployment Paths:**
+
+1. **With Build Services** (type="build" exists in TOML):
+   ```
+   Read TOML → Extract builds → Get app slug → Build images → Update TOML → Deploy
+   ```
+
+2. **Without Build Services** (no type="build" in TOML):
+   ```
+   Read TOML → No builds found → Deploy directly
+   ```
+
+**Key Principles:**
+- ✅ Build services are OPTIONAL
+- ✅ If no builds → Skip to deployment
+- ✅ If builds exist → Must complete successfully before deployment
+- ❌ Any error → EXIT immediately (no recovery)
+
 ## Role
 
-You are a backend deployment specialist that builds Docker images with DOCKER_REPOSITORY naming, deploys databases and backend services, waits for deployment completion, and returns deployment outputs including PUBLIC_URL.
+You are a backend deployment specialist that follows a strict linear deployment flow. **No debugging, no retries, no alternative flows.** If any step fails, exit immediately with error.
 
-## Responsibilities
+## Critical Flow (Strict Order - No Deviations)
 
-- Validate environment (aramb-cli, env vars, aramb.toml)
-- Parse aramb.toml to identify backend and database services
-- Get application slug and set DOCKER_REPOSITORY for build services
-- Build Docker images for backend services locally with DOCKER_REPOSITORY naming
-- Update backend service image URLs in aramb.toml
-- Deploy databases and backend services via aramb.toml
-- Wait for backend deployment completion
-- Extract PUBLIC_URL from deployment outputs
-- Return deployment details for frontend integration
+**IMPORTANT**: Follow this exact sequence. If ANY step fails, EXIT immediately with error message. Do NOT attempt to:
+- Debug the issue
+- Login or authenticate
+- List resources
+- Try alternative approaches
+- Fix or recover from errors
+
+**The Flow:**
+1. Read aramb.toml
+2. Extract build services (optional - if none exist, skip to step 8)
+3. Get application slug (only if build services exist)
+4. Create image names (DOCKER_REPOSITORY format) (only if build services exist)
+5. Run build commands for each build service (only if build services exist)
+6. Capture image URLs (only if build services exist)
+7. Update backend service images in aramb.toml (only if build services exist)
+8. Run `aramb deploy --deploy-from-toml`
+9. Return deployment details
+
+**If any step fails → Exit with error. No recovery attempts.**
+**Build services are OPTIONAL → If no build services, skip steps 3-7 and go directly to step 8.**
+
+## Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              STRICT LINEAR DEPLOYMENT FLOW                  │
+│                    (NO DEVIATIONS)                          │
+└─────────────────────────────────────────────────────────────┘
+
+Step 1: Read aramb.toml
+   ↓
+   ├─ ✓ Found → Continue
+   └─ ✗ Not found → EXIT: "aramb.toml not found"
+
+Step 2: Extract Build Services
+   ↓
+   ├─ ✓ Found build services → Continue to Step 3
+   └─ ✗ No build services → SKIP to Step 8 (deploy directly)
+
+┌─────────────────────────────────────────────────────────────┐
+│              BUILD PHASE (Optional - only if build services exist) │
+└─────────────────────────────────────────────────────────────┘
+
+Step 3: Get Application Slug
+   ↓
+   ├─ ✓ Got slug → Continue
+   └─ ✗ Failed → EXIT: "Failed to retrieve application slug"
+
+Step 4: Create Image Names
+   ↓
+   └─ ✓ Names created: {app-slug}/{build-service}
+
+Step 5: Run Build Commands
+   ↓
+   ├─ ✓ All builds succeed → Continue
+   └─ ✗ Any build fails → EXIT: "Build failed for {service}"
+
+Step 6: Update aramb.toml
+   ↓
+   ├─ ✓ TOML updated → Continue
+   └─ ✗ Update failed → EXIT: "Failed to update aramb.toml"
+
+┌─────────────────────────────────────────────────────────────┐
+│              DEPLOYMENT PHASE (Always runs)                 │
+└─────────────────────────────────────────────────────────────┘
+
+Step 8: Deploy from TOML
+   ↓
+   ├─ ✓ Deploy succeeds → Continue
+   └─ ✗ Deploy fails → EXIT: "aramb deploy failed"
+
+Step 9: Return Deployment Details
+   ↓
+   └─ ✓ Return: {status, public_url, images_built}
+
+════════════════════════════════════════════════════════════
+
+ANY ERROR → IMMEDIATE EXIT
+NO DEBUGGING | NO RETRIES | NO ALTERNATIVES
+BUILD SERVICES OPTIONAL → NO BUILD SERVICES = SKIP TO STEP 8
+```
+
+## Compact Workflow (Precise Logic)
+
+```bash
+#!/bin/bash
+set -e  # Exit on any error
+
+# Step 1: Validate aramb.toml exists
+[ -f "aramb.toml" ] || { echo "ERROR: aramb.toml not found"; exit 1; }
+
+# Step 2: Check for build services
+BUILD_SERVICES=$(grep -A 20 '\[services\]' aramb.toml | grep -B 5 'type = "build"' | grep 'name = ' | cut -d'"' -f2 || true)
+
+if [ -n "$BUILD_SERVICES" ]; then
+  # BUILD PHASE (Steps 3-7)
+
+  # Step 3: Get application slug
+  [ -n "$APPLICATION_ID" ] || { echo "ERROR: APPLICATION_ID not set"; exit 1; }
+  APP_SLUG=$(aramb applications get -i "$APPLICATION_ID" -o json | jq -r '.slug')
+  [ "$APP_SLUG" != "null" ] || { echo "ERROR: Failed to get app slug"; exit 1; }
+
+  # Step 4: Create image names
+  declare -A IMAGE_NAMES IMAGE_URLS
+  for BUILD_SERVICE in $BUILD_SERVICES; do
+    IMAGE_NAMES[$BUILD_SERVICE]="${APP_SLUG}/${BUILD_SERVICE}"
+  done
+
+  # Step 5: Build images
+  COMMIT_SHA=$(git rev-parse --short HEAD)
+  for BUILD_SERVICE in $BUILD_SERVICES; do
+    IMAGE_NAME=${IMAGE_NAMES[$BUILD_SERVICE]}
+    aramb build --name "$IMAGE_NAME" --tag "$COMMIT_SHA" || { echo "ERROR: Build failed for $BUILD_SERVICE"; exit 1; }
+    IMAGE_URLS[$BUILD_SERVICE]="${IMAGE_NAME}:${COMMIT_SHA}"
+  done
+
+  # Step 6: Update aramb.toml with image URLs
+  for BUILD_SERVICE in $BUILD_SERVICES; do
+    BUILD_ID=$(grep -B 10 "name = \"$BUILD_SERVICE\"" aramb.toml | grep 'uniqueIdentifier = ' | tail -1 | awk '{print $3}')
+    [ -n "$BUILD_ID" ] || { echo "ERROR: No uniqueIdentifier for $BUILD_SERVICE"; exit 1; }
+    sed -i "s|image = \"\${${BUILD_ID}.outputs.IMAGE_URL}\"|image = \"${IMAGE_URLS[$BUILD_SERVICE]}\"|g" aramb.toml
+  done
+
+  SKIP_BUILD=false
+else
+  # NO BUILD PHASE - skip to deployment
+  echo "ℹ No build services - deploying directly from TOML"
+  SKIP_BUILD=true
+fi
+
+# Step 8: Deploy from TOML (always runs)
+aramb deploy --deploy-from-toml --yes || { echo "ERROR: Deploy failed"; exit 1; }
+
+# Step 9: Return deployment details
+BACKEND_SERVICE=$(grep -A 5 'type = "backend"' aramb.toml | grep 'name = ' | head -1 | cut -d'"' -f2 || echo "")
+if [ -n "$BACKEND_SERVICE" ]; then
+  PUBLIC_URL=$(aramb deploy status --service "$BACKEND_SERVICE" --output json 2>/dev/null | jq -r '.outputs.PUBLIC_URL // "n/a"')
+fi
+
+IMAGES_COUNT=$([ "$SKIP_BUILD" = true ] && echo 0 || echo "${#IMAGE_URLS[@]}")
+
+echo "{\"status\": \"success\", \"public_url\": \"${PUBLIC_URL:-n/a}\", \"images_built\": $IMAGES_COUNT, \"build_skipped\": $SKIP_BUILD}"
+```
+
+**Key Conditions:**
+- aramb.toml must exist → EXIT if missing
+- Build services optional → If none, skip Steps 3-7
+- If build services exist → APPLICATION_ID required, build phase executes
+- If build services missing → Skip directly to Step 8 (deploy)
+- Deploy always runs → Either with built images or pre-configured images
+- Errors in any step → EXIT immediately (no recovery)
 
 ## Constraints
 
-- **MUST** have aramb-cli installed from: https://github.com/aramb-ai/release-beta/releases/latest
-- **MUST** have aramb.toml in project root (use aramb-metadata skill to create)
+### Strict Flow Requirements
+
+- **MUST** follow the exact 8-step flow (no deviations)
+- **MUST** exit immediately on any error
+- **MUST NOT** attempt to debug or fix errors
+- **MUST NOT** try alternative approaches
+- **MUST NOT** attempt authentication or login
+- **MUST NOT** list resources or explore
+- **MUST** have aramb.toml in project root
 - **MUST** have APPLICATION_ID environment variable set
-- **MUST** validate BUILDKIT_HOST and ARAMB_API_TOKEN before starting
-- **MUST** get application slug and set DOCKER_REPOSITORY for build services
-- **MUST** update backend service image URLs in aramb.toml after builds
-- **Do NOT** push to registry unless `push_registry: true`
-- **Do NOT** skip validation steps
+
+### Exit Immediately If:
+
+- aramb.toml not found
+- APPLICATION_ID not set (only if build services exist)
+- Application slug retrieval fails (only if build services exist)
+- Git not available (only if build services exist)
+- Any build command fails (only if build services exist)
+- TOML update fails (only if build services exist)
+- Deploy command fails
+
+### No Recovery Allowed
+
+- **NO** retry logic
+- **NO** debugging
+- **NO** error recovery
+- **NO** alternative flows
+- **EXIT** with clear error message
 
 ## Inputs
 
@@ -44,48 +226,253 @@ You are a backend deployment specialist that builds Docker images with DOCKER_RE
 - `skip_build`: Skip build step and only deploy (default: false)
 - `push_registry`: Push images to registry after building (default: false)
 
-## Workflow
+## Strict Deployment Flow
 
-### 1. Validate Environment
+### Step 1: Read aramb.toml
 
 ```bash
-# Check aramb-cli installed
-if ! command -v aramb &> /dev/null; then
-  echo "aramb-cli not found. Install from:"
-  echo "https://github.com/aramb-ai/release-beta/releases/latest"
+# Check aramb.toml exists
+if [ ! -f "aramb.toml" ]; then
+  echo "ERROR: aramb.toml not found in current directory"
   exit 1
 fi
 
-# Verify required environment variables
-[ -n "$APPLICATION_ID" ] || { echo "ERROR: APPLICATION_ID not set"; exit 1; }
-[ -n "$BUILDKIT_HOST" ] || { echo "ERROR: BUILDKIT_HOST not set"; exit 1; }
-[ -n "$ARAMB_API_TOKEN" ] || { echo "ERROR: ARAMB_API_TOKEN not set"; exit 1; }
-
-# Confirm aramb.toml exists
-[ -f "aramb.toml" ] || { echo "ERROR: aramb.toml not found"; exit 1; }
-
-# Get application slug for DOCKER_REPOSITORY
-echo "Fetching application slug..."
-APP_SLUG=$(aramb applications get -i "$APPLICATION_ID" -o json | jq -r '.slug')
-
-if [ -z "$APP_SLUG" ]; then
-  echo "ERROR: Could not retrieve application slug"
-  exit 1
-fi
-
-echo "Application slug: $APP_SLUG"
+echo "✓ Found aramb.toml"
 ```
 
-### 2. Parse aramb.toml
+**Exit if:** aramb.toml doesn't exist
 
-Read aramb.toml and identify:
-- **Build services** (type="build") - Backend Docker image builds
-- **Backend services** (type="backend") - Depend on build services
-- **Database services** (postgres/redis/mongodb) - Pre-built images
+---
 
-Map relationships:
-- Build service outputs → Backend runtime service inputs
-- Backend service dependencies on databases
+### Step 2: Extract Build Services
+
+```bash
+# Parse TOML to find all build services (type="build")
+BUILD_SERVICES=$(grep -A 20 '\[services\]' aramb.toml | grep -B 5 'type = "build"' | grep 'name = ' | cut -d'"' -f2)
+
+if [ -z "$BUILD_SERVICES" ]; then
+  echo "ℹ No build services found in aramb.toml - skipping build phase"
+  # Skip to Step 8: Deploy from TOML directly
+  SKIP_BUILD=true
+else
+  echo "✓ Found build services: $BUILD_SERVICES"
+  SKIP_BUILD=false
+fi
+```
+
+**Behavior:**
+- If build services found → Continue to Step 3 (build phase)
+- If no build services → Skip to Step 8 (deploy directly)
+
+---
+
+### Step 3: Get Application Slug (Only if build services exist)
+
+```bash
+# Skip this step if no build services
+if [ "$SKIP_BUILD" = true ]; then
+  echo "ℹ Skipping Step 3 (no build services)"
+else
+  # Check APPLICATION_ID is set
+  if [ -z "$APPLICATION_ID" ]; then
+    echo "ERROR: APPLICATION_ID environment variable not set"
+    exit 1
+  fi
+
+  # Get application slug
+  APP_SLUG=$(aramb applications get -i "$APPLICATION_ID" -o json 2>&1 | jq -r '.slug')
+
+  if [ -z "$APP_SLUG" ] || [ "$APP_SLUG" = "null" ]; then
+    echo "ERROR: Failed to retrieve application slug"
+    echo "Command: aramb applications get -i $APPLICATION_ID -o json"
+    exit 1
+  fi
+
+  echo "✓ Application slug: $APP_SLUG"
+fi
+```
+
+**Exit if:** APPLICATION_ID not set OR slug retrieval fails (only checked if build services exist)
+
+---
+
+### Step 4: Create Image Names (Only if build services exist)
+
+```bash
+# Skip this step if no build services
+if [ "$SKIP_BUILD" = true ]; then
+  echo "ℹ Skipping Step 4 (no build services)"
+else
+  # For each build service, create DOCKER_REPOSITORY name
+  # Format: {app-slug}/{build-service-name}
+
+  declare -A IMAGE_NAMES
+
+  for BUILD_SERVICE in $BUILD_SERVICES; do
+    IMAGE_NAME="${APP_SLUG}/${BUILD_SERVICE}"
+    IMAGE_NAMES[$BUILD_SERVICE]=$IMAGE_NAME
+    echo "✓ Image name: $IMAGE_NAME"
+  done
+fi
+```
+
+**Exit if:** Image name creation fails (only checked if build services exist)
+
+---
+
+### Step 5: Run Build Commands (Only if build services exist)
+
+```bash
+# Skip this step if no build services
+if [ "$SKIP_BUILD" = true ]; then
+  echo "ℹ Skipping Step 5 (no build services)"
+else
+  # Get commit SHA for tagging
+  COMMIT_SHA=$(git rev-parse --short HEAD 2>&1)
+
+  if [ -z "$COMMIT_SHA" ]; then
+    echo "ERROR: Failed to get commit SHA. Not a git repository?"
+    exit 1
+  fi
+
+  # Build each service
+  declare -A IMAGE_URLS
+
+  for BUILD_SERVICE in $BUILD_SERVICES; do
+    IMAGE_NAME=${IMAGE_NAMES[$BUILD_SERVICE]}
+    FULL_IMAGE="${IMAGE_NAME}:${COMMIT_SHA}"
+
+    echo "Building: $FULL_IMAGE"
+
+    # Run build command
+    aramb build --name "$IMAGE_NAME" --tag "$COMMIT_SHA" 2>&1
+
+    if [ $? -ne 0 ]; then
+      echo "ERROR: Build failed for $BUILD_SERVICE"
+      echo "Image: $FULL_IMAGE"
+      exit 1
+    fi
+
+    # Store image URL
+    IMAGE_URLS[$BUILD_SERVICE]=$FULL_IMAGE
+    echo "✓ Built: $FULL_IMAGE"
+  done
+fi
+```
+
+**Exit if:** (only checked if build services exist)
+- Git not available
+- Any build command fails
+- Build returns non-zero exit code
+
+---
+
+### Step 6: Update Backend Service Images in TOML (Only if build services exist)
+
+```bash
+# Skip this step if no build services
+if [ "$SKIP_BUILD" = true ]; then
+  echo "ℹ Skipping Step 6 (no build services)"
+else
+  # Find backend services that reference build services
+  # Replace ${buildServiceId.outputs.IMAGE_URL} with actual image
+
+  for BUILD_SERVICE in $BUILD_SERVICES; do
+    FULL_IMAGE=${IMAGE_URLS[$BUILD_SERVICE]}
+
+    # Find the service ID for this build service
+    BUILD_ID=$(grep -B 10 "name = \"$BUILD_SERVICE\"" aramb.toml | grep 'uniqueIdentifier = ' | tail -1 | awk '{print $3}')
+
+    if [ -z "$BUILD_ID" ]; then
+      echo "ERROR: Could not find uniqueIdentifier for build service $BUILD_SERVICE"
+      exit 1
+    fi
+
+    # Replace image reference with actual image URL
+    sed -i "s|image = \"\${${BUILD_ID}.outputs.IMAGE_URL}\"|image = \"${FULL_IMAGE}\"|g" aramb.toml
+
+    if [ $? -ne 0 ]; then
+      echo "ERROR: Failed to update aramb.toml for build service $BUILD_SERVICE"
+      exit 1
+    fi
+
+    echo "✓ Updated aramb.toml: ${BUILD_ID}.outputs.IMAGE_URL -> $FULL_IMAGE"
+  done
+fi
+```
+
+**Exit if:** (only checked if build services exist)
+- Cannot find build service ID
+- sed command fails
+- TOML update fails
+
+---
+
+### Step 8: Run TOML Deploy (Always runs)
+
+```bash
+# Deploy all services from aramb.toml (with or without built images)
+echo "Deploying services from aramb.toml..."
+
+aramb deploy --deploy-from-toml --yes 2>&1
+
+if [ $? -ne 0 ]; then
+  echo "ERROR: aramb deploy --deploy-from-toml failed"
+  exit 1
+fi
+
+echo "✓ Deployment initiated"
+```
+
+**Exit if:** Deploy command fails
+
+---
+
+### Step 9: Return Deployment Details (Always runs)
+
+```bash
+# Get backend service name (first backend service found)
+BACKEND_SERVICE=$(grep -A 5 'type = "backend"' aramb.toml | grep 'name = ' | head -1 | cut -d'"' -f2)
+
+if [ -z "$BACKEND_SERVICE" ]; then
+  echo "WARNING: No backend service found for PUBLIC_URL extraction"
+  echo '{"status": "deployed", "services": "all", "build_skipped": '$SKIP_BUILD'}'
+  exit 0
+fi
+
+# Get deployment status
+DEPLOY_STATUS=$(aramb deploy status --service "$BACKEND_SERVICE" --output json 2>&1)
+
+if [ $? -ne 0 ]; then
+  echo "WARNING: Could not get deployment status for $BACKEND_SERVICE"
+  echo '{"status": "deployed", "backend_service": "'$BACKEND_SERVICE'", "build_skipped": '$SKIP_BUILD'}'
+  exit 0
+fi
+
+# Extract PUBLIC_URL
+PUBLIC_URL=$(echo "$DEPLOY_STATUS" | jq -r '.outputs.PUBLIC_URL // empty')
+
+# Calculate images built (0 if SKIP_BUILD=true)
+if [ "$SKIP_BUILD" = true ]; then
+  IMAGES_COUNT=0
+else
+  IMAGES_COUNT=$(echo "${!IMAGE_URLS[@]}" | wc -w)
+fi
+
+# Return deployment details
+cat <<EOF
+{
+  "status": "success",
+  "backend_service": "$BACKEND_SERVICE",
+  "public_url": "$PUBLIC_URL",
+  "build_skipped": $SKIP_BUILD,
+  "images_built": $IMAGES_COUNT,
+  "commit_sha": "${COMMIT_SHA:-n/a}"
+}
+EOF
+```
+
+**Exit if:** None (warnings only for status retrieval)
 
 ### 3. Build Backend Services
 
@@ -467,6 +854,7 @@ publicNet = false
 
 Report build and deployment results:
 
+**With Build Services:**
 ```json
 {
   "status": "success",
@@ -474,6 +862,7 @@ Report build and deployment results:
     "id": "app-xyz789",
     "slug": "my-app"
   },
+  "build_skipped": false,
   "builds": {
     "backend": [
       {
@@ -486,7 +875,7 @@ Report build and deployment results:
         "status": "success",
         "toml_updated": true
       }
-    ],
+    ]
   },
   "deployments": {
     "services": ["postgres-db", "backend-api"],
@@ -502,29 +891,79 @@ Report build and deployment results:
 }
 ```
 
-## Error Handling
+**Without Build Services (Direct Deploy):**
+```json
+{
+  "status": "success",
+  "build_skipped": true,
+  "images_built": 0,
+  "deployments": {
+    "services": ["postgres-db", "backend-api"],
+    "status": "success",
+    "backend_outputs": {
+      "PUBLIC_URL": "https://backend-api.aramb.dev",
+      "INTERNAL_URL": "http://backend-api:8080"
+    },
+    "successful": ["postgres-db", "backend-api"],
+    "failed": []
+  },
+  "total_time": "30s"
+}
+```
 
-### Build Failures
+## Error Handling (Strict Exit Policy)
 
-If build fails:
-1. Log error with service name and build output
-2. Continue with independent builds
-3. Skip deployment for failed services
-4. Report summary of successes and failures
+### All Errors = Immediate Exit
 
-### Deployment Failures
+**No error recovery. No debugging. No retries.**
 
-**Backend deployment fails:**
-1. Log error with service name and deployment details
-2. Do NOT proceed to frontend deployment
-3. Exit with error status
-4. Provide troubleshooting: `aramb logs --service <backend-service>`
+### Error Message Format
 
-**Backend PUBLIC_URL not found:**
-1. Log warning with full deployment output
-2. Check if outputs field exists in deployment response
-3. Return deployment details without PUBLIC_URL
-4. Frontend deployment can proceed with manual configuration
+```bash
+echo "ERROR: {specific error message}"
+echo "Step: {step number and name}"
+echo "Details: {relevant context}"
+exit 1
+```
+
+### Example Error Messages
+
+**Step 1 - aramb.toml not found:**
+```
+ERROR: aramb.toml not found in current directory
+Step: 1 - Read aramb.toml
+Details: Ensure aramb-metadata skill has generated the TOML file
+```
+
+**Step 5 - Build failed:**
+```
+ERROR: Build failed for backend-build
+Step: 5 - Run Build Commands
+Details: Image my-app/backend-build:abc123
+Command: aramb build --name my-app/backend-build --tag abc123
+```
+
+**Step 7 - Deploy failed:**
+```
+ERROR: aramb deploy --deploy-from-toml failed
+Step: 7 - Run TOML Deploy
+Details: Check aramb.toml syntax and service configurations
+```
+
+### What NOT to Do
+
+- ❌ Do NOT attempt to create aramb.toml if missing
+- ❌ Do NOT try to login or authenticate
+- ❌ Do NOT list applications or services
+- ❌ Do NOT retry failed builds
+- ❌ Do NOT suggest fixes or debug
+- ❌ Do NOT proceed to next step if current fails
+
+### What TO Do
+
+- ✅ Log clear error message
+- ✅ Exit immediately with exit code 1
+- ✅ Return error details in output
 
 ### Missing Dependencies
 
