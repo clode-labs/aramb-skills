@@ -1,27 +1,43 @@
 ---
-name: frontend-local-deployment
-description: Deploy frontend applications directly without aramb.toml. Automatically detects if static files need building or already exist, creates a new frontend service, and deploys. Use this for quick frontend-only deployments. Triggered by requests like "deploy frontend", "deploy React app", "deploy static site", or "frontend only deployment".
+name: frontend-deployment
+description: Deploy frontend applications with or without aramb.toml. If TOML exists, deploys from TOML first then static files. Otherwise auto-creates service. Automatically detects frameworks, builds static files, and returns deployment ID and URL. Use for all frontend deployments.
 category: deployment
-tags: [frontend, deployment, static, react, vue, nextjs, angular, build]
+tags: [frontend, deployment, static, toml, react, vue, nextjs, angular, build]
 license: MIT
 ---
 
-# Frontend Local Deployment
+# Frontend Deployment
 
-Deploy frontend applications directly by auto-creating services and deploying static files.
+Deploy frontend applications with TOML-based or auto-create workflows.
 
 ## Role
 
-You are a frontend deployment specialist that detects build requirements, builds or uses existing static files, creates frontend services automatically, and deploys without needing aramb.toml configuration.
+You are a frontend deployment specialist that supports two deployment modes: TOML-based (when aramb.toml exists) and auto-create (when no TOML). Detects frameworks, builds static files, deploys services, and returns deployment ID and URL from aramb-cli.
+
+## Deployment Modes
+
+**TOML Mode** (if aramb.toml exists):
+1. Deploy services from TOML: `aramb deploy --deploy-from-toml`
+2. Extract frontend service slug from aramb.toml
+3. Build static files if needed
+4. Deploy static files: `aramb deploy --service {slug} --static-outdir {path}`
+
+**Auto Mode** (if no aramb.toml):
+1. Requires APPLICATION_ID environment variable
+2. Build static files if needed
+3. Auto-generate service name
+4. Create and deploy: `aramb deploy --service {name} --static-outdir {path}`
 
 ## Responsibilities
 
-- Get APPLICATION_ID from environment variable
+- Check for aramb.toml configuration file
+- Deploy services from aramb.toml first
+- Extract frontend service slug from TOML
 - Detect if static files exist or need building
 - Build static files if needed using appropriate framework
-- Create new frontend service automatically
-- Deploy static files to the service
+- Deploy static files to the frontend service
 - Validate deployment successful
+- Return deployment ID and URL
 
 ## Constraints
 
@@ -44,9 +60,6 @@ You are a frontend deployment specialist that detects build requirements, builds
 ### 1. Validate Environment
 
 ```bash
-# Check APPLICATION_ID set
-[ -n "$APPLICATION_ID" ] || exit 1
-
 # Check aramb-cli installed
 if ! command -v aramb &> /dev/null; then
   echo "aramb-cli not found. Install from:"
@@ -56,6 +69,17 @@ fi
 
 # Verify ARAMB_API_TOKEN
 [ -n "$ARAMB_API_TOKEN" ] || exit 1
+
+# Check for aramb.toml to determine deployment flow
+if [ -f "aramb.toml" ]; then
+  DEPLOY_MODE="toml"
+  echo "Found aramb.toml - using TOML-based deployment"
+else
+  DEPLOY_MODE="auto"
+  echo "No aramb.toml - using auto-create deployment"
+  # For auto mode, APPLICATION_ID is required
+  [ -n "$APPLICATION_ID" ] || exit 1
+fi
 ```
 
 ### 2. Detect Static Files or Build Requirement
@@ -102,47 +126,99 @@ STATIC_DIR="./dist"  # or framework-specific
 - **Angular**: `dist/` directory
 - **Generic**: `dist/` directory
 
-### 4. Create Frontend Service
+### 4. Deploy Services (TOML mode) OR Create Service (Auto mode)
 
-Create new service using aramb CLI:
+**If DEPLOY_MODE="toml" (aramb.toml exists):**
+
+```bash
+# Step 4a: Deploy all services from TOML first
+echo "Deploying services from aramb.toml..."
+aramb deploy --deploy-from-toml --yes
+
+# Step 4b: Extract frontend service slug from aramb.toml
+# Parse the TOML to find the frontend service
+SERVICE_SLUG=$(grep -A 10 '\[services\.' aramb.toml | grep -E 'type.*=.*"frontend"' -B 5 | grep '\[services\.' | sed 's/\[services\.//;s/\]//' | head -1)
+
+if [ -z "$SERVICE_SLUG" ]; then
+  echo "ERROR: No frontend service found in aramb.toml"
+  exit 1
+fi
+
+echo "Found frontend service: $SERVICE_SLUG"
+```
+
+**If DEPLOY_MODE="auto" (no aramb.toml):**
 
 ```bash
 # Generate service name if not provided
-SERVICE_NAME="${service_name:-$(basename $(pwd))-web}"
+SERVICE_SLUG="${service_name:-$(basename $(pwd))-web}"
 
-# Create service via aramb API
-aramb deploy --service "${SERVICE_NAME}" \
+# Create service via aramb deploy
+aramb deploy --service "${SERVICE_SLUG}" \
   --application "${APPLICATION_ID}" \
   --static-outdir "${STATIC_DIR}" \
   --yes
 ```
 
-**Service configuration:**
-- Type: frontend
-- Application: From APPLICATION_ID env var
-- StaticPath: Absolute path to static directory
-- Port: Default 8080 or custom
-- Public: true (accessible externally)
+### 5. Deploy Static Files to Frontend Service
 
-### 5. Deploy Static Files
-
-Deploy the static files to the created service:
+Deploy the static files to the frontend service:
 
 ```bash
-# Deploy from static directory
-aramb deploy --service "${SERVICE_NAME}" \
+# Deploy static files using the service slug
+DEPLOY_OUTPUT=$(aramb deploy --service "${SERVICE_SLUG}" \
   --static-outdir "${STATIC_DIR}" \
-  --yes
+  --yes 2>&1)
+
+# Capture deployment ID and URL from aramb-cli output
+# aramb-cli returns these values - parse them
+DEPLOYMENT_ID=$(echo "$DEPLOY_OUTPUT" | grep -oP 'deployment_id:\s*\K[^\s]+' || echo "")
+DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | grep -oP 'url:\s*\K[^\s]+' || echo "")
+
+echo "Deployment ID: $DEPLOYMENT_ID"
+echo "Deployment URL: $DEPLOYMENT_URL"
 ```
 
 ### 6. Validate Deployment
 
 ```bash
 # Check deployment status
-aramb deploy status --service "${SERVICE_NAME}"
+aramb deploy status --service "${SERVICE_SLUG}"
+
+# Verify deployment ID and URL were captured
+if [ -z "$DEPLOYMENT_ID" ]; then
+  echo "WARNING: deployment_id not captured from aramb-cli output"
+fi
+
+if [ -z "$DEPLOYMENT_URL" ]; then
+  echo "WARNING: deployment_url not captured from aramb-cli output"
+fi
 
 # Wait for service to be healthy
-aramb deploy status --service "${SERVICE_NAME}" --loop --interval 5
+aramb deploy status --service "${SERVICE_SLUG}" --loop --interval 5
+```
+
+## Deployment Flow Comparison
+
+### TOML Mode (aramb.toml exists)
+
+```
+1. Validate environment
+2. Detect/build static files
+3. Deploy from TOML: aramb deploy --deploy-from-toml
+4. Extract service slug from aramb.toml
+5. Deploy static files: aramb deploy --service {slug} --static-outdir {path}
+6. Return {id, url} from aramb-cli
+```
+
+### Auto Mode (no aramb.toml)
+
+```
+1. Validate environment (requires APPLICATION_ID)
+2. Detect/build static files
+3. Auto-generate service name
+4. Create and deploy: aramb deploy --service {name} --static-outdir {path}
+5. Return {id, url} from aramb-cli
 ```
 
 ## Detection Logic
@@ -249,13 +325,24 @@ Service created with:
 
 ### Critical (MUST pass)
 
-- APPLICATION_ID environment variable set
+**For all deployments:**
 - ARAMB_API_TOKEN environment variable set
 - aramb-cli accessible in PATH
 - Static files exist (built or found)
-- Service created successfully
 - Deployment completes without errors
 - Service reports healthy status
+- **deployment_id captured from aramb-cli**
+- **deployment_url captured from aramb-cli**
+
+**For TOML mode:**
+- aramb.toml file exists
+- TOML deployment succeeds: `aramb deploy --deploy-from-toml`
+- Frontend service slug extracted from TOML
+- Static files deployed to correct service
+
+**For Auto mode:**
+- APPLICATION_ID environment variable set
+- Service created successfully
 
 ### Expected (SHOULD pass)
 
@@ -272,41 +359,49 @@ Service created with:
 
 ## Output
 
-Report deployment results:
+**Required output format:**
 
 ```json
 {
-  "status": "success",
-  "detection": {
-    "framework": "Next.js",
-    "needs_build": false,
-    "static_dir": "./out"
-  },
-  "build": {
-    "status": "skipped",
-    "reason": "Static files already exist"
-  },
-  "service": {
-    "name": "my-app-web",
-    "application_id": "app-123",
-    "created": true,
-    "url": "https://my-app-web.aramb.dev"
-  },
-  "deployment": {
-    "status": "success",
-    "time": "45s",
-    "files_deployed": 127
-  }
+  "id": "deploy-abc123xyz",
+  "url": "https://my-app-web.aramb.dev"
+}
+```
+
+**Fields:**
+- `id`: Deployment ID returned by aramb-cli
+- `url`: Public URL returned by aramb-cli
+
+**Extended output (optional):**
+
+```json
+{
+  "id": "deploy-abc123xyz",
+  "url": "https://my-app-web.aramb.dev",
+  "deploy_mode": "toml",
+  "service_slug": "my-app-web",
+  "static_dir": "./dist",
+  "framework": "React"
 }
 ```
 
 ## Usage Examples
 
-### Deploy with Auto-Build
+### Deploy with TOML (Recommended)
 
 ```bash
+# Prerequisites: aramb.toml exists with frontend service configured
+# Deploys from TOML, then deploys static files
+/frontend-deployment
+```
+
+### Deploy with Auto-Build (No TOML)
+
+```bash
+# Prerequisites: APPLICATION_ID environment variable set
 # Detects framework, builds, creates service, deploys
-/frontend-local-deployment
+export APPLICATION_ID="app-123"
+/frontend-deployment
 ```
 
 ### Deploy Existing Static Files
