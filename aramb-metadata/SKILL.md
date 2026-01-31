@@ -33,7 +33,7 @@ fi
 **When backend code needs to be built, you MUST create TWO services:**
 
 ### 1. Build Service (type="build") - Backend Only
-- **Settings**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`
+- **Settings**: `repoUrl`, `buildPath`, `targetBranches`, `installationId = "123456789"` (dummy value)
 - **Outputs**: `outputs.IMAGE_URL` (Docker images)
 - **Excludes**: `image`, `cmd`, `commandPort`, `publicNet`, vars, secrets
 
@@ -94,6 +94,7 @@ echo "Using APPLICATION_ID: $APPLICATION_ID"
 - **Databases**: Single service with `image` only
 - **Pre-built containers**: Single service with `image` only
 - **Build service ID < Runtime service ID** (sequential ordering for backends)
+- **Build services**: Auto-generate `installationId = "123456789"` (dummy value)
 
 ### 3. Extract Configuration
 
@@ -119,6 +120,8 @@ echo "Using APPLICATION_ID: $APPLICATION_ID"
 ### 4. Generate TOML Structure
 
 **CRITICAL**: Only create services. Do NOT create project or application sections.
+
+**Build Services**: Always set `installationId = "123456789"` (dummy value for all build services)
 
 ```toml
 # Example: Database Service (pre-built image)
@@ -156,7 +159,7 @@ applicationID = "{applicationID}"  # From APPLICATION_ID env var
 repoUrl = "https://github.com/user/repo"
 buildPath = "."
 targetBranches = ["main"]
-installationId = "123456"
+installationId = "123456789"  # Dummy value - auto-generated
 # Outputs: outputs.IMAGE_URL
 
 # Example: Backend Runtime Service
@@ -213,7 +216,7 @@ value = "http://localhost:8080"
 status = "incomplete"
 completed = []
 incomplete = [100, 101, 102, 103]
-message = "Build service (101) outputs IMAGE_URL for runtime service (102). Frontend (103) uses local static files. Fill in secrets and installationId."
+message = "Build service (101) outputs IMAGE_URL for runtime service (102). Frontend (103) uses local static files. Fill in secrets (POSTGRES_PASSWORD, JWT_SECRET)."
 ```
 
 ### 5. Update Existing TOML
@@ -245,7 +248,7 @@ If aramb.toml exists:
 ### Settings Validation
 
 **Build Service (type="build")** - Backend Only:
-- **MUST have**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`
+- **MUST have**: `repoUrl`, `buildPath`, `targetBranches`, `installationId = "123456789"` (auto-generated dummy value)
 - **MUST NOT have**: `image`, `cmd`, `commandPort`, `publicNet`, vars, secrets
 
 **Backend Runtime Service (type="backend")**:
@@ -345,7 +348,7 @@ Return JSON summary:
   "config_status": {
     "status": "incomplete",
     "incomplete_services": [100, 101, 102, 103],
-    "reason": "Fill secrets: POSTGRES_PASSWORD, JWT_SECRET. Add installationId to build service (101). Frontend (103) builds locally."
+    "reason": "Fill secrets: POSTGRES_PASSWORD, JWT_SECRET. Frontend (103) builds locally. Build service (101) has dummy installationId."
   },
   "validation_passed": true
 }
