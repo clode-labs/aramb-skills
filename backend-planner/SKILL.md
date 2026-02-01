@@ -95,20 +95,20 @@ After exploring the codebase, designing the architecture, and searching for skil
 
 **Architecture Summary**: Before creating tasks, output a brief text summary of your planned architecture. This provides context for the tasks.
 
-**Task Creation**: Use `create_tasks_batch` with `uniqueId` and `logicalDependencies` to define task relationships.
+**Task Creation**: Use `create_tasks_batch` with `unique_id` and `logical_dependencies` to define task relationships.
 
-**REQUIRED FIELD NAMES** (use these EXACTLY):
-- `uniqueId` (camelCase, integer) - NOT `unique_id`
-- `task_name` (string) - NOT `name`
+**REQUIRED FIELD NAMES** (use these EXACTLY - all snake_case):
+- `unique_id` (integer) - Temporary ID for dependency references (1, 2, 3...)
+- `task_name` (string) - Task name (3-255 characters)
 - `skill_id` (string) - full_id from search results
-- `description` (string)
-- `task_order` (integer)
-- `logicalDependencies` (array of integers) - references other tasks' uniqueId
+- `description` (string) - Task description
+- `task_order` (integer) - Execution order (1, 2, 3...)
+- `logical_dependencies` (array of integers) - references other tasks' unique_id
 
 ```
 create_tasks_batch(tasks=[
   {
-    "uniqueId": 1,
+    "unique_id": 1,
     "skill_id": "<development-full_id from search>",
     "task_name": "Implement [Feature]",
     "description": "Build the API and services",
@@ -127,14 +127,14 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 3600
   },
   {
-    "uniqueId": 2,
+    "unique_id": 2,
     "skill_id": "<testing-or-critique-full_id from search>",
     "task_name": "QA: Test [Feature]",
     "description": "Write and run tests validating user requirements. If implementation has issues, fail with detailed feedback.",
     "task_order": 2,
-    "logicalDependencies": [1],
+    "logical_dependencies": [1],
     "inputs": {
-      "critiques_tasks": [1],  // ← CRITICAL: References uniqueId of task(s) this QA validates
+      "critiques_tasks": [1],  // ← CRITICAL: References unique_id of task(s) this QA validates
       "original_prompt": "The user's original request",
       "preceding_task": {
         "task_order": 1,
@@ -157,12 +157,12 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 3600
   },
   {
-    "uniqueId": 3,
+    "unique_id": 3,
     "skill_id": "<metadata-full_id from search>",
     "task_name": "Create/update aramb.toml",
     "description": "Generate or update aramb.toml configuration by analyzing project structure, docker-compose, and codebase",
     "task_order": 3,
-    "logicalDependencies": [2],
+    "logical_dependencies": [2],
     "inputs": {
       "requirements": "Analyze project and create/update aramb.toml with service configurations",
       "project_path": "."
@@ -175,12 +175,12 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 1800
   },
   {
-    "uniqueId": 4,
+    "unique_id": 4,
     "skill_id": "<deployment-full_id from search>",
     "task_name": "Deploy backend services",
     "description": "Build Docker images with DOCKER_REPOSITORY naming and deploy backend services via aramb.toml",
     "task_order": 4,
-    "logicalDependencies": [3],
+    "logical_dependencies": [3],
     "inputs": {
       "project_path": ".",
       "skip_build": false,
@@ -196,7 +196,7 @@ create_tasks_batch(tasks=[
 ])
 ```
 
-**Logical Dependencies**: Use `uniqueId` (integer) to identify tasks within the batch, and `logicalDependencies` (array of integers) to reference other tasks by their uniqueId. The server validates for circular dependencies and missing references, returning a 400 error if validation fails.
+**Logical Dependencies**: Use `unique_id` (integer) to identify tasks within the batch, and `logical_dependencies` (array of integers) to reference other tasks by their unique_id. The server validates for circular dependencies and missing references, returning a 400 error if validation fails.
 
 ## QA Task Construction
 
@@ -211,7 +211,7 @@ The QA task is responsible for:
 ```json
 {
   "inputs": {
-    "critiques_tasks": [1],  // ← REQUIRED: uniqueId(s) of task(s) this QA validates
+    "critiques_tasks": [1],  // ← REQUIRED: unique_id(s) of task(s) this QA validates
     "original_prompt": "User's original request",
     "preceding_task": {
       "task_order": 1,
@@ -270,7 +270,7 @@ search_skills(category: "development", tag: "metadata")
 ```
 create_tasks_batch(tasks=[
   {
-    "uniqueId": 1,
+    "unique_id": 1,
     "skill_id": "acme/skills/backend-dev",
     "task_name": "Build subscription service",
     "description": "Create migrations, models, services, and handlers for Stripe subscription API",
@@ -292,12 +292,12 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 3600
   },
   {
-    "uniqueId": 2,
+    "unique_id": 2,
     "skill_id": "acme/skills/backend-testing",
     "task_name": "QA: Test subscription API",
     "description": "Write and run tests for subscription API. Validate create, status check, and webhook handling work. If implementation has issues, fail with detailed feedback for rebuild.",
     "task_order": 2,
-    "logicalDependencies": [1],
+    "logical_dependencies": [1],
     "inputs": {
       "critiques_tasks": [1],  // ← Triggers correctness loop if verdict=fail
       "original_prompt": "Build subscription API with Stripe",
@@ -323,12 +323,12 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 3600
   },
   {
-    "uniqueId": 3,
+    "unique_id": 3,
     "skill_id": "acme/skills/aramb-metadata",
     "task_name": "Create/update aramb.toml",
     "description": "Generate aramb.toml with project services and configuration",
     "task_order": 3,
-    "logicalDependencies": [2],
+    "logical_dependencies": [2],
     "inputs": {
       "requirements": "Analyze project structure and create/update aramb.toml",
       "project_path": "."
@@ -341,12 +341,12 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 1800
   },
   {
-    "uniqueId": 4,
+    "unique_id": 4,
     "skill_id": "acme/skills/backend-deployment",
     "task_name": "Deploy backend services",
     "description": "Build Docker images and deploy backend services to get PUBLIC_URL",
     "task_order": 4,
-    "logicalDependencies": [3],
+    "logical_dependencies": [3],
     "inputs": {
       "project_path": ".",
       "skip_build": false,
@@ -595,9 +595,9 @@ Use the `full_id` from search results in your task definitions. The full_id form
 8. **QA task validates user requirements** AND its own criteria (coverage, security)
 9. Sequential `task_order` starting from 1
 10. Pass `preceding_task` to QA task so it knows what to validate
-11. **Use `uniqueId` and `logicalDependencies`** to define task relationships within a batch:
-    - `uniqueId`: Sequential integers (1, 2, ...) to identify tasks
-    - `logicalDependencies`: Array of integers referencing other tasks' uniqueId
+11. **Use `unique_id` and `logical_dependencies`** to define task relationships within a batch:
+    - `unique_id`: Sequential integers (1, 2, ...) to identify tasks
+    - `logical_dependencies`: Array of integers referencing other tasks' unique_id
 12. **Sub-tasks cannot have sub-tasks** - only one level of nesting allowed
 13. **validation_criteria** defines what each task validates about itself:
     - Build: compiles, runs, migrations work, endpoints respond

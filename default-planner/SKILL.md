@@ -140,14 +140,14 @@ Task 3: Finalization
 Each task must have:
 
 **Required fields:**
-- `uniqueId`: Sequential integer (1, 2, 3...)
+- `unique_id`: Sequential integer (1, 2, 3...)
 - `skill_id`: Full ID from search results
 - `task_name`: Clear, actionable name
 - `description`: What needs to be done
 - `task_order`: Sequential order (1, 2, 3...)
 
 **Optional fields:**
-- `logicalDependencies`: Array of uniqueIds this task depends on
+- `logical_dependencies`: Array of unique_ids this task depends on
 - `inputs`: Information needed to complete the task
 - `validation_criteria`: How to verify success (critical, expected, nice_to_have)
 - `timeout_seconds`: Max time for task execution
@@ -291,18 +291,18 @@ search_skills(tag="docker")
 
 ## Task Creation Template
 
-**REQUIRED FIELD NAMES** (use these EXACTLY):
-- `uniqueId` (camelCase, integer) - NOT `unique_id`
-- `task_name` (string) - NOT `name`
+**REQUIRED FIELD NAMES** (use these EXACTLY - all snake_case):
+- `unique_id` (integer) - Temporary ID for dependency references (1, 2, 3...)
+- `task_name` (string) - Task name (3-255 characters)
 - `skill_id` (string) - full_id from search results
-- `description` (string)
-- `task_order` (integer)
-- `logicalDependencies` (array of integers) - references other tasks' uniqueId
+- `description` (string) - Task description
+- `task_order` (integer) - Execution order (1, 2, 3...)
+- `logical_dependencies` (array of integers) - references other tasks' unique_id
 
 ```json
 create_tasks_batch(tasks=[
   {
-    "uniqueId": 1,
+    "unique_id": 1,
     "skill_id": "<full_id_from_search>",
     "task_name": "Clear, actionable name",
     "description": "Detailed description of what to build",
@@ -320,12 +320,12 @@ create_tasks_batch(tasks=[
     "timeout_seconds": 3600
   },
   {
-    "uniqueId": 2,
+    "unique_id": 2,
     "skill_id": "<qa_skill_full_id>",
     "task_name": "QA: Validate [Feature]",
     "description": "Test and validate implementation",
     "task_order": 2,
-    "logicalDependencies": [1],
+    "logical_dependencies": [1],
     "inputs": {
       "critiques_tasks": [1],
       "original_prompt": "User's request",
