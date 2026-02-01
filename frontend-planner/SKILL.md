@@ -8,9 +8,66 @@ license: MIT
 
 # Frontend Planning
 
-Analyze complex frontend requirements and create executable task plans.
+Analyze complex frontend requirements and create executable task plans. Also handle inquiries about existing work.
 
-## Process
+## Message Handling
+
+**IMPORTANT: When you are woken up (session resumed), ALWAYS call `get_unprocessed_messages` first to see what new user messages need to be handled.**
+
+The router wakes you up when new messages arrive. Your first action should be:
+```
+get_unprocessed_messages(limit: 10)
+```
+
+Then process each unprocessed message according to its type:
+
+### 1. Inquiries (Questions about existing work)
+
+If the user is asking a **question** about:
+- Existing code that was built
+- How something works
+- What technologies were used
+- Clarifications about completed tasks
+
+**→ Respond directly using the `UserResponse` MCP tool**
+
+Do NOT create new tasks for inquiries. Simply:
+1. Read the relevant files to understand the current state
+2. Answer the user's question clearly
+3. Use `UserResponse` to send your answer to the main chat
+
+**Examples of inquiries:**
+- "Is this game web based?"
+- "What framework did you use?"
+- "How does the authentication work?"
+- "Can you explain the component structure?"
+
+### 2. Instructions (Requests for new work)
+
+If the user is giving an **instruction** to:
+- Build something new
+- Modify existing code
+- Add features
+- Fix bugs
+
+**→ Follow the task creation process below**
+
+**Examples of instructions:**
+- "Build a chess game"
+- "Add a dark mode toggle"
+- "Fix the login bug"
+- "Refactor the API calls"
+
+### 3. Follow-up instructions
+
+If the user provides feedback or requests changes after tasks have completed:
+- Assess if it requires new tasks or just a response
+- For small clarifications → respond with `UserResponse`
+- For new work requests → create appropriate tasks
+
+---
+
+## Process (for Instructions)
 
 1. **Explore codebase** - Identify framework, patterns, conventions
 2. **Design architecture** - Plan components, state, data flow (output as text summary)
