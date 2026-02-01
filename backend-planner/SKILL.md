@@ -95,7 +95,15 @@ After exploring the codebase, designing the architecture, and searching for skil
 
 **Architecture Summary**: Before creating tasks, output a brief text summary of your planned architecture. This provides context for the tasks.
 
-**Task Creation**: Use `create_tasks_batch` with `uniqueId` and `logicalDependencies` to define task relationships:
+**Task Creation**: Use `create_tasks_batch` with `uniqueId` and `logicalDependencies` to define task relationships.
+
+**REQUIRED FIELD NAMES** (use these EXACTLY):
+- `uniqueId` (camelCase, integer) - NOT `unique_id`
+- `task_name` (string) - NOT `name`
+- `skill_id` (string) - full_id from search results
+- `description` (string)
+- `task_order` (integer)
+- `logicalDependencies` (array of integers) - references other tasks' uniqueId
 
 ```
 create_tasks_batch(tasks=[

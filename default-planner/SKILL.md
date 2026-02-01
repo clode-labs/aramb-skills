@@ -291,6 +291,14 @@ search_skills(tag="docker")
 
 ## Task Creation Template
 
+**REQUIRED FIELD NAMES** (use these EXACTLY):
+- `uniqueId` (camelCase, integer) - NOT `unique_id`
+- `task_name` (string) - NOT `name`
+- `skill_id` (string) - full_id from search results
+- `description` (string)
+- `task_order` (integer)
+- `logicalDependencies` (array of integers) - references other tasks' uniqueId
+
 ```json
 create_tasks_batch(tasks=[
   {
