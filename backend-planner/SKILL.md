@@ -509,7 +509,9 @@ This pattern is powerful because:
 
 ## Skill Discovery (REQUIRED)
 
-Before creating tasks, search for **4 skills** to build the task plan:
+Before creating tasks, search for **4 skills** to build the task plan.
+
+**IMPORTANT:** Use ONLY `category` and `tag` parameters. Do NOT add a `q` parameter - it's unnecessary and can break the search.
 
 ```
 # 1. Find a skill to BUILD the feature
