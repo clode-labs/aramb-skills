@@ -71,7 +71,9 @@ Classify the work into categories:
 
 ### 4. Search for Skills
 
-Use `search_skills` MCP tool to find appropriate skills:
+Use `search_skills` MCP tool to find appropriate skills.
+
+**IMPORTANT:** Use ONLY `category` and `tag` parameters. Do NOT add a `q` parameter - it's unnecessary and can break the search.
 
 ```
 # Find development skills by domain
