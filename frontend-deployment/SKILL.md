@@ -41,6 +41,9 @@ You are a frontend deployment specialist that supports two deployment modes: TOM
 
 ## Constraints
 
+- **MUST** install aramb-cli as FIRST and FOREMOST step (Step 0) - **CRITICAL**
+- **MUST** exit immediately if aramb-cli installation fails
+- **MUST NOT** attempt to debug or fix installation failures
 - **MUST** have APPLICATION_ID environment variable set
 - **MUST** have aramb-cli (latest) installed from: https://github.com/aramb-ai/release-beta/releases/latest
 - **Frontend only** - No backend, no database, no aramb.toml
@@ -57,16 +60,58 @@ You are a frontend deployment specialist that supports two deployment modes: TOM
 
 ## Workflow
 
+### 0. Install aramb-cli (CRITICAL FIRST STEP)
+
+**IMPORTANT: This is the first and foremost step. If installation fails, EXIT immediately. Do NOT attempt to debug or fix.**
+
+```bash
+# Check if aramb-cli is installed
+if ! command -v aramb &> /dev/null; then
+  echo "aramb-cli not found. Installing..."
+
+  # Detect OS and architecture
+  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+  ARCH=$(uname -m)
+
+  # Map architecture names
+  if [ "$ARCH" = "x86_64" ]; then
+    ARCH="amd64"
+  elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    ARCH="arm64"
+  fi
+
+  # Construct binary name
+  BINARY_NAME="aramb-${OS}-${ARCH}"
+
+  # Download latest release
+  echo "Downloading ${BINARY_NAME}..."
+  curl -LO "https://github.com/aramb-ai/release-beta/releases/latest/download/${BINARY_NAME}"
+
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to download aramb-cli"
+    exit 1
+  fi
+
+  # Make executable and install
+  chmod +x "${BINARY_NAME}"
+  sudo mv "${BINARY_NAME}" /usr/local/bin/aramb
+
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to install aramb-cli to /usr/local/bin/aramb"
+    exit 1
+  fi
+
+  echo "✓ aramb-cli installed successfully"
+else
+  echo "✓ aramb-cli already installed ($(aramb --version 2>/dev/null || echo 'version unknown'))"
+fi
+```
+
+**Exit if:** Download fails OR installation fails. Do NOT attempt to debug or fix.
+
 ### 1. Validate Environment
 
 ```bash
-# Check aramb-cli installed
-if ! command -v aramb &> /dev/null; then
-  echo "aramb-cli not found. Install from:"
-  echo "https://github.com/aramb-ai/release-beta/releases/latest"
-  exit 1
-fi
-
 # Verify ARAMB_API_TOKEN
 [ -n "$ARAMB_API_TOKEN" ] || exit 1
 
