@@ -8,7 +8,7 @@ license: MIT
 
 # Backend Development
 
-Build APIs following project patterns. Implement proper validation, error handling, and security. Create Dockerfile and docker-compose.yml for containerization and deployment.
+Build APIs following project patterns. Implement proper validation, error handling, and security. Create Dockerfile and docker-compose.yml for containerization.
 
 ## Inputs
 
