@@ -129,6 +129,7 @@ echo "Using APPLICATION_ID: $APPLICATION_ID"
 uniqueIdentifier = 100
 name = "postgres-db"
 type = "postgres"
+description = "PostgreSQL database service for application data storage"
 applicationID = "{applicationID}"  # From APPLICATION_ID env var
 
 [services.configuration.settings]
@@ -153,6 +154,7 @@ value = ""
 uniqueIdentifier = 101
 name = "backend-build"
 type = "build"
+description = "Build service for backend API Docker image"
 applicationID = "{applicationID}"  # From APPLICATION_ID env var
 
 [services.configuration.settings]
@@ -167,6 +169,7 @@ installationId = "123456789"  # Dummy value - auto-generated
 uniqueIdentifier = 102
 name = "backend-api"
 type = "backend"
+description = "Backend API service handling business logic and data processing"
 applicationID = "{applicationID}"  # From APPLICATION_ID env var
 
 [services.configuration.settings]
@@ -200,6 +203,7 @@ value = "${100.secrets.POSTGRES_PASSWORD}"
 uniqueIdentifier = 103
 name = "frontend-web"
 type = "frontend"
+description = "Frontend web application serving static files to users"
 applicationID = "{applicationID}"  # From APPLICATION_ID env var
 
 [services.configuration.settings]
@@ -239,6 +243,16 @@ If aramb.toml exists:
 - **MUST** exit with error if not found
 - **MUST** use `applicationID = "{applicationID}"` in all services (replaced with actual APPLICATION_ID value)
 
+### Service Description
+- **MUST** include `description` field for ALL services
+- **MUST** be clear and concise (1-2 sentences)
+- **MUST** describe the service's purpose and role in the application
+- Examples:
+  - Database: "PostgreSQL database service for application data storage"
+  - Backend: "Backend API service handling business logic and data processing"
+  - Frontend: "Frontend web application serving static files to users"
+  - Build: "Build service for backend API Docker image"
+
 ### Service Types
 - Supported: aramb-agent, backend, build, frontend, mongodb, onboarding, postgres, redis, template
 - **Build service**: Always type="build"
@@ -248,26 +262,31 @@ If aramb.toml exists:
 ### Settings Validation
 
 **Build Service (type="build")** - Backend Only:
+- **MUST have**: `description` (clear, concise service purpose)
 - **MUST have**: `repoUrl`, `buildPath`, `targetBranches`, `installationId = "123456789"` (auto-generated dummy value)
 - **MUST NOT have**: `image`, `cmd`, `commandPort`, `publicNet`, vars, secrets
 
 **Backend Runtime Service (type="backend")**:
+- **MUST have**: `description` (clear, concise service purpose)
 - **MUST have**: `image` (reference to build output, e.g., `${101.outputs.IMAGE_URL}`)
 - **MUST have**: `cmd`, `commandPort`
 - **MUST NOT have**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`
 - **MUST have**: Corresponding build service with lower uniqueIdentifier
 
 **Frontend Service (type="frontend")** - Single Service:
+- **MUST have**: `description` (clear, concise service purpose)
 - **MUST have**: `staticPath` (local path to build output, e.g., "./frontend/dist")
 - **MUST have**: `cmd`, `commandPort`
 - **MUST NOT have**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`, `image`
 - **NO build service required** - frontend builds happen locally
 
 **Database Service (postgres, redis, mongodb)**:
+- **MUST have**: `description` (clear, concise service purpose)
 - **MUST have**: `image` (direct, e.g., "postgres:15")
 - **MUST NOT have**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`
 
 **Pre-built Container Service**:
+- **MUST have**: `description` (clear, concise service purpose)
 - **MUST have**: `image` (direct, e.g., "myorg/app:latest")
 - **MUST NOT have**: `repoUrl`, `buildPath`, `targetBranches`, `installationId`
 
@@ -288,20 +307,21 @@ If aramb.toml exists:
 3. Structure complete: Only services (100+), NO project or application sections
 4. Service types valid: aramb-agent, backend, build, frontend, mongodb, onboarding, postgres, redis, template
 5. uniqueIdentifiers sequential: 100, 101, 102, ...
-6. Required fields present (service: name, type, applicationID)
-7. All services use `applicationID = "{applicationID}"` (literal string, will be replaced at runtime)
-8. Build service pattern followed for backends:
+6. Required fields present (service: name, type, description, applicationID)
+7. All services MUST have `description` field with clear, concise text (1-2 sentences)
+8. All services use `applicationID = "{applicationID}"` (literal string, will be replaced at runtime)
+9. Build service pattern followed for backends:
    - Build services (type="build") have `repoUrl`, no `cmd`
    - Backend runtime services reference build outputs, no `repoUrl`
    - Build service ID < Backend runtime service ID
-9. Frontend services (type="frontend"):
+10. Frontend services (type="frontend"):
    - Have `staticPath` pointing to local build directory
    - NO separate build service required
    - Have `cmd` and `commandPort`
-10. Database services have `image`, no `repoUrl`
-11. Vars and secrets extracted from codebase (not empty)
-12. Service references valid (`${N.vars.KEY}` points to existing service)
-13. Secrets empty or use references (never hardcoded)
+11. Database services have `image`, no `repoUrl`
+12. Vars and secrets extracted from codebase (not empty)
+13. Service references valid (`${N.vars.KEY}` points to existing service)
+14. Secrets empty or use references (never hardcoded)
 
 ## Error Handling
 
@@ -321,10 +341,10 @@ Return JSON summary:
     "services": 4
   },
   "services_detected": [
-    {"uniqueIdentifier": 100, "name": "postgres-db", "type": "postgres", "applicationID": "{applicationID}"},
-    {"uniqueIdentifier": 101, "name": "backend-build", "type": "build", "applicationID": "{applicationID}"},
-    {"uniqueIdentifier": 102, "name": "backend-api", "type": "backend", "applicationID": "{applicationID}"},
-    {"uniqueIdentifier": 103, "name": "frontend-web", "type": "frontend", "applicationID": "{applicationID}"}
+    {"uniqueIdentifier": 100, "name": "postgres-db", "type": "postgres", "description": "PostgreSQL database service for application data storage", "applicationID": "{applicationID}"},
+    {"uniqueIdentifier": 101, "name": "backend-build", "type": "build", "description": "Build service for backend API Docker image", "applicationID": "{applicationID}"},
+    {"uniqueIdentifier": 102, "name": "backend-api", "type": "backend", "description": "Backend API service handling business logic and data processing", "applicationID": "{applicationID}"},
+    {"uniqueIdentifier": 103, "name": "frontend-web", "type": "frontend", "description": "Frontend web application serving static files to users", "applicationID": "{applicationID}"}
   ],
   "build_outputs": {
     "101": "outputs.IMAGE_URL → service 102"
