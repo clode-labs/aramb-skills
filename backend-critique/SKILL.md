@@ -21,15 +21,40 @@ Validate backend work against requirements. Check security. If implementation ha
   - `expected`: SHOULD pass (log warning if not)
   - `nice_to_have`: Optional improvements
 
+## Task Chat Communication
+
+Send progress updates to the task chat so users can follow along. Use `TaskUserResponse` MCP tool for key milestones:
+
+**When to send updates:**
+- **Starting**: What API/endpoints you're validating
+- **Completion**: Verdict with security status and key findings
+
+**Example:**
+```
+TaskUserResponse(message="🔍 Starting validation of subscription API. Testing endpoints, auth enforcement, and security checks.")
+```
+
+```
+TaskUserResponse(message="✅ Validation passed! Score: 90/100. All endpoints work, auth enforced, input validation present.")
+```
+
+```
+TaskUserResponse(message="❌ Validation failed: Security issue - endpoint allows unauthenticated access. See feedback for details.")
+```
+
+Keep messages concise. Focus on verdict, security status, and key findings.
+
 ## Workflow
 
-1. Read `original_prompt` and `preceding_task` to understand context
-2. Locate and read the files
-3. Test API endpoints with curl/requests
-4. Check security: auth required? input validation? no SQL injection?
-5. Verify database state after operations
-6. Self-validate your review
-7. Output verdict
+1. **Send starting update** via `TaskUserResponse`
+2. Read `original_prompt` and `preceding_task` to understand context
+3. Locate and read the files
+4. Test API endpoints with curl/requests
+5. Check security: auth required? input validation? no SQL injection?
+6. Verify database state after operations
+7. Self-validate your review
+8. **Send completion update** via `TaskUserResponse` with verdict
+9. Output verdict
 
 ## Constraints
 

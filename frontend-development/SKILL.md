@@ -25,11 +25,32 @@ Build components following project patterns. Write accessible, responsive code w
 - **Do NOT run npm install, build, lint, or tests** - just write the code
 - **Do NOT attempt deployment** - this skill is for development only
 
+## Task Chat Communication
+
+Send progress updates to the task chat so users can follow along. Use `TaskUserResponse` MCP tool for key milestones:
+
+**When to send updates:**
+- **Starting**: Brief summary of what you're about to build
+- **Key milestones**: After completing significant components or steps
+- **Completion**: Summary of what was accomplished with key details
+
+**Example:**
+```
+TaskUserResponse(message="🚀 Starting to build the calculator. Creating Calculator, Display, ButtonPanel, and Button components with TypeScript.")
+```
+
+```
+TaskUserResponse(message="✅ Calculator complete! Created 4 components with full arithmetic logic, keyboard support, and error handling. Run `npm run dev` to test.")
+```
+
+Keep messages concise (1-2 sentences). Focus on what the user cares about.
+
 ## Workflow
 
-1. Write all required files
-2. Report what was created
-3. Done - user will run/test manually
+1. **Send starting update** via `TaskUserResponse`
+2. Write all required files
+3. **Send completion update** via `TaskUserResponse` with summary
+4. Report what was created in outputs
 
 ## Output
 

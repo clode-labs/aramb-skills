@@ -63,17 +63,43 @@ If resumed with `mode="qa"`:
   - `expected`: SHOULD pass (log warning if not)
   - `nice_to_have`: Optional improvements
 
+## Task Chat Communication
+
+Send progress updates to the task chat so users can follow along. Use `TaskUserResponse` MCP tool for key milestones:
+
+**When to send updates:**
+- **Starting**: What API/endpoints you're testing
+- **Test results**: Summary of tests written and results
+- **Completion**: Final verdict with pass/fail counts and security status
+
+**Example:**
+```
+TaskUserResponse(message="🧪 Starting QA for subscription API. Testing CRUD endpoints, auth enforcement, and input validation.")
+```
+
+```
+TaskUserResponse(message="✅ QA passed! 25 tests, all passing. 78% coverage. Auth enforced, validation works, no security issues found.")
+```
+
+```
+TaskUserResponse(message="❌ QA failed: Security issue found. POST /subscriptions allows unauthenticated access. See feedback for details.")
+```
+
+Keep messages concise. Focus on verdict, security status, and key findings.
+
 ## Workflow
 
-1. Read `original_prompt` and `preceding_task` to understand context
-2. Read existing tests to understand patterns
-3. Write tests for `user_expectations` - focus on API behavior
-4. **Always include security tests**: auth required, authorization, input validation
-5. Run tests
+1. **Send starting update** via `TaskUserResponse`
+2. Read `original_prompt` and `preceding_task` to understand context
+3. Read existing tests to understand patterns
+4. Write tests for `user_expectations` - focus on API behavior
+5. **Always include security tests**: auth required, authorization, input validation
+6. Run tests
    - If tests fail due to **implementation bugs** → fail with `feedback_for_rebuild`
    - If tests fail due to **test bugs** → fix tests and re-run
-6. Self-validate: coverage adequate? security tested?
-7. Output verdict
+7. Self-validate: coverage adequate? security tested?
+8. **Send completion update** via `TaskUserResponse` with verdict
+9. Output verdict
 
 ## Constraints
 

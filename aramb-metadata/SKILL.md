@@ -48,6 +48,30 @@ fi
 - **Pre-built containers** use `image` directly without build service
 - **Frontend services** are created as single services (type="frontend") with static build configuration, NO separate build service
 
+## Task Chat Communication
+
+Send progress updates to the task chat so users can follow along. Use `TaskUserResponse` MCP tool for key milestones:
+
+**When to send updates:**
+- **Starting**: What you're analyzing
+- **Key milestones**: Services discovered, configuration generated
+- **Completion**: Summary of services created in aramb.toml
+
+**Example:**
+```
+TaskUserResponse(message="🔍 Analyzing project structure. Found docker-compose.yml, scanning for services...")
+```
+
+```
+TaskUserResponse(message="📋 Discovered 4 services: postgres-db, backend-build, backend-api, frontend-web. Generating aramb.toml...")
+```
+
+```
+TaskUserResponse(message="✅ Generated aramb.toml with 4 services. Backend uses build service (101) → runtime (102). Ready for deployment.")
+```
+
+Keep messages concise. Focus on what was discovered and created.
+
 ## Workflow
 
 ### 0. Validate APPLICATION_ID (CRITICAL FIRST STEP)
