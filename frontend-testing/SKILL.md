@@ -63,16 +63,42 @@ If resumed with `mode="qa"`:
   - `expected`: SHOULD pass (log warning if not)
   - `nice_to_have`: Optional improvements
 
+## Task Chat Communication
+
+Send progress updates to the task chat so users can follow along. Use `TaskUserResponse` MCP tool for key milestones:
+
+**When to send updates:**
+- **Starting**: What you're about to test
+- **Test results**: Summary of tests written and results
+- **Completion**: Final verdict with pass/fail counts
+
+**Example:**
+```
+TaskUserResponse(message="🧪 Starting QA for calculator. Writing tests for arithmetic operations, keyboard input, and error handling.")
+```
+
+```
+TaskUserResponse(message="✅ QA passed! 15 tests written, all passing. 85% coverage. Component renders correctly and all operations work.")
+```
+
+```
+TaskUserResponse(message="❌ QA failed: Found 2 issues. Division by zero not handled, clear button doesn't reset display. See feedback for rebuild details.")
+```
+
+Keep messages concise. Focus on verdict and key findings.
+
 ## Workflow
 
-1. Read `original_prompt` and `preceding_task` to understand context
-2. Check test setup in package.json (vitest, jest, @testing-library/react)
-3. Write tests for `user_expectations` - focus on user-visible behavior
-4. Run tests
+1. **Send starting update** via `TaskUserResponse`
+2. Read `original_prompt` and `preceding_task` to understand context
+3. Check test setup in package.json (vitest, jest, @testing-library/react)
+4. Write tests for `user_expectations` - focus on user-visible behavior
+5. Run tests
    - If tests fail due to **implementation bugs** → fail with `feedback_for_rebuild`
    - If tests fail due to **test bugs** → fix tests and re-run
-5. Self-validate: coverage adequate? tests meaningful?
-6. Output verdict
+6. Self-validate: coverage adequate? tests meaningful?
+7. **Send completion update** via `TaskUserResponse` with verdict
+8. Output verdict
 
 ## Constraints
 

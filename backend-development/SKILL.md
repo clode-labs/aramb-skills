@@ -225,16 +225,38 @@ Before completing, verify `validation_criteria.critical` items pass:
 - API documentation
 - **Docker image optimized (multi-stage build)**
 
+## Task Chat Communication
+
+Send progress updates to the task chat so users can follow along. Use `TaskUserResponse` MCP tool for key milestones:
+
+**When to send updates:**
+- **Starting**: Brief summary of what you're about to build
+- **Key milestones**: After completing significant steps (API created, Docker setup, tests passing)
+- **Completion**: Summary of what was accomplished with endpoints, ports, commands
+
+**Example:**
+```
+TaskUserResponse(message="🚀 Building user management API. Creating handlers, models, and migrations for CRUD operations.")
+```
+
+```
+TaskUserResponse(message="✅ Backend complete! Created /api/v1/users endpoints with auth middleware. Docker services healthy on port 8080. Run `docker-compose up -d` to start.")
+```
+
+Keep messages concise (1-2 sentences). Focus on what the user cares about.
+
 ## Workflow
 
-1. **Explore codebase**: Identify language, framework, existing patterns
-2. **Implement feature**: Create/modify files following patterns
-3. **Add validation**: Input validation, error handling, security checks
-4. **Create Docker files**: Generate Dockerfile and docker-compose.yml
-5. **Run tests**: Execute test suite
-6. **Validate Docker**: Build image, start services, verify health
-7. **Self-validate**: Run all critical checks from validation_criteria
-8. **Output summary**: Report what was created and validation results
+1. **Send starting update** via `TaskUserResponse`
+2. **Explore codebase**: Identify language, framework, existing patterns
+3. **Implement feature**: Create/modify files following patterns
+4. **Add validation**: Input validation, error handling, security checks
+5. **Create Docker files**: Generate Dockerfile and docker-compose.yml
+6. **Run tests**: Execute test suite
+7. **Validate Docker**: Build image, start services, verify health
+8. **Self-validate**: Run all critical checks from validation_criteria
+9. **Send completion update** via `TaskUserResponse` with summary
+10. **Output summary**: Report what was created and validation results
 
 ## Output Requirements (IMPORTANT)
 
