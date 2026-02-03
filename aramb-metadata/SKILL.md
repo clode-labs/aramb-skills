@@ -119,9 +119,18 @@ echo "Using APPLICATION_ID: $APPLICATION_ID"
 
 ### 4. Generate TOML Structure
 
-**CRITICAL**: Only create services. Do NOT create project or application sections.
+**CRITICAL**: Only create services. Do NOT create project, application, or config_status sections.
 
 **Build Services**: Always set `installationId = "123456789"` (dummy value for all build services)
+
+**Vars and Secrets**: Create INDEPENDENT values for database credentials:
+- Database names: Use project-specific names (e.g., "notesdb", "myapp_db")
+- Usernames: Use default database usernames (e.g., "postgres", "root", "admin")
+- Passwords: Leave as EMPTY strings (`value = ""`)
+- Ports: Use standard ports (PostgreSQL: 5432, MySQL: 3306, Redis: 6379, MongoDB: 27017)
+- Hosts: Use service names for container networking (e.g., "postgres", "redis", "mongodb")
+
+**DO NOT** use placeholders or references for basic database configuration - create actual independent values
 
 ```toml
 # Example: Database Service (pre-built image)
@@ -130,7 +139,7 @@ uniqueIdentifier = 100
 name = "postgres-db"
 type = "postgres"
 description = "PostgreSQL database service for application data storage"
-applicationID = "{applicationID}"  # From APPLICATION_ID env var
+applicationID = "8ab0de2a-385c-42f8-8671-185b108802f6"  # Actual value from $APPLICATION_ID
 
 [services.configuration.settings]
 image = "postgres:15"
@@ -155,7 +164,7 @@ uniqueIdentifier = 101
 name = "backend-build"
 type = "build"
 description = "Build service for backend API Docker image"
-applicationID = "{applicationID}"  # From APPLICATION_ID env var
+applicationID = "8ab0de2a-385c-42f8-8671-185b108802f6"  # Actual value from $APPLICATION_ID
 
 [services.configuration.settings]
 repoUrl = "https://github.com/user/repo"
@@ -170,7 +179,7 @@ uniqueIdentifier = 102
 name = "backend-api"
 type = "backend"
 description = "Backend API service handling business logic and data processing"
-applicationID = "{applicationID}"  # From APPLICATION_ID env var
+applicationID = "8ab0de2a-385c-42f8-8671-185b108802f6"  # Actual value from $APPLICATION_ID
 
 [services.configuration.settings]
 image = "${101.outputs.IMAGE_URL}"
@@ -186,17 +195,14 @@ value = "8080"
 key = "DB_HOST"
 value = "localhost"
 
-[[services.configuration.vars]]
+[[services.configuration.secrets]]
 key = "DATABASE_URL"
 value = "postgres://${100.vars.POSTGRES_USER}:${100.secrets.POSTGRES_PASSWORD}@localhost:5432/${100.vars.POSTGRES_DB}"
+# ↑ SECRET because it references ${100.secrets.POSTGRES_PASSWORD}
 
 [[services.configuration.secrets]]
 key = "JWT_SECRET"
 value = ""
-
-[[services.configuration.secrets]]
-key = "DB_PASSWORD"
-value = "${100.secrets.POSTGRES_PASSWORD}"
 
 # Example: Frontend Service (Single Service - No Build Service)
 [[services]]
@@ -204,7 +210,7 @@ uniqueIdentifier = 103
 name = "frontend-web"
 type = "frontend"
 description = "Frontend web application serving static files to users"
-applicationID = "{applicationID}"  # From APPLICATION_ID env var
+applicationID = "8ab0de2a-385c-42f8-8671-185b108802f6"  # Actual value from $APPLICATION_ID
 
 [services.configuration.settings]
 staticPath = "./frontend/dist"  # Local build output directory
@@ -215,13 +221,13 @@ publicNet = true
 [[services.configuration.vars]]
 key = "API_URL"
 value = "http://localhost:8080"
-
-[config_status]
-status = "incomplete"
-completed = []
-incomplete = [100, 101, 102, 103]
-message = "Build service (101) outputs IMAGE_URL for runtime service (102). Frontend (103) uses local static files. Fill in secrets (POSTGRES_PASSWORD, JWT_SECRET)."
 ```
+
+**IMPORTANT**:
+- Do NOT create `[config_status]` section
+- Use actual APPLICATION_ID value from environment variable
+- Create independent database credentials (db names, usernames)
+- Leave passwords as empty strings
 
 ### 5. Update Existing TOML
 
@@ -229,8 +235,7 @@ If aramb.toml exists:
 - Read existing configuration
 - Merge new services (avoid duplicates)
 - Preserve existing uniqueIdentifiers
-- Update config_status
-- Mark incomplete if missing required secrets or installationId
+- Do NOT create or update config_status section
 
 ## Constraints
 
@@ -241,7 +246,8 @@ If aramb.toml exists:
 ### APPLICATION_ID
 - **MUST** be set in environment variable
 - **MUST** exit with error if not found
-- **MUST** use `applicationID = "{applicationID}"` in all services (replaced with actual APPLICATION_ID value)
+- **MUST** use actual APPLICATION_ID value in all services (NOT placeholder)
+- **Example**: `applicationID = "8ab0de2a-385c-42f8-8671-185b108802f6"` (actual value from $APPLICATION_ID)
 
 ### Service Description
 - **MUST** include `description` field for ALL services
@@ -293,10 +299,42 @@ If aramb.toml exists:
 **NEVER**: Both `image` (direct) and `repoUrl` in same service
 
 ### Vars & Secrets
+
+**CRITICAL CONSTRAINT**: Secrets can ONLY be referenced in secrets, vars can be referenced anywhere
+
+**Rules**:
+1. **If a value references another service's SECRET** → it MUST be a SECRET
+2. **If a value references only VARS** → it CAN be a VAR or SECRET
+3. **If a value has NO references** → it CAN be a VAR or SECRET
+
+**Example (CORRECT)**:
+```toml
+# Service 100: Database
+[[services.configuration.secrets]]
+key = "POSTGRES_PASSWORD"
+value = ""
+
+# Service 102: Backend
+[[services.configuration.secrets]]  # ← SECRET because it references a secret
+key = "DATABASE_URL"
+value = "postgres://${100.vars.POSTGRES_USER}:${100.secrets.POSTGRES_PASSWORD}@postgres:5432/${100.vars.POSTGRES_DB}"
+```
+
+**Example (INCORRECT)**:
+```toml
+# Service 102: Backend
+[[services.configuration.vars]]  # ✗ WRONG! References a secret but defined as var
+key = "DATABASE_URL"
+value = "postgres://...${100.secrets.POSTGRES_PASSWORD}..."  # ✗ Secret reference in var!
+```
+
+**Guidelines**:
 - Extract from codebase analysis (env files, config files, source code)
 - Never hardcode sensitive values
 - Leave secrets with empty values (`""`)
 - Use service references to avoid duplication
+- **If referencing secrets → use secrets section**
+- **If referencing only vars → use vars section**
 - Services ordered by dependency (higher IDs depend on lower IDs)
 
 ## Self-Validation
@@ -304,12 +342,14 @@ If aramb.toml exists:
 **Critical checks** (MUST pass):
 1. APPLICATION_ID environment variable is set
 2. TOML syntax is valid
-3. Structure complete: Only services (100+), NO project or application sections
+3. Structure complete: Only services (100+), NO project, application, or config_status sections
 4. Service types valid: aramb-agent, backend, build, frontend, mongodb, onboarding, postgres, redis, template
 5. uniqueIdentifiers sequential: 100, 101, 102, ...
 6. Required fields present (service: name, type, description, applicationID)
 7. All services MUST have `description` field with clear, concise text (1-2 sentences)
-8. All services use `applicationID = "{applicationID}"` (literal string, will be replaced at runtime)
+8. All services use actual APPLICATION_ID value from environment variable (NOT placeholder)
+9. Database vars have independent values: database names, usernames, ports, hosts
+10. Passwords and secrets are empty strings (`value = ""`)
 9. Build service pattern followed for backends:
    - Build services (type="build") have `repoUrl`, no `cmd`
    - Backend runtime services reference build outputs, no `repoUrl`
@@ -322,13 +362,16 @@ If aramb.toml exists:
 12. Vars and secrets extracted from codebase (not empty)
 13. Service references valid (`${N.vars.KEY}` points to existing service)
 14. Secrets empty or use references (never hardcoded)
+15. **CRITICAL**: Values referencing secrets MUST be in secrets section (NOT vars)
+16. **CRITICAL**: If `${N.secrets.KEY}` appears in value → must be a secret, not a var
 
 ## Error Handling
 
-- No services detected → Create minimal template with config_status="incomplete"
+- No services detected → Create minimal template with database and backend services
 - Unknown service type → Use "template" as default
 - Circular dependencies → Log warning, break cycle
 - Docker-compose parsing fails → Fall back to codebase analysis
+- APPLICATION_ID not set → EXIT with error immediately
 
 ## Output
 
@@ -336,15 +379,15 @@ Return JSON summary:
 ```json
 {
   "file_created": "aramb.toml",
-  "application_id": "app-xyz789",
+  "application_id": "8ab0de2a-385c-42f8-8671-185b108802f6",
   "structure": {
     "services": 4
   },
   "services_detected": [
-    {"uniqueIdentifier": 100, "name": "postgres-db", "type": "postgres", "description": "PostgreSQL database service for application data storage", "applicationID": "{applicationID}"},
-    {"uniqueIdentifier": 101, "name": "backend-build", "type": "build", "description": "Build service for backend API Docker image", "applicationID": "{applicationID}"},
-    {"uniqueIdentifier": 102, "name": "backend-api", "type": "backend", "description": "Backend API service handling business logic and data processing", "applicationID": "{applicationID}"},
-    {"uniqueIdentifier": 103, "name": "frontend-web", "type": "frontend", "description": "Frontend web application serving static files to users", "applicationID": "{applicationID}"}
+    {"uniqueIdentifier": 100, "name": "postgres-db", "type": "postgres", "description": "PostgreSQL database service for application data storage", "applicationID": "8ab0de2a-385c-42f8-8671-185b108802f6"},
+    {"uniqueIdentifier": 101, "name": "backend-build", "type": "build", "description": "Build service for backend API Docker image", "applicationID": "8ab0de2a-385c-42f8-8671-185b108802f6"},
+    {"uniqueIdentifier": 102, "name": "backend-api", "type": "backend", "description": "Backend API service handling business logic and data processing", "applicationID": "8ab0de2a-385c-42f8-8671-185b108802f6"},
+    {"uniqueIdentifier": 103, "name": "frontend-web", "type": "frontend", "description": "Frontend web application serving static files to users", "applicationID": "8ab0de2a-385c-42f8-8671-185b108802f6"}
   ],
   "build_outputs": {
     "101": "outputs.IMAGE_URL → service 102"
@@ -352,24 +395,30 @@ Return JSON summary:
   "frontend_static_builds": {
     "103": "staticPath: ./frontend/dist (local build)"
   },
-  "vars_extracted": {
-    "100": ["POSTGRES_DB", "POSTGRES_USER"],
-    "102": ["PORT", "NODE_ENV", "DB_HOST", "DATABASE_URL"],
-    "103": ["API_URL"]
+  "vars_created": {
+    "100": ["POSTGRES_DB=notesdb", "POSTGRES_USER=postgres"],
+    "102": ["PORT=8080", "DB_HOST=localhost"],
+    "103": ["API_URL=http://localhost:8080"]
   },
-  "secrets_identified": {
-    "100": ["POSTGRES_PASSWORD"],
-    "102": ["JWT_SECRET", "DB_PASSWORD"]
+  "secrets_created": {
+    "100": ["POSTGRES_PASSWORD=\"\""],
+    "102": ["DATABASE_URL=postgresql://...", "JWT_SECRET=\"\""]
   },
+  "reference_constraints_applied": [
+    "DATABASE_URL placed in secrets (references POSTGRES_PASSWORD secret)",
+    "All secret references only in secrets section",
+    "Var references allowed in both vars and secrets"
+  ],
   "service_references": [
     "102 → 100 (DB vars/secrets)",
     "102 → 101 (IMAGE_URL)"
   ],
-  "config_status": {
-    "status": "incomplete",
-    "incomplete_services": [100, 101, 102, 103],
-    "reason": "Fill secrets: POSTGRES_PASSWORD, JWT_SECRET. Frontend (103) builds locally. Build service (101) has dummy installationId."
-  },
+  "notes": [
+    "All services use actual APPLICATION_ID from environment",
+    "Database credentials created with independent values",
+    "Passwords left empty for security",
+    "Build service has dummy installationId=123456789"
+  ],
   "validation_passed": true
 }
 ```

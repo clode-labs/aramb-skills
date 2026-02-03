@@ -45,7 +45,7 @@ You are a backend deployment specialist that follows a strict linear deployment 
 
 **The Flow:**
 0. **Install aramb-cli if not present (CRITICAL FIRST STEP - if installation fails, EXIT immediately)**
-0.5. **Check and install Docker if not present (CRITICAL - aramb-cli needs Docker to build images)**
+0.5. **Check BUILDKIT_HOST is set (CRITICAL - aramb-cli uses remote BuildKit for builds)**
 1. Read aramb.toml
 2. Extract build services (optional - if none exist, skip to step 9)
 3. Get application slug (only if build services exist)
@@ -59,7 +59,8 @@ You are a backend deployment specialist that follows a strict linear deployment 
 **If any step fails → Exit with error. No recovery attempts.**
 **Build services are OPTIONAL → If no build services, skip steps 3-7 and go directly to step 9.**
 **Step 0 is MANDATORY → If aramb-cli installation fails, EXIT immediately. Do NOT debug or fix.**
-**Step 0.5 is MANDATORY → Docker must be available. Can attempt installation/troubleshooting if needed.**
+**Step 0.5 is MANDATORY → BUILDKIT_HOST must be set for remote builds.**
+**Note: Local Docker daemon is NOT required - builds happen on remote BuildKit server.**
 
 ## Flow Diagram
 
@@ -77,16 +78,13 @@ Step 0: Install aramb-cli (CRITICAL FIRST STEP)
    │    └─ ✗ Installation fails → EXIT: "Failed to install aramb-cli" (DO NOT DEBUG)
    └─ ✗ Installation error → EXIT: "Failed to install aramb-cli" (DO NOT DEBUG)
 
-Step 0.5: Check and Install Docker (CRITICAL - aramb-cli needs Docker)
+Step 0.5: Check BUILDKIT_HOST (CRITICAL - aramb uses remote BuildKit)
    ↓
-   ├─ ✓ Docker installed and running → Continue
-   ├─ ✗ Docker not installed → Attempt installation
-   │    ├─ ✓ Installation succeeds → Continue
-   │    └─ ✗ Installation fails → EXIT: "Failed to install Docker"
-   ├─ ✗ Docker daemon not running → Attempt to start Docker
-   │    ├─ ✓ Docker starts → Continue
-   │    └─ ✗ Cannot start Docker → EXIT: "Docker daemon cannot be started"
-   └─ ✗ Docker check fails → Troubleshoot and attempt fix → EXIT if unfixable
+   ├─ ✓ BUILDKIT_HOST is set → Continue
+   └─ ✗ BUILDKIT_HOST not set → EXIT: "BUILDKIT_HOST not set"
+
+   Note: Local Docker daemon is NOT required
+         Builds happen on remote BuildKit server
 
 Step 1: Read aramb.toml
    ↓
@@ -137,10 +135,11 @@ Step 10: Return Deployment Details
 ════════════════════════════════════════════════════════════
 
 ANY ERROR → IMMEDIATE EXIT
-NO DEBUGGING | NO RETRIES | NO ALTERNATIVES (EXCEPT DOCKER)
+NO DEBUGGING | NO RETRIES | NO ALTERNATIVES
 BUILD SERVICES OPTIONAL → NO BUILD SERVICES = SKIP TO STEP 9
-DOCKER IS MANDATORY → Can attempt installation/fix (it's openly available)
+BUILDKIT_HOST IS MANDATORY → Must be set for builds (no local Docker needed)
 ARAMB-CLI IS MANDATORY → NEVER attempt to debug or fix aramb-cli issues
+LOCAL DOCKER DAEMON NOT REQUIRED → Builds happen on remote BuildKit server
 ```
 
 ## Compact Workflow (Precise Logic)
@@ -171,55 +170,17 @@ else
   echo "✓ aramb-cli already installed"
 fi
 
-# Step 0.5: Check Docker is installed and running (CRITICAL)
-# aramb-cli needs Docker to build images
-# Docker is openly available - can attempt installation/troubleshooting
-if ! command -v docker &> /dev/null; then
-  echo "Docker not found. Attempting installation..."
-
-  # Detect OS and attempt Docker installation
-  OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-
-  if [ "$OS" = "linux" ]; then
-    # Try installing Docker on Linux
-    echo "Installing Docker on Linux..."
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh || { echo "ERROR: Failed to install Docker"; exit 1; }
-    sudo systemctl start docker || sudo service docker start
-    sudo usermod -aG docker $USER || true
-    echo "✓ Docker installed successfully"
-  else
-    echo "ERROR: Docker not found. Please install Docker Desktop from:"
-    echo "https://docs.docker.com/get-docker/"
-    exit 1
-  fi
+# Step 0.5: Check BUILDKIT_HOST is set (CRITICAL)
+# aramb-cli uses remote BuildKit for builds - local Docker daemon NOT required
+if [ -z "$BUILDKIT_HOST" ]; then
+  echo "ERROR: BUILDKIT_HOST environment variable not set"
+  echo "aramb-cli requires BUILDKIT_HOST to connect to remote BuildKit server"
+  echo "Example: export BUILDKIT_HOST=tcp://buildkit.example.com:1234"
+  exit 1
 fi
 
-# Check Docker daemon is running
-if ! docker ps &> /dev/null; then
-  echo "Docker daemon is not running. Attempting to start..."
-
-  # Try to start Docker daemon
-  if command -v systemctl &> /dev/null; then
-    sudo systemctl start docker || { echo "ERROR: Failed to start Docker daemon"; exit 1; }
-  elif command -v service &> /dev/null; then
-    sudo service docker start || { echo "ERROR: Failed to start Docker daemon"; exit 1; }
-  else
-    echo "ERROR: Docker daemon is not running. Please start Docker manually."
-    exit 1
-  fi
-
-  # Verify Docker is now running
-  sleep 2
-  if ! docker ps &> /dev/null; then
-    echo "ERROR: Docker daemon still not running after start attempt"
-    exit 1
-  fi
-
-  echo "✓ Docker daemon started successfully"
-fi
-
-echo "✓ Docker is installed and running"
+echo "✓ BUILDKIT_HOST is set: $BUILDKIT_HOST"
+echo "ℹ Note: Builds will happen on remote BuildKit server (local Docker not required)"
 
 # Step 1: Validate aramb.toml exists
 [ -f "aramb.toml" ] || { echo "ERROR: aramb.toml not found"; exit 1; }
@@ -242,11 +203,19 @@ if [ -n "$BUILD_SERVICES" ]; then
   done
 
   # Step 5: Build images
-  COMMIT_SHA=$(git rev-parse --short HEAD)
+  # Get version tag: use git commit SHA if available, otherwise generate simple tag
+  if git rev-parse --short HEAD &> /dev/null; then
+    VERSION_TAG=$(git rev-parse --short HEAD)
+    echo "Using git commit SHA: $VERSION_TAG"
+  else
+    VERSION_TAG="v$(date +%Y%m%d-%H%M%S)"
+    echo "Git not available, using generated tag: $VERSION_TAG"
+  fi
+
   for BUILD_SERVICE in $BUILD_SERVICES; do
     IMAGE_NAME=${IMAGE_NAMES[$BUILD_SERVICE]}
-    aramb build --name "$IMAGE_NAME" --tag "$COMMIT_SHA" || { echo "ERROR: Build failed for $BUILD_SERVICE"; exit 1; }
-    IMAGE_URLS[$BUILD_SERVICE]="${IMAGE_NAME}:${COMMIT_SHA}"
+    aramb build --name "$IMAGE_NAME" --tag "$VERSION_TAG" || { echo "ERROR: Build failed for $BUILD_SERVICE"; exit 1; }
+    IMAGE_URLS[$BUILD_SERVICE]="${IMAGE_NAME}:${VERSION_TAG}"
   done
 
   # Step 6: Update aramb.toml with image URLs
@@ -313,10 +282,11 @@ echo "{\"status\": \"success\", \"public_url\": \"${PUBLIC_URL:-n/a}\", \"images
 - aramb.toml not found
 - APPLICATION_ID not set (only if build services exist)
 - Application slug retrieval fails (only if build services exist)
-- Git not available (only if build services exist)
 - Any build command fails (only if build services exist)
 - TOML update fails (only if build services exist)
 - Deploy command fails
+
+**Note:** Git is NOT required - if git is not available, a timestamp-based tag will be generated automatically
 
 ### No Recovery Allowed
 
@@ -575,12 +545,13 @@ fi
 if [ "$SKIP_BUILD" = true ]; then
   echo "ℹ Skipping Step 5 (no build services)"
 else
-  # Get commit SHA for tagging
-  COMMIT_SHA=$(git rev-parse --short HEAD 2>&1)
-
-  if [ -z "$COMMIT_SHA" ]; then
-    echo "ERROR: Failed to get commit SHA. Not a git repository?"
-    exit 1
+  # Get version tag for tagging: use git commit SHA if available, otherwise generate simple tag
+  if git rev-parse --short HEAD &> /dev/null 2>&1; then
+    VERSION_TAG=$(git rev-parse --short HEAD)
+    echo "Using git commit SHA: $VERSION_TAG"
+  else
+    VERSION_TAG="v$(date +%Y%m%d-%H%M%S)"
+    echo "Git not available, using generated tag: $VERSION_TAG"
   fi
 
   # Build each service
@@ -588,12 +559,12 @@ else
 
   for BUILD_SERVICE in $BUILD_SERVICES; do
     IMAGE_NAME=${IMAGE_NAMES[$BUILD_SERVICE]}
-    FULL_IMAGE="${IMAGE_NAME}:${COMMIT_SHA}"
+    FULL_IMAGE="${IMAGE_NAME}:${VERSION_TAG}"
 
     echo "Building: $FULL_IMAGE"
 
     # Run build command
-    aramb build --name "$IMAGE_NAME" --tag "$COMMIT_SHA" 2>&1
+    aramb build --name "$IMAGE_NAME" --tag "$VERSION_TAG" 2>&1
 
     if [ $? -ne 0 ]; then
       echo "ERROR: Build failed for $BUILD_SERVICE"
@@ -715,7 +686,7 @@ cat <<EOF
   "public_url": "$PUBLIC_URL",
   "build_skipped": $SKIP_BUILD,
   "images_built": $IMAGES_COUNT,
-  "commit_sha": "${COMMIT_SHA:-n/a}"
+  "version_tag": "${VERSION_TAG:-n/a}"
 }
 EOF
 ```
@@ -743,21 +714,29 @@ echo "DOCKER_REPOSITORY set to: $DOCKER_REPOSITORY"
 ```bash
 cd <buildPath>
 
-# Get commit SHA for tagging
-COMMIT_SHA=$(git rev-parse --short HEAD)
+# Get version tag: use git commit SHA if available, otherwise generate simple tag
+if git rev-parse --short HEAD &> /dev/null 2>&1; then
+  VERSION_TAG=$(git rev-parse --short HEAD)
+  echo "Using git commit SHA: $VERSION_TAG"
+else
+  VERSION_TAG="v$(date +%Y%m%d-%H%M%S)"
+  echo "Git not available, using generated tag: $VERSION_TAG"
+fi
 
 # Build with DOCKER_REPOSITORY naming
-aramb build --name "$DOCKER_REPOSITORY" --tag "$COMMIT_SHA"
+aramb build --name "$DOCKER_REPOSITORY" --tag "$VERSION_TAG"
 
 # Optional: Push to registry
 if [ "$push_registry" = true ]; then
-  aramb build --name "$DOCKER_REPOSITORY" --tag "$COMMIT_SHA" --push
+  aramb build --name "$DOCKER_REPOSITORY" --tag "$VERSION_TAG" --push
 fi
 ```
 
-**Output**: Docker image `{app-slug}/{build-service-slug}:{commit-sha}`
+**Output**: Docker image `{app-slug}/{build-service-slug}:{version-tag}`
 
-Example: `my-app/backend-build:abc123`
+Examples:
+- With git: `my-app/backend-build:abc123` (commit SHA)
+- Without git: `my-app/backend-build:v20260202-143022` (timestamp)
 
 **Step 3c: Update backend service image in aramb.toml**
 
@@ -766,10 +745,10 @@ Example: `my-app/backend-build:abc123`
 # Update its image field in aramb.toml
 
 # Before: image = "${101.outputs.IMAGE_URL}"
-# After:  image = "my-app/backend-build:abc123"
+# After:  image = "my-app/backend-build:abc123" (or with timestamp tag)
 
 # Use sed or toml editing tool to update the file
-sed -i "s|image = \"\${101.outputs.IMAGE_URL}\"|image = \"${DOCKER_REPOSITORY}:${COMMIT_SHA}\"|g" aramb.toml
+sed -i "s|image = \"\${101.outputs.IMAGE_URL}\"|image = \"${DOCKER_REPOSITORY}:${VERSION_TAG}\"|g" aramb.toml
 ```
 
 **Result**: aramb.toml now contains actual image URL instead of reference
@@ -943,34 +922,46 @@ PUBLIC_URL=$(echo "$BACKEND_DETAILS" | jq -r '.outputs.PUBLIC_URL')
 
 3. **Build Docker Image**:
    ```bash
-   COMMIT_SHA=$(git rev-parse --short HEAD)
-   aramb build --name "$DOCKER_REPOSITORY" --tag "$COMMIT_SHA"
-   # Builds: my-app/backend-build:abc123
+   # Get version tag
+   if git rev-parse --short HEAD &> /dev/null 2>&1; then
+     VERSION_TAG=$(git rev-parse --short HEAD)
+   else
+     VERSION_TAG="v$(date +%Y%m%d-%H%M%S)"
+   fi
+
+   aramb build --name "$DOCKER_REPOSITORY" --tag "$VERSION_TAG"
+   # Builds: my-app/backend-build:abc123 (or v20260202-143022)
    ```
 
 4. **Update aramb.toml**:
    ```bash
    # Find backend service referencing this build service
    # Replace: image = "${101.outputs.IMAGE_URL}"
-   # With:    image = "my-app/backend-build:abc123"
+   # With:    image = "my-app/backend-build:abc123" (or timestamp tag)
 
-   sed -i "s|image = \"\${101.outputs.IMAGE_URL}\"|image = \"${DOCKER_REPOSITORY}:${COMMIT_SHA}\"|g" aramb.toml
+   sed -i "s|image = \"\${101.outputs.IMAGE_URL}\"|image = \"${DOCKER_REPOSITORY}:${VERSION_TAG}\"|g" aramb.toml
    ```
 
 ### DOCKER_REPOSITORY Naming Convention
 
-**Format**: `{app-slug}/{build-service-slug}:{commit-sha}`
+**Format**: `{app-slug}/{build-service-slug}:{version-tag}`
 
-**Examples**:
-- `my-app/backend-build:abc123`
-- `ecommerce/auth-service:def456`
-- `analytics/data-processor:789xyz`
+**Examples with git:**
+- `my-app/backend-build:abc123` (commit SHA)
+- `ecommerce/auth-service:def456` (commit SHA)
+- `analytics/data-processor:789xyz` (commit SHA)
+
+**Examples without git:**
+- `my-app/backend-build:v20260202-143022` (timestamp)
+- `ecommerce/auth-service:v20260202-150330` (timestamp)
+- `analytics/data-processor:v20260202-162445` (timestamp)
 
 **Benefits**:
 - Namespace isolation by application
 - Clear service identification
-- Version tracking via commit SHA
+- Version tracking via commit SHA or timestamp
 - Registry organization
+- Works with or without git
 
 ## Service Type Handling
 
@@ -988,14 +979,20 @@ PUBLIC_URL=$(echo "$BACKEND_DETAILS" | jq -r '.outputs.PUBLIC_URL')
 # Example full workflow
 APP_SLUG=$(aramb applications get -i "$APPLICATION_ID" -o json | jq -r '.slug')
 export DOCKER_REPOSITORY="${APP_SLUG}/backend-build"
-COMMIT_SHA=$(git rev-parse --short HEAD)
+
+# Get version tag
+if git rev-parse --short HEAD &> /dev/null 2>&1; then
+  VERSION_TAG=$(git rev-parse --short HEAD)
+else
+  VERSION_TAG="v$(date +%Y%m%d-%H%M%S)"
+fi
 
 cd <buildPath>
-aramb build --name "$DOCKER_REPOSITORY" --tag "$COMMIT_SHA"
+aramb build --name "$DOCKER_REPOSITORY" --tag "$VERSION_TAG"
 ```
 
 **Output**:
-- Docker image: `{app-slug}/{build-service-slug}:{commit-sha}`
+- Docker image: `{app-slug}/{build-service-slug}:{version-tag}` (commit SHA or timestamp)
 - Updated aramb.toml with actual image URL
 
 ### Backend Runtime Services (type="backend")
