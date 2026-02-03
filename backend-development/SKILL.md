@@ -10,6 +10,48 @@ license: MIT
 
 Build APIs following project patterns. Implement proper validation, error handling, and security. Create Dockerfile and docker-compose.yml for containerization.
 
+## Session Continuity
+
+Your session persists. You may be started fresh OR resumed with new context.
+
+### Trigger Types
+
+| Trigger | Meaning |
+|---------|---------|
+| `start` | Normal task execution (first time) |
+| `resume` | User provided additional context |
+| `task_chat` | Direct message from task chat UI |
+
+### Resume Trigger Format
+
+When resumed, you receive:
+```
+## Task Resumed
+
+The user has provided additional context:
+
+<user's message>
+
+Your previous status: <completed/failed>
+You have full context of your previous work in this session.
+```
+
+### How to Handle Resume
+
+| Previous Status | User Intent | Action |
+|-----------------|-------------|--------|
+| `failed` | Providing fix info | Retry with new context |
+| `completed` | Wants modification | Review and update |
+| `completed` | Asking question | Answer from your context |
+| `in_progress` | Adding context | Incorporate and continue |
+
+### Q&A Mode
+
+If resumed with `mode="qa"`:
+- Only answer questions
+- Do NOT perform new work
+- Use `TaskChatResponse` to reply
+
 ## Inputs
 
 - `requirements`: What to build
@@ -194,6 +236,55 @@ Before completing, verify `validation_criteria.critical` items pass:
 7. **Self-validate**: Run all critical checks from validation_criteria
 8. **Output summary**: Report what was created and validation results
 
+## Output Requirements (IMPORTANT)
+
+Before completing, you MUST set comprehensive outputs. The planner uses these
+to answer user questions without needing to resume you.
+
+**Always include:**
+
+```python
+outputs = {
+    # URLs and identifiers
+    "public_url": "https://api.example.com",
+    "internal_url": "http://backend:8080",
+    "deployment_id": "dep-123",
+
+    # Files created/modified
+    "files_created": ["internal/handlers/resource.go", "Dockerfile"],
+    "files_modified": ["internal/routes/routes.go"],
+
+    # Technology choices
+    "framework": "Go with Chi router",
+    "database": "PostgreSQL 15",
+    "language": "Go 1.21",
+
+    # Key decisions (for "why did you..." questions)
+    "key_decisions": "Used Chi over Gin for lightweight routing",
+
+    # How to use/run
+    "commands": {
+        "dev": "go run main.go",
+        "build": "go build -o main .",
+        "test": "go test ./...",
+        "docker": "docker-compose up -d"
+    },
+
+    # API info
+    "endpoints": ["/api/v1/users", "/api/v1/auth"],
+    "port": 8080,
+
+    # Any other values the user might ask about
+    "migrations": ["001_create_users.sql"]
+}
+```
+
+**Why this matters:**
+- Planner receives your outputs in `task_completed` trigger
+- Planner can answer "What's the API endpoint?", "What database?", etc. immediately
+- No need to resume you for simple factual questions
+- Only complex "how/why" questions require resume with mode="qa"
+
 ## Output
 
 ```json
@@ -206,6 +297,16 @@ Before completing, verify `validation_criteria.critical` items pass:
     ".dockerignore"
   ],
   "files_modified": ["internal/routes/routes.go"],
+  "framework": "Go with Chi router",
+  "database": "PostgreSQL 15",
+  "commands": {
+    "dev": "go run main.go",
+    "build": "go build -o main .",
+    "test": "go test ./...",
+    "docker": "docker-compose up -d"
+  },
+  "endpoints": ["/api/v1/resources"],
+  "port": 8080,
   "self_validation": {
     "critical_passed": true,
     "checks_run": [

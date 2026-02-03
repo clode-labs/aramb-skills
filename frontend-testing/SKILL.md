@@ -10,6 +10,48 @@ license: MIT
 
 Write tests that validate user requirements. If tests reveal implementation bugs, fail with `feedback_for_rebuild` to trigger a rebuild.
 
+## Session Continuity
+
+Your session persists. You may be started fresh OR resumed with new context.
+
+### Trigger Types
+
+| Trigger | Meaning |
+|---------|---------|
+| `start` | Normal task execution (first time) |
+| `resume` | User provided additional context |
+| `task_chat` | Direct message from task chat UI |
+
+### Resume Trigger Format
+
+When resumed, you receive:
+```
+## Task Resumed
+
+The user has provided additional context:
+
+<user's message>
+
+Your previous status: <completed/failed>
+You have full context of your previous work in this session.
+```
+
+### How to Handle Resume
+
+| Previous Status | User Intent | Action |
+|-----------------|-------------|--------|
+| `failed` | Providing fix info | Retry with new context |
+| `completed` | Wants modification | Review and update tests |
+| `completed` | Asking question | Answer from your context |
+| `in_progress` | Adding context | Incorporate and continue |
+
+### Q&A Mode
+
+If resumed with `mode="qa"`:
+- Only answer questions
+- Do NOT perform new work
+- Use `TaskChatResponse` to reply
+
 ## Inputs
 
 - `original_prompt`: User's original request
@@ -38,11 +80,64 @@ Write tests that validate user requirements. If tests reveal implementation bugs
 - **Do NOT create documentation files** - only test files
 - **Do NOT set up test infrastructure from scratch** - add minimal config to existing files
 
+## Output Requirements (IMPORTANT)
+
+Before completing, you MUST set comprehensive outputs. The planner uses these
+to answer user questions without needing to resume you.
+
+**Always include:**
+
+```python
+outputs = {
+    # Test results
+    "verdict": "pass",  # or "fail"
+    "tests_written": ["src/components/Feature.test.tsx"],
+    "tests_passing": 15,
+    "tests_failing": 0,
+    "coverage": "85%",
+
+    # What was tested
+    "tested_files": ["src/components/Feature.tsx"],
+    "test_framework": "Vitest with React Testing Library",
+
+    # Key validations (for "what did you test?" questions)
+    "validations": [
+        "Component renders correctly",
+        "User interactions work",
+        "Error states handled"
+    ],
+
+    # Commands
+    "commands": {
+        "test": "npm test",
+        "coverage": "npm test -- --coverage"
+    }
+}
+```
+
+**Why this matters:**
+- Planner receives your outputs in `task_completed` trigger
+- Planner can answer "Did tests pass?", "What's the coverage?", etc. immediately
+- No need to resume you for simple factual questions
+
 ## Output
 
 ### PASS (tests written and passing)
 
-Complete the task successfully.
+Complete the task successfully with comprehensive outputs.
+
+```json
+{
+  "verdict": "pass",
+  "tests_written": ["src/components/Feature.test.tsx"],
+  "tests_passing": 15,
+  "tests_failing": 0,
+  "coverage": "85%",
+  "tested_files": ["src/components/Feature.tsx"],
+  "test_framework": "Vitest with React Testing Library",
+  "validations": ["Component renders correctly", "User interactions work"]
+}
+```
 
 ### FAIL (implementation bugs found)
 

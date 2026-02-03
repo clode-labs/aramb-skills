@@ -10,6 +10,48 @@ license: MIT
 
 Build components following project patterns. Write accessible, responsive code with TypeScript.
 
+## Session Continuity
+
+Your session persists. You may be started fresh OR resumed with new context.
+
+### Trigger Types
+
+| Trigger | Meaning |
+|---------|---------|
+| `start` | Normal task execution (first time) |
+| `resume` | User provided additional context |
+| `task_chat` | Direct message from task chat UI |
+
+### Resume Trigger Format
+
+When resumed, you receive:
+```
+## Task Resumed
+
+The user has provided additional context:
+
+<user's message>
+
+Your previous status: <completed/failed>
+You have full context of your previous work in this session.
+```
+
+### How to Handle Resume
+
+| Previous Status | User Intent | Action |
+|-----------------|-------------|--------|
+| `failed` | Providing fix info | Retry with new context |
+| `completed` | Wants modification | Review and update |
+| `completed` | Asking question | Answer from your context |
+| `in_progress` | Adding context | Incorporate and continue |
+
+### Q&A Mode
+
+If resumed with `mode="qa"`:
+- Only answer questions
+- Do NOT perform new work
+- Use `TaskChatResponse` to reply
+
 ## Inputs
 
 - `requirements`: What to build
@@ -63,6 +105,50 @@ Before completing, verify `validation_criteria.critical` items pass:
 - Run tests: `npm test`
 - Start dev server locally: `npm run dev` (for manual testing only)
 
+## Output Requirements (IMPORTANT)
+
+Before completing, you MUST set comprehensive outputs. The planner uses these
+to answer user questions without needing to resume you.
+
+**Always include:**
+
+```python
+outputs = {
+    # URLs and identifiers
+    "url": "https://app.example.com",
+    "deployment_id": "dep-123",
+
+    # Files created/modified
+    "files_created": ["src/App.tsx", "src/components/Button.tsx"],
+    "files_modified": ["package.json", "src/index.tsx"],
+
+    # Technology choices
+    "framework": "React 18 with TypeScript",
+    "styling": "Tailwind CSS",
+    "state_management": "Zustand",
+
+    # Key decisions (for "why did you..." questions)
+    "key_decisions": "Used Zustand over Redux for simpler state management",
+
+    # How to use/run
+    "commands": {
+        "dev": "npm run dev",
+        "build": "npm run build",
+        "test": "npm test"
+    },
+
+    # Any other values the user might ask about
+    "port": 3000,
+    "api_endpoint": "/api/v1"
+}
+```
+
+**Why this matters:**
+- Planner receives your outputs in `task_completed` trigger
+- Planner can answer "What's the URL?", "What framework?", etc. immediately
+- No need to resume you for simple factual questions
+- Only complex "how/why" questions require resume with mode="qa"
+
 ## Output
 
 **Required fields:**
@@ -70,6 +156,13 @@ Before completing, verify `validation_criteria.critical` items pass:
 {
   "files_created": ["src/components/Feature.tsx"],
   "files_modified": ["src/App.tsx"],
+  "framework": "React 18 with TypeScript",
+  "styling": "Tailwind CSS",
+  "commands": {
+    "dev": "npm run dev",
+    "build": "npm run build",
+    "test": "npm test"
+  },
   "self_validation": {
     "critical_passed": true,
     "checks_run": ["TypeScript compiles", "ESLint passes", "Build succeeds", "Tests pass"]
@@ -86,5 +179,8 @@ Before completing, verify `validation_criteria.critical` items pass:
 **Output fields:**
 - `files_created`: Array of new files created
 - `files_modified`: Array of existing files modified
+- `framework`: Framework and language used
+- `styling`: Styling approach used
+- `commands`: How to run dev, build, test
 - `self_validation`: Validation results with checks run
 - `build`: Build information (optional, if build was performed)
