@@ -10,6 +10,48 @@ license: MIT
 
 Build Docker images and deploy backend services using aramb.toml configuration.
 
+## Session Continuity
+
+Your session persists. You may be started fresh OR resumed with new context.
+
+### Trigger Types
+
+| Trigger | Meaning |
+|---------|---------|
+| `start` | Normal task execution (first time) |
+| `resume` | User provided additional context |
+| `task_chat` | Direct message from task chat UI |
+
+### Resume Trigger Format
+
+When resumed, you receive:
+```
+## Task Resumed
+
+The user has provided additional context:
+
+<user's message>
+
+Your previous status: <completed/failed>
+You have full context of your previous work in this session.
+```
+
+### How to Handle Resume
+
+| Previous Status | User Intent | Action |
+|-----------------|-------------|--------|
+| `failed` | Providing fix info | Retry with new context |
+| `completed` | Wants redeployment | Redeploy or update |
+| `completed` | Asking question | Answer from your context |
+| `in_progress` | Adding context | Incorporate and continue |
+
+### Q&A Mode
+
+If resumed with `mode="qa"`:
+- Only answer questions
+- Do NOT perform new deployments
+- Use `TaskChatResponse` to reply
+
 ## Quick Reference
 
 **Two Deployment Paths:**
@@ -1095,6 +1137,46 @@ publicNet = false
 - Deployment history logged
 - Service metrics available
 
+## Output Requirements (IMPORTANT)
+
+Before completing, you MUST set comprehensive outputs. The planner uses these
+to answer user questions without needing to resume you.
+
+**Always include:**
+
+```python
+outputs = {
+    # URLs and identifiers (CRITICAL)
+    "public_url": "https://backend-api.aramb.dev",
+    "internal_url": "http://backend-api:8080",
+    "deployment_id": "deploy-abc123xyz",
+
+    # Application info
+    "application_id": "app-xyz789",
+    "application_slug": "my-app",
+
+    # Services deployed
+    "services_deployed": ["postgres-db", "backend-api"],
+    "backend_service": "backend-api",
+    "database_service": "postgres-db",
+
+    # Build info (if builds were done)
+    "build_skipped": false,
+    "images_built": 1,
+    "docker_image": "my-app/backend-build:abc123",
+
+    # Status
+    "status": "success",
+    "all_healthy": true,
+    "total_time": "2m30s"
+}
+```
+
+**Why this matters:**
+- Planner receives your outputs in `task_completed` trigger
+- Planner can answer "What's the PUBLIC_URL?", "Is the backend deployed?", etc. immediately
+- No need to resume you for simple factual questions
+
 ## Output
 
 Report build and deployment results:
@@ -1103,6 +1185,8 @@ Report build and deployment results:
 ```json
 {
   "status": "success",
+  "public_url": "https://backend-api.aramb.dev",
+  "internal_url": "http://backend-api:8080",
   "application": {
     "id": "app-xyz789",
     "slug": "my-app"
@@ -1125,13 +1209,10 @@ Report build and deployment results:
   "deployments": {
     "services": ["postgres-db", "backend-api"],
     "status": "success",
-    "backend_outputs": {
-      "PUBLIC_URL": "https://backend-api.aramb.dev",
-      "INTERNAL_URL": "http://backend-api:8080"
-    },
     "successful": ["postgres-db", "backend-api"],
     "failed": []
   },
+  "all_healthy": true,
   "total_time": "2m30s"
 }
 ```
@@ -1140,18 +1221,17 @@ Report build and deployment results:
 ```json
 {
   "status": "success",
+  "public_url": "https://backend-api.aramb.dev",
+  "internal_url": "http://backend-api:8080",
   "build_skipped": true,
   "images_built": 0,
   "deployments": {
     "services": ["postgres-db", "backend-api"],
     "status": "success",
-    "backend_outputs": {
-      "PUBLIC_URL": "https://backend-api.aramb.dev",
-      "INTERNAL_URL": "http://backend-api:8080"
-    },
     "successful": ["postgres-db", "backend-api"],
     "failed": []
   },
+  "all_healthy": true,
   "total_time": "30s"
 }
 ```
