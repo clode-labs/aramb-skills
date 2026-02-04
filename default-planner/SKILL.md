@@ -435,14 +435,7 @@ search_skills(tag="analytics")
 search_skills(category="deployment")
 search_skills(tag="deployment")
 search_skills(tag="docker")
-search_skills(tag="fullstack")  # For unified deployments
 ```
-
-**Common deployment skills:**
-- `aramb-deploy` - Unified full-stack deployment (backend + frontend)
-- `backend-deployment` - Backend-only deployment
-- `frontend-deployment` - Frontend-only deployment
-- `aramb-metadata` - Generate aramb.toml configuration
 
 ## Task Creation Template
 
@@ -574,56 +567,6 @@ create_tasks_batch(tasks=[
 2. QA: Validate data quality
 3. Documentation: Document pipeline
 
-### Example 5: Full-Stack Application with Deployment
-
-**Analysis:**
-- Domain: Fullstack
-- Complexity: High
-- Pattern: Development → QA → Metadata → Unified Deployment
-
-**Tasks:**
-1. Backend development: Build API + Database
-2. Backend QA: Test API endpoints
-3. Frontend development: Build UI components
-4. Frontend QA: Test UI
-5. aramb-metadata: Generate aramb.toml (with backend + frontend services)
-6. aramb-deploy: Deploy complete application
-   - Deploys backend services (builds images, creates services)
-   - Waits for backend to be healthy
-   - Deploys frontend with backend URL in environment variables
-   - Returns both URLs
-
-**Expected Output:**
-```json
-{
-  "deployment_type": "fullstack",
-  "backend": {
-    "url": "https://backend-api.aramb.dev"
-  },
-  "frontend": {
-    "url": "https://frontend-web.aramb.dev"
-  }
-}
-```
-
-### Example 6: Backend API with Deployment
-
-**Analysis:**
-- Domain: Backend
-- Complexity: Medium
-- Pattern: Development → QA → Metadata → Backend Deployment
-
-**Tasks:**
-1. Backend development: Build REST API
-2. Backend QA: Test endpoints
-3. aramb-metadata: Generate aramb.toml (backend services only)
-4. backend-deployment OR aramb-deploy: Deploy backend
-   - Builds Docker images
-   - Creates backend services
-   - Returns backend URL
-
-**Note:** Use `aramb-deploy` even for backend-only - it handles this case gracefully
-
 ## Deliverables Reference
 
 For specific deliverables by domain, refer to specialized planners:
@@ -693,115 +636,13 @@ Use specialized planners when:
 - Work is clearly backend-only → backend-planner
 - Work fits a specific domain perfectly
 
-## Deployment Skill Selection Guide
-
-When creating deployment tasks, choose the appropriate skill:
-
-### Use `aramb-deploy` (Unified Deployment) - PREFERRED
-
-**When:**
-- Deploying complete applications (backend + frontend)
-- Want backend deployed first, then frontend
-- Frontend needs backend URL in environment variables
-- Deploying backend-only applications
-- Deploying frontend-only applications (without backend references)
-
-**Advantages:**
-- Single skill handles all three cases (fullstack, backend-only, frontend-only)
-- Automatic backend URL resolution for frontend
-- Strict error handling with no recovery
-- Backend-first priority for fullstack apps
-
-**Example:**
-```json
-{
-  "unique_id": 5,
-  "skill_id": "aramb-deploy",
-  "task_name": "Deploy Application",
-  "description": "Deploy complete application (backend + frontend)",
-  "task_order": 5,
-  "logical_dependencies": [4],
-  "validation_criteria": {
-    "critical": [
-      "Backend deployed and healthy",
-      "Frontend deployed and healthy",
-      "Backend URL resolved in frontend env vars"
-    ]
-  }
-}
-```
-
-### Use `backend-deployment` (Backend-Only)
-
-**When:**
-- Explicitly want backend-only deployment
-- No frontend exists in the application
-- Want specialized backend deployment workflow
-
-**Example:**
-```json
-{
-  "unique_id": 3,
-  "skill_id": "backend-deployment",
-  "task_name": "Deploy Backend Services",
-  "description": "Deploy API and database services",
-  "task_order": 3
-}
-```
-
-### Use `frontend-deployment` (Frontend-Only)
-
-**When:**
-- Explicitly want frontend-only deployment
-- Backend already deployed separately
-- Frontend is standalone (no backend integration)
-
-**Example:**
-```json
-{
-  "unique_id": 4,
-  "skill_id": "frontend-deployment",
-  "task_name": "Deploy Frontend Application",
-  "description": "Deploy React frontend with backend URL",
-  "task_order": 4,
-  "logical_dependencies": [3]
-}
-```
-
-### Decision Tree
-
-```
-Need to deploy?
-   ↓
-   ├─ Full-stack application?
-   │  └─ Use: aramb-deploy (deploys backend first, then frontend)
-   │
-   ├─ Backend-only?
-   │  └─ Use: aramb-deploy OR backend-deployment
-   │
-   ├─ Frontend-only (no backend)?
-   │  └─ Use: aramb-deploy OR frontend-deployment
-   │
-   └─ Backend + Frontend (separate tasks)?
-      └─ Use: backend-deployment → frontend-deployment
-```
-
-**Recommendation:** Default to `aramb-deploy` for most deployment scenarios. It handles all cases gracefully and provides strict error handling.
-
 ## Common Patterns
 
-**Web Application (Full-Stack with Deployment):**
-1. Backend Development → Backend QA → Frontend Development → Frontend QA → aramb-metadata → aramb-deploy
-
-**Web Application (Separate Backend/Frontend):**
-1. Backend Development → Backend QA → aramb-metadata → backend-deployment
-2. Frontend Development → Frontend QA → frontend-deployment
+**Web Application:**
+1. Backend API → Backend QA → Frontend UI → Frontend QA → Integration → Metadata
 
 **Microservice:**
-1. Service Development → Testing → aramb-metadata → backend-deployment
-
-**Frontend-Only Application:**
-1. Frontend Development → Frontend QA → aramb-metadata → frontend-deployment
+1. Service Development → Testing → Docker/Deploy → Metadata
 
 **Data Analysis:**
 1. Data Pipeline → Validation → Visualization → Documentation
@@ -811,40 +652,3 @@ Need to deploy?
 
 **Refactoring:**
 1. Analysis → Refactor → Testing → Validation
-
-**Deployment Patterns:**
-
-**Pattern 1: Unified Full-Stack Deployment**
-```
-Prerequisites: aramb.toml exists with backend + frontend services
-Task: aramb-deploy
-  → Deploys backend first (builds images, creates services)
-  → Then deploys frontend (resolves backend URL for env vars)
-  → Returns both backend and frontend URLs
-```
-
-**Pattern 2: Backend-Only Deployment**
-```
-Prerequisites: aramb.toml exists with backend services
-Task: backend-deployment OR aramb-deploy
-  → Deploys backend services
-  → Builds Docker images if needed
-  → Returns backend URL
-```
-
-**Pattern 3: Frontend-Only Deployment**
-```
-Prerequisites: aramb.toml exists with frontend service
-Task: frontend-deployment OR aramb-deploy
-  → Deploys frontend service
-  → Builds static files if needed
-  → Returns frontend URL
-```
-
-**Pattern 4: Complete Application from Scratch**
-```
-1. aramb-metadata (generates aramb.toml)
-2. aramb-deploy (deploys everything)
-   → Backend deployment
-   → Frontend deployment with backend URL
-```
