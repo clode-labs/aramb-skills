@@ -20,7 +20,25 @@ You MUST use these tools to manage tasks. Create tasks first, then execute them 
 
 ### Create tasks
 ```bash
-npx mcporter call brahmi.create_tasks project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" tasks='[{"unique_id": 1, "name": "Task name", "description": "Detailed description"}]'
+npx mcporter call brahmi.create_tasks project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" tasks='[{"unique_id": 1, "name": "Task name", "description": "Detailed description", "assigned_agent": "agent-name", "required_toolkits": ["GMAIL"]}]'
+```
+
+#### required_toolkits — declare third-party tool needs upfront
+
+When a task needs a Composio toolkit (Gmail, Google Sheets, Slack, Notion, GitHub, etc.) to do its work, **declare the slugs in `required_toolkits`** at create time. Brahmi stores the list on the task row, surfaces it to the executing agent in the dispatch prompt, and (eventually) checks the user has connected those toolkits before the agent starts work.
+
+- **Slugs only**, uppercase, exactly as Composio reports them: `GMAIL`, `GOOGLESHEETS`, `GOOGLEDRIVE`, `SLACK`, `NOTION`, `LINEAR`, `GITHUB`, etc. Look them up via `composio toolkit list` if unsure.
+- **Empty / omitted** when no third-party tools are needed (most coding tasks). Don't pad the list.
+- **Per-task, not per-batch.** A planning task that just writes a plan file → no toolkits. A task that fetches Gmail messages and drops them into a Sheet → `["GMAIL","GOOGLESHEETS"]`.
+- **Honest list.** Only what *that specific task* will call. Don't pre-stage future tasks' needs.
+
+```bash
+# Example — three tasks, each declares only what it actually uses:
+npx mcporter call brahmi.create_tasks project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" tasks='[
+  {"unique_id": 1, "name": "Plan the recap email",   "description": "Write the outline to .planning/recap.md", "assigned_agent": "developer",        "required_toolkits": []},
+  {"unique_id": 2, "name": "Fetch last week mail",   "description": "Pull the 50 most recent Gmail threads.",   "assigned_agent": "developer",        "required_toolkits": ["GMAIL"], "dependencies": [1]},
+  {"unique_id": 3, "name": "Write summary to Sheet", "description": "Drop the digest into a new Sheet.",        "assigned_agent": "developer",        "required_toolkits": ["GOOGLESHEETS","GOOGLEDRIVE"], "dependencies": [2]}
+]'
 ```
 
 ### Update task status (use this for EACH task as you work)
@@ -221,5 +239,6 @@ Send short progress summaries to the main chat at these moments:
 - ALWAYS update task status as you work
 - ALWAYS include project_id and task_id in update_task calls
 - **ALWAYS include application_id** in create_tasks, send_message, ask_question, start_planning, submit_plan, and finish_planning calls. The agent is deployed per-project and serves multiple applications — without application_id, messages go to the wrong app. This is NOT optional.
+- **Declare `required_toolkits` per task** when the task will call a Composio toolkit (Gmail, Sheets, Slack, etc.). Slugs only, honest list, empty when no third-party tools are needed.
 - Save the task_id UUIDs returned from create_tasks
 - Valid statuses: in_progress, validating, done, failed, blocked, review
