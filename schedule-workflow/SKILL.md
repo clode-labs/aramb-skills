@@ -1,0 +1,148 @@
+---
+name: schedule-workflow
+description: >
+  Configure a cron schedule on a workflow from a natural-language phrase.
+  Use when the user says things like "run this weekly", "every Monday at 9am",
+  "stop the schedule", "pause it", "disable the schedule". NOT for: triggering
+  a single one-off run, or editing the workflow definition.
+---
+
+# Schedule Workflow
+
+Translate a user's natural-language schedule request into a cron expression
++ timezone, then call `set_workflow_schedule`. The workflow already has a
+schedule slot (one schedule per workflow) — this skill writes to it.
+
+You are typically replying to a chat message on the Workflow page. The user
+asked something like:
+- "Run this every Monday at 9am"
+- "Set it to run weekly"
+- "Schedule for 2pm UTC every weekday"
+- "Stop the schedule" / "Pause it"
+
+The workflow_id is in the chat context (from the Workflow page). If you don't
+have it, call `get_workflow application_id="<application_id>"` first.
+
+## Workflow
+
+### 1. Decide intent
+
+Three branches:
+
+- **Pause / disable** ("stop", "pause", "disable", "turn off"): go to step 4
+  with `enabled=false`.
+- **Set / update** ("run weekly", "every Monday at 9am", "schedule for 2pm UTC"):
+  go to step 2.
+- **Read / confirm** ("what's the schedule?", "when does this run?"): call
+  `get_workflow_schedule workflow_id="<workflow_id>"` and report what you find.
+  No write needed.
+
+### 2. Clarify if ambiguous
+
+Some phrases do not have enough information to map to a cron expression. Ask
+the user **one** clarifying question via `brahmi.send_message` and stop until
+they answer. Do NOT invent a default like "Sunday midnight UTC" silently.
+
+Phrases that need a clarifying question:
+
+- "weekly" → which day? what time?
+- "monthly" → which day of the month? what time?
+- "every day" / "daily" → what time?
+- Any time-of-day request without a timezone, when the workspace's timezone is
+  not known.
+
+Phrases that DO have enough information (act directly):
+
+- "every Monday at 9am UTC" → `0 9 * * 1` UTC
+- "weekdays at 2pm Pacific" → `0 14 * * 1-5` America/Los_Angeles
+- "first of every month at midnight UTC" → `0 0 1 * *` UTC
+- "every 6 hours" → `0 */6 * * *` UTC
+- "every 30 minutes" → `*/30 * * * *` UTC
+
+When you ask, give 2–3 specific options:
+
+```
+Question: When should this run weekly?
+1. Mondays at 9am UTC
+2. Sundays at midnight UTC
+3. Specify your own day + time
+```
+
+### 3. Map to a cron expression
+
+Use the standard 5-field format: `M H DoM Mon DoW`.
+
+- M = minute (0–59), H = hour (0–23, 24h)
+- DoM = day of month (1–31), Mon = month (1–12), DoW = day of week (0–6, Sunday=0)
+- `*` = every value, `*/N` = every Nth, `1-5` = range, `1,3,5` = list.
+
+Common patterns:
+- Daily at 9am: `0 9 * * *`
+- Weekly on Monday at 9am: `0 9 * * 1`
+- Weekdays at 9am: `0 9 * * 1-5`
+- Hourly on the hour: `0 * * * *`
+- Monthly on the 1st at midnight: `0 0 1 * *`
+
+Default timezone: **UTC**. If the user named a timezone ("Pacific", "EST",
+"London"), translate to its IANA name (`America/Los_Angeles`, `America/New_York`,
+`Europe/London`) and use that. **Tell the user explicitly which timezone you
+used** in your reply — never silently apply one.
+
+### 4. Call set_workflow_schedule
+
+For an enable / update:
+
+```bash
+npx mcporter call brahmi.set_workflow_schedule \
+  workflow_id="<workflow_id>" \
+  cron_expression="0 9 * * 1" \
+  cron_timezone="UTC" \
+  enabled=true
+```
+
+For a pause / disable:
+
+```bash
+npx mcporter call brahmi.set_workflow_schedule \
+  workflow_id="<workflow_id>" \
+  enabled=false
+```
+
+The response includes the resulting `schedule` view: `cron_expression`,
+`cron_timezone`, `enabled`, `next_run_at`, `auto_triggerable`,
+`missing_required_env`. If `auto_triggerable` is `false`, the schedule was
+saved but won't fire until the user provides the listed env values — relay
+that to the user.
+
+### 5. Confirm in chat
+
+Reply to the user via `brahmi.send_message` with `chat_location="main"` (or
+the Workflow chat — match the location they wrote from). Confirm:
+
+- The cron expression in plain English ("Mondays at 9am UTC")
+- The next scheduled run (from `next_run_at` in the response)
+- Any caveats (auto_triggerable=false, missing_required_env list)
+
+```bash
+npx mcporter call brahmi.send_message \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
+  content="Schedule set: every Monday at 9am UTC. Next run: 2026-05-04 09:00 UTC." \
+  chat_location="main"
+```
+
+For a pause:
+
+```
+Schedule paused. The workflow won't run on its schedule until you re-enable it.
+```
+
+## Rules
+
+- Never silently default an ambiguous phrase. Ask one clarifying question with
+  2–3 options, then stop.
+- Default timezone is UTC. State the timezone you used in your reply.
+- Use 5-field cron only. No seconds field.
+- For pause/disable, `cron_expression` and `cron_timezone` can be omitted — the
+  saved values stay so the user can re-enable later without retyping.
+- Do not edit the workflow definition from this skill — that's update-workflow.
