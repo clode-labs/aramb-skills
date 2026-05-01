@@ -86,6 +86,7 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what actually worked from the session but keep the concrete subject matter.
 - **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape.
 - **Keep agent assignments** unless a different agent fits better for the generalized version.
+- **Carry `required_toolkits` per node** — for each node, list the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Pull these from the source tasks' `required_toolkits` field and from the actual tool calls you observe in the task outputs. Empty array (`[]`) when a node only writes files / orchestrates and does not touch a third-party service. Slugs are uppercase, exactly as Composio reports them. Brahmi snapshots this list onto every workflow run step at trigger time so the executing agent sees the same dependencies the planner declared.
 
 ### 4. Identify environment variables
 
@@ -133,15 +134,15 @@ npx mcporter call brahmi.save_workflow \
   description="What this workflow does in 1-2 sentences" \
   env_variables='{}' \
   nodes='[
-    {"unique_id": 1, "name": "First step",  "prompt": "Concrete instruction with the real business context baked in.", "assigned_agent": "agent-name", "acceptance_criteria": "How to know this step succeeded"},
-    {"unique_id": 2, "name": "Second step", "prompt": "...",                                                          "assigned_agent": "agent-name", "acceptance_criteria": "..."}
+    {"unique_id": 1, "name": "First step",  "prompt": "Concrete instruction with the real business context baked in.", "assigned_agent": "agent-name", "acceptance_criteria": "How to know this step succeeded", "required_toolkits": []},
+    {"unique_id": 2, "name": "Second step", "prompt": "...",                                                          "assigned_agent": "agent-name", "acceptance_criteria": "...",                          "required_toolkits": ["GMAIL","GOOGLESHEETS"]}
   ]' \
   edges='[
     {"source": 1, "target": 2}
   ]'
 ```
 
-Node objects carry ONLY the node fields (unique_id / name / prompt / assigned_agent / acceptance_criteria / approval_mode). Dependencies live in the separate top-level `edges` array — each edge is `{source: <unique_id>, target: <unique_id>}`, meaning "the target node depends on the source node." A cycle in edges will cause the save to fail.
+Node objects carry ONLY the node fields (unique_id / name / prompt / assigned_agent / acceptance_criteria / approval_mode / required_toolkits). Dependencies live in the separate top-level `edges` array — each edge is `{source: <unique_id>, target: <unique_id>}`, meaning "the target node depends on the source node." A cycle in edges will cause the save to fail.
 
 For a linear 3-step workflow the edges would be `[{"source":1,"target":2},{"source":2,"target":3}]`. For a fan-out where step 1 feeds both 2 and 3: `[{"source":1,"target":2},{"source":1,"target":3}]`. If the workflow has only one node, omit `edges` (or pass `'[]'`).
 
@@ -193,6 +194,7 @@ npx mcporter call brahmi.update_task \
 - `edges` must be a DAG — no cycles. If no edges are needed (single-node workflow), pass `'[]'` or omit the argument.
 - Give the workflow a clear, descriptive name (not "Workflow 1")
 - `assigned_agent` should match existing agent names
+- **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Empty array when the node touches no third-party service. Pull from the source tasks' `required_toolkits` plus what you observe in tool-call traces.
 - Never call `save_workflow` more than once — one shot, success or failure
 - Never call `update_task` with status=done without calling `save_workflow` first
 - Always close the task: either `status=done` or `status=failed`, never leave in_progress
