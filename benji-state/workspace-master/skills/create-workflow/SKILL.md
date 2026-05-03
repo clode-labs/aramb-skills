@@ -14,6 +14,13 @@ Analyze completed tasks and consolidate them into a generalized, repeatable work
 > **If asked to update an existing workflow instead, use the `update-workflow` skill.**
 > This skill only handles the first-time creation flow (no workflow exists yet).
 
+## MUST rules — read before anything else
+
+1. **Every node in `save_workflow` MUST carry `required_toolkits`.** Copy the array from each source task's `required_toolkits` field. Use `[]` (not omitted) when the node touches no third-party service.
+   - **Failure mode:** Omitting `required_toolkits` from `save_workflow` nodes means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. ALWAYS copy from each source task's `required_toolkits` field. Empty array `[]` is correct when the node touches no third-party service.
+2. Call `save_workflow` exactly once. Success or failure — never retry.
+3. Always close the task with `update_task` (`status=done` on success, `status=failed` on any error). Never leave it `in_progress`.
+
 You are running as a **task** assigned to master. Brahmi dispatched you with an
 extra-system-prompt block named "Your task id" that gives you:
 - `application_id` — the workspace to consolidate
@@ -63,8 +70,13 @@ npx mcporter call brahmi.list_tasks \
   status="done"
 ```
 
-The result is a JSON array of task objects. Each has: `id`, `task_name`,
-`description`, `acceptance_criteria`, `assigned_agent`, `depends_on`, `outputs`.
+The result is a JSON array of task objects. Each has: `task_id`, `name`,
+`description`, `acceptance_criteria`, `assigned_agent`, `depends_on`,
+`required_toolkits` (Composio toolkit slugs the task used), `outputs`.
+
+**Read `required_toolkits` on every task you fetch.** You will copy these
+into the corresponding workflow node in step 5 — losing them here means
+losing them forever.
 
 Ignore tasks where `task_kind == "system"` — those are internal bookkeeping
 (including the very task you're running). Consolidate only `task_kind == "user"`
@@ -86,6 +98,7 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what actually worked from the session but keep the concrete subject matter.
 - **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape.
 - **Keep agent assignments** unless a different agent fits better for the generalized version.
+- **Carry `required_toolkits` per node — MANDATORY, never omit.** For each node, list the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Source the slugs from the source tasks' `required_toolkits` field (primary) and from the actual tool calls you observe in the task outputs (cross-check). Empty array (`[]`) when a node only writes files / orchestrates and does not touch a third-party service — `[]` is REQUIRED, not optional; do not omit the field. Slugs are uppercase, exactly as Composio reports them. Brahmi snapshots this list onto every workflow run step at trigger time so the executing agent sees the same dependencies the planner declared, and the Evaluate step uses it to surface missing-connection warnings before publish.
 
 ### 4. Identify environment variables
 
@@ -125,6 +138,23 @@ Update progress: "Saving workflow to brahmi".
 Call `save_workflow` with `application_id` + `project_id`. Brahmi creates the
 workflow row + nodes atomically in a single transaction.
 
+**Pre-flight checklist — verify before calling save_workflow.** For every node
+in your `nodes` array, confirm each of these fields is present:
+
+- `unique_id` — sequential integer starting at 1
+- `name` — short label
+- `prompt` — concrete instruction with business context baked in
+- `assigned_agent` — name of an existing agent
+- `acceptance_criteria` — how to know the step succeeded
+- **`required_toolkits` — copied from the corresponding source task's `required_toolkits`. Use `[]` for orchestration / file-only nodes; never omit the field.**
+- **`source_task_id` — the `task_id` of the originating task from `list_tasks`. Required whenever this node consolidates from one user task. Powers the FE "show me the task that produced this node" link and cost reconciliation. Omit only for nodes that don't correspond to a single source task (e.g. a glue / orchestration node you invented).**
+
+If any node is missing `required_toolkits`, fix the payload before calling
+`save_workflow`. Calling `save_workflow` with the field absent is the most
+common bug in this skill — it silently kills downstream Evaluate. The same
+goes for `source_task_id` — once the workflow is saved, the link is gone
+unless you emit it now.
+
 ```bash
 npx mcporter call brahmi.save_workflow \
   application_id="<application_id>" \
@@ -133,15 +163,23 @@ npx mcporter call brahmi.save_workflow \
   description="What this workflow does in 1-2 sentences" \
   env_variables='{}' \
   nodes='[
-    {"unique_id": 1, "name": "First step",  "prompt": "Concrete instruction with the real business context baked in.", "assigned_agent": "agent-name", "acceptance_criteria": "How to know this step succeeded"},
-    {"unique_id": 2, "name": "Second step", "prompt": "...",                                                          "assigned_agent": "agent-name", "acceptance_criteria": "..."}
+    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "Read events from the primary calendar for the current day.", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "source_task_id": "<task_id from list_tasks>"},
+    {"unique_id": 2, "name": "Summarize",             "prompt": "Write a one-paragraph briefing from the events.",            "assigned_agent": "developer", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "source_task_id": "<task_id from list_tasks>"},
+    {"unique_id": 3, "name": "Email the summary",     "prompt": "Send the briefing to the user via Gmail.",                   "assigned_agent": "developer", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "source_task_id": "<task_id from list_tasks>"}
   ]' \
   edges='[
-    {"source": 1, "target": 2}
+    {"source": 1, "target": 2},
+    {"source": 2, "target": 3}
   ]'
 ```
 
-Node objects carry ONLY the node fields (unique_id / name / prompt / assigned_agent / acceptance_criteria / approval_mode). Dependencies live in the separate top-level `edges` array — each edge is `{source: <unique_id>, target: <unique_id>}`, meaning "the target node depends on the source node." A cycle in edges will cause the save to fail.
+Note how each node's `required_toolkits` is present: nodes 1 and 3 have the
+slugs they actually call, and node 2 (pure summarization, no third-party
+service) carries `[]` rather than omitting the field. Each `source_task_id`
+is the literal `task_id` UUID from `list_tasks` — copy it directly, do not
+fabricate one.
+
+Node objects carry ONLY the node fields (unique_id / name / prompt / assigned_agent / acceptance_criteria / approval_mode / required_toolkits / source_task_id). Dependencies live in the separate top-level `edges` array — each edge is `{source: <unique_id>, target: <unique_id>}`, meaning "the target node depends on the source node." A cycle in edges will cause the save to fail.
 
 For a linear 3-step workflow the edges would be `[{"source":1,"target":2},{"source":2,"target":3}]`. For a fan-out where step 1 feeds both 2 and 3: `[{"source":1,"target":2},{"source":1,"target":3}]`. If the workflow has only one node, omit `edges` (or pass `'[]'`).
 
@@ -193,6 +231,7 @@ npx mcporter call brahmi.update_task \
 - `edges` must be a DAG — no cycles. If no edges are needed (single-node workflow), pass `'[]'` or omit the argument.
 - Give the workflow a clear, descriptive name (not "Workflow 1")
 - `assigned_agent` should match existing agent names
+- **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Empty array when the node touches no third-party service. Pull from the source tasks' `required_toolkits` plus what you observe in tool-call traces.
 - Never call `save_workflow` more than once — one shot, success or failure
 - Never call `update_task` with status=done without calling `save_workflow` first
 - Always close the task: either `status=done` or `status=failed`, never leave in_progress

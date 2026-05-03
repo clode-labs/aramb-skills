@@ -50,6 +50,32 @@ npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UU
 npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="review"
 ```
 
+### Patch task metadata (any subset, no status change)
+
+`status` on `update_task` is OPTIONAL. To patch metadata on a non-terminal task without transitioning status, omit `status` and pass any combination of:
+
+- `description` — replace the full description (use to append `## Progress` bullets)
+- `task_name` — rename
+- `acceptance_criteria` — replace
+- `assigned_agent` — reassign to a different existing agent
+- `required_toolkits` — replace the slug list (`'[]'` to wipe)
+
+```bash
+# Add a missing toolkit a task needs
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" required_toolkits='["GMAIL","SLACK"]'
+
+# Refine the description after learning more from the user
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" description="<full new description>"
+
+# Reassign a task you realized belongs to a different agent
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" assigned_agent="planner"
+
+# Patch multiple fields at once + transition status in the same call
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="in_progress" description="<new>" required_toolkits='["GMAIL"]'
+```
+
+Patches silently no-op on terminal (done / failed) tasks — that's history, don't rewrite it. Calling with neither `status` nor any patch field returns an error.
+
 ### Update your own task (agent context)
 ```bash
 npx mcporter call brahmi.update_my_task status="in_progress"
@@ -81,6 +107,22 @@ Rules for `update_my_workflow_step`:
 - `outputs.files` is an array of paths RELATIVE to the workspace working directory. Paths only, no contents. Use `files:[]` if you produced no files.
 - Do NOT call `update_task` or `update_my_task` from within a workflow step session — they won't resolve your step context and the run will stall on the safety net.
 - `update_workflow_step step_id="<UUID>" status="..."` is the explicit-id form. Only use it if you need to update a DIFFERENT step from the one you're executing (rare — mostly for the master safety net).
+
+### Spawn a workflow create / update from chat (master only)
+
+When a user asks master in main chat to create / update / regenerate the workflow for their application, master does NOT design the workflow inline. Instead it spawns the appropriate system task and brahmi loops it back to master with the right skill (`create-workflow` or `update-workflow`) loaded. Two thin tools wrap the existing FE-button flow:
+
+```bash
+# First-time create — application has no workflow yet
+npx mcporter call brahmi.consolidate_workflow application_id="<APPLICATION_ID>" project_id="<PROJECT_ID>"
+
+# Update an existing workflow — pulls fresh task corpus, regenerates the definition
+npx mcporter call brahmi.reconsolidate_workflow workflow_id="<WORKFLOW_ID>"
+```
+
+Decide between them by checking `brahmi.get_workflow application_id="..."` first — empty result → consolidate; existing row → reconsolidate. See the master-agent identity routing rules (`workspace-master/AGENTS.md`) for the full intent-detection flow.
+
+Both tools return `{status: "ok", task_id: "<uuid>", message: "..."}`. The actual workflow design happens later, when the system task arrives back at master and loads the appropriate skill — these tools just kick the dispatch.
 
 ### Get tasks assigned to you
 ```bash

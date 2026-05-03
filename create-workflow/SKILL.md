@@ -147,10 +147,13 @@ in your `nodes` array, confirm each of these fields is present:
 - `assigned_agent` — name of an existing agent
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits` — copied from the corresponding source task's `required_toolkits`. Use `[]` for orchestration / file-only nodes; never omit the field.**
+- **`source_task_id` — the `task_id` of the originating task from `list_tasks`. Required whenever this node consolidates from one user task. Powers the FE "show me the task that produced this node" link and cost reconciliation. Omit only for nodes that don't correspond to a single source task (e.g. a glue / orchestration node you invented).**
 
 If any node is missing `required_toolkits`, fix the payload before calling
 `save_workflow`. Calling `save_workflow` with the field absent is the most
-common bug in this skill — it silently kills downstream Evaluate.
+common bug in this skill — it silently kills downstream Evaluate. The same
+goes for `source_task_id` — once the workflow is saved, the link is gone
+unless you emit it now.
 
 ```bash
 npx mcporter call brahmi.save_workflow \
@@ -160,9 +163,9 @@ npx mcporter call brahmi.save_workflow \
   description="What this workflow does in 1-2 sentences" \
   env_variables='{}' \
   nodes='[
-    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "Read events from the primary calendar for the current day.", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"]},
-    {"unique_id": 2, "name": "Summarize",             "prompt": "Write a one-paragraph briefing from the events.",            "assigned_agent": "developer", "acceptance_criteria": "summary text produced",          "required_toolkits": []},
-    {"unique_id": 3, "name": "Email the summary",     "prompt": "Send the briefing to the user via Gmail.",                   "assigned_agent": "developer", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"]}
+    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "Read events from the primary calendar for the current day.", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "source_task_id": "<task_id from list_tasks>"},
+    {"unique_id": 2, "name": "Summarize",             "prompt": "Write a one-paragraph briefing from the events.",            "assigned_agent": "developer", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "source_task_id": "<task_id from list_tasks>"},
+    {"unique_id": 3, "name": "Email the summary",     "prompt": "Send the briefing to the user via Gmail.",                   "assigned_agent": "developer", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "source_task_id": "<task_id from list_tasks>"}
   ]' \
   edges='[
     {"source": 1, "target": 2},
@@ -172,9 +175,11 @@ npx mcporter call brahmi.save_workflow \
 
 Note how each node's `required_toolkits` is present: nodes 1 and 3 have the
 slugs they actually call, and node 2 (pure summarization, no third-party
-service) carries `[]` rather than omitting the field.
+service) carries `[]` rather than omitting the field. Each `source_task_id`
+is the literal `task_id` UUID from `list_tasks` — copy it directly, do not
+fabricate one.
 
-Node objects carry ONLY the node fields (unique_id / name / prompt / assigned_agent / acceptance_criteria / approval_mode / required_toolkits). Dependencies live in the separate top-level `edges` array — each edge is `{source: <unique_id>, target: <unique_id>}`, meaning "the target node depends on the source node." A cycle in edges will cause the save to fail.
+Node objects carry ONLY the node fields (unique_id / name / prompt / assigned_agent / acceptance_criteria / approval_mode / required_toolkits / source_task_id). Dependencies live in the separate top-level `edges` array — each edge is `{source: <unique_id>, target: <unique_id>}`, meaning "the target node depends on the source node." A cycle in edges will cause the save to fail.
 
 For a linear 3-step workflow the edges would be `[{"source":1,"target":2},{"source":2,"target":3}]`. For a fan-out where step 1 feeds both 2 and 3: `[{"source":1,"target":2},{"source":1,"target":3}]`. If the workflow has only one node, omit `edges` (or pass `'[]'`).
 
