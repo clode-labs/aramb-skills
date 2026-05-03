@@ -20,7 +20,25 @@ You MUST use these tools to manage tasks. Create tasks first, then execute them 
 
 ### Create tasks
 ```bash
-npx mcporter call brahmi.create_tasks project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" tasks='[{"unique_id": 1, "name": "Task name", "description": "Detailed description"}]'
+npx mcporter call brahmi.create_tasks project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" tasks='[{"unique_id": 1, "name": "Task name", "description": "Detailed description", "assigned_agent": "agent-name", "required_toolkits": ["GMAIL"]}]'
+```
+
+#### required_toolkits — declare third-party tool needs upfront
+
+When a task needs a Composio toolkit (Gmail, Google Sheets, Slack, Notion, GitHub, etc.) to do its work, **declare the slugs in `required_toolkits`** at create time. Brahmi stores the list on the task row, surfaces it to the executing agent in the dispatch prompt, and (eventually) checks the user has connected those toolkits before the agent starts work.
+
+- **Slugs only**, uppercase, exactly as Composio reports them: `GMAIL`, `GOOGLESHEETS`, `GOOGLEDRIVE`, `SLACK`, `NOTION`, `LINEAR`, `GITHUB`, etc. Look them up via `composio toolkit list` if unsure.
+- **Empty / omitted** when no third-party tools are needed (most coding tasks). Don't pad the list.
+- **Per-task, not per-batch.** A planning task that just writes a plan file → no toolkits. A task that fetches Gmail messages and drops them into a Sheet → `["GMAIL","GOOGLESHEETS"]`.
+- **Honest list.** Only what *that specific task* will call. Don't pre-stage future tasks' needs.
+
+```bash
+# Example — three tasks, each declares only what it actually uses:
+npx mcporter call brahmi.create_tasks project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" tasks='[
+  {"unique_id": 1, "name": "Plan the recap email",   "description": "Write the outline to .planning/recap.md", "assigned_agent": "developer",        "required_toolkits": []},
+  {"unique_id": 2, "name": "Fetch last week mail",   "description": "Pull the 50 most recent Gmail threads.",   "assigned_agent": "developer",        "required_toolkits": ["GMAIL"], "dependencies": [1]},
+  {"unique_id": 3, "name": "Write summary to Sheet", "description": "Drop the digest into a new Sheet.",        "assigned_agent": "developer",        "required_toolkits": ["GOOGLESHEETS","GOOGLEDRIVE"], "dependencies": [2]}
+]'
 ```
 
 ### Update task status (use this for EACH task as you work)
@@ -31,6 +49,32 @@ npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UU
 npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="blocked"
 npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="review"
 ```
+
+### Patch task metadata (any subset, no status change)
+
+`status` on `update_task` is OPTIONAL. To patch metadata on a non-terminal task without transitioning status, omit `status` and pass any combination of:
+
+- `description` — replace the full description (use to append `## Progress` bullets)
+- `task_name` — rename
+- `acceptance_criteria` — replace
+- `assigned_agent` — reassign to a different existing agent
+- `required_toolkits` — replace the slug list (`'[]'` to wipe)
+
+```bash
+# Add a missing toolkit a task needs
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" required_toolkits='["GMAIL","SLACK"]'
+
+# Refine the description after learning more from the user
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" description="<full new description>"
+
+# Reassign a task you realized belongs to a different agent
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" assigned_agent="planner"
+
+# Patch multiple fields at once + transition status in the same call
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="in_progress" description="<new>" required_toolkits='["GMAIL"]'
+```
+
+Patches silently no-op on terminal (done / failed) tasks — that's history, don't rewrite it. Calling with neither `status` nor any patch field returns an error.
 
 ### Update your own task (agent context)
 ```bash
@@ -63,6 +107,22 @@ Rules for `update_my_workflow_step`:
 - `outputs.files` is an array of paths RELATIVE to the workspace working directory. Paths only, no contents. Use `files:[]` if you produced no files.
 - Do NOT call `update_task` or `update_my_task` from within a workflow step session — they won't resolve your step context and the run will stall on the safety net.
 - `update_workflow_step step_id="<UUID>" status="..."` is the explicit-id form. Only use it if you need to update a DIFFERENT step from the one you're executing (rare — mostly for the master safety net).
+
+### Spawn a workflow create / update from chat (master only)
+
+When a user asks master in main chat to create / update / regenerate the workflow for their application, master does NOT design the workflow inline. Instead it spawns the appropriate system task and brahmi loops it back to master with the right skill (`create-workflow` or `update-workflow`) loaded. Two thin tools wrap the existing FE-button flow:
+
+```bash
+# First-time create — application has no workflow yet
+npx mcporter call brahmi.consolidate_workflow application_id="<APPLICATION_ID>" project_id="<PROJECT_ID>"
+
+# Update an existing workflow — pulls fresh task corpus, regenerates the definition
+npx mcporter call brahmi.reconsolidate_workflow workflow_id="<WORKFLOW_ID>"
+```
+
+Decide between them by checking `brahmi.get_workflow application_id="..."` first — empty result → consolidate; existing row → reconsolidate. See the master-agent identity routing rules (`workspace-master/AGENTS.md`) for the full intent-detection flow.
+
+Both tools return `{status: "ok", task_id: "<uuid>", message: "..."}`. The actual workflow design happens later, when the system task arrives back at master and loads the appropriate skill — these tools just kick the dispatch.
 
 ### Get tasks assigned to you
 ```bash
@@ -221,5 +281,6 @@ Send short progress summaries to the main chat at these moments:
 - ALWAYS update task status as you work
 - ALWAYS include project_id and task_id in update_task calls
 - **ALWAYS include application_id** in create_tasks, send_message, ask_question, start_planning, submit_plan, and finish_planning calls. The agent is deployed per-project and serves multiple applications — without application_id, messages go to the wrong app. This is NOT optional.
+- **Declare `required_toolkits` per task** when the task will call a Composio toolkit (Gmail, Sheets, Slack, etc.). Slugs only, honest list, empty when no third-party tools are needed.
 - Save the task_id UUIDs returned from create_tasks
 - Valid statuses: in_progress, validating, done, failed, blocked, review

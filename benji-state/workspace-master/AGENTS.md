@@ -12,8 +12,50 @@
 
 ### Receiving Requests
 1. Assess the request — is the path forward clear, or are there decisions the user should weigh in on?
-2. **Clear path:** Create tasks directly, even if multiple agents are involved
-3. **Ambiguous / high-risk:** Enter planning mode — iterate with user — get approval — create tasks
+2. **Workflow create / update intent** — see "Workflow create + update routing" below FIRST. Don't fall through into planning or task creation for these.
+3. **Clear path:** Create tasks directly, even if multiple agents are involved
+4. **Ambiguous / high-risk:** Enter planning mode — iterate with user — get approval — create tasks
+
+### Workflow create + update routing
+
+When the user asks you to **create**, **update**, **regenerate**, or **refresh** the workflow for the current application, do NOT design it inline and do NOT enter planning. The workflow lifecycle has dedicated skills (`create-workflow`, `update-workflow`) that brahmi loads when it dispatches a system task with the matching purpose. Your job is just to spawn the right system task — brahmi loops it back to you with the appropriate skill loaded.
+
+Decision tree:
+
+1. **ALWAYS look up the application's existing workflow first.** This is unconditional. Run this lookup every turn, regardless of what you remember from earlier in the chat:
+
+   ```bash
+   npx mcporter call brahmi.get_workflow application_id="<APPLICATION_ID>"
+   ```
+
+   **The chat is not the source of truth — the database is.** Workflow rows get deleted between turns. Tasks you remember dispatching may have completed asynchronously. Status may have changed. Even if you "just" dispatched an update task and feel certain it's still in flight, **verify**, don't assume. The cost of a redundant lookup is one tool call; the cost of acting on stale memory is doing nothing while telling the user you did something.
+
+   Use the workflow_id from THIS response — never a remembered one.
+
+   Likewise, before claiming "an update is already in flight" or "task X is still running", call `brahmi.list_tasks status="in_progress"` and confirm. If the task is `done`, treat the user's new prompt as a fresh request, not a refinement.
+
+2. **No workflow exists yet** → call:
+   ```bash
+   npx mcporter call brahmi.consolidate_workflow application_id="<APPLICATION_ID>" project_id="<PROJECT_ID>"
+   ```
+   Brahmi creates a system task (purpose=create-workflow) and dispatches it back to you with the create-workflow skill loaded. You'll see a fresh task arrive; pick it up and run the skill.
+
+3. **Workflow exists** → call:
+   ```bash
+   npx mcporter call brahmi.reconsolidate_workflow workflow_id="<WORKFLOW_ID>" change_request="<USER'S EXACT INSTRUCTION>"
+   ```
+   Brahmi creates a system task (purpose=update-workflow), the existing definition stays authoritative until the new system task's update_workflow call atomically swaps it.
+
+   **`change_request` is critical** when the user has a specific tweak in mind ("add a Slack DM step", "remove the email triage", "change the synth step to also include tomorrow's calendar"). Pass the user's instruction through verbatim — do NOT summarize, paraphrase, or strip it. Without it, the dispatched skill regenerates from the task corpus and the user's tweak silently vanishes. Leave `change_request` empty (or omit it) only for plain refresh intent like "regenerate the workflow" / "refresh it".
+
+After dispatching either tool, send a one-line confirmation to the user via `brahmi.send_message` so the chat shows you've kicked it off — e.g. *"Starting workflow consolidation, task <id>."* — then STOP. The dispatched system task will arrive separately; do not start designing in this turn.
+
+Intent triggers to watch for in the user's message:
+- "create the workflow", "make a workflow", "consolidate to a workflow"
+- "update the workflow", "regenerate the workflow", "refresh the workflow"
+- "rebuild the workflow", "re-do the workflow"
+
+If the user's intent is ambiguous (e.g. they ask a question about the workflow rather than asking to build it), don't auto-dispatch — answer the question instead.
 
 ### Creating Tasks
 1. Identify what agents are needed
