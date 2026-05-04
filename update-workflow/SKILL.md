@@ -144,8 +144,68 @@ signal** — apply it directly to the relevant node(s), in addition to
 whatever the task corpus diff suggests. Without acting on it, the user's
 ask vanishes silently and the update looks like a pointless regeneration.
 
+**Reject schedule-shaped change requests.** If the `User-supplied change
+request:` is solely about cron / timing ("change the schedule to weekly",
+"stop the cron", "move it to UTC", "run it every Monday at 9am instead of
+Tuesday", "pause the schedule"), DO NOT call `update_workflow`. The cron
+fields live in a different storage column and have a dedicated skill
+(`schedule-workflow`) — touching them through `update_workflow` regenerates
+the definition for nothing and ignores the actual ask. Close the task as
+follows:
+
+```bash
+npx mcporter call brahmi.update_task \
+  task_id="<your task_id>" \
+  status="failed" \
+  rejection_reason="schedule-shaped change request — dispatch schedule-workflow skill instead with workflow_id=<id> and the user's exact phrase"
+```
+
+This signals master to route the request through the right skill. update-workflow only owns the workflow definition (nodes, edges, env vars, settings); cron belongs to schedule-workflow.
+
+If the request is **mixed** (definition change + schedule change in one
+sentence), apply the definition change here as normal and add a note in your
+closing `outputs` so master knows to dispatch schedule-workflow next:
+
+```
+"schedule_hint":"User also asked to change the schedule: \"<verbatim phrase>\". Dispatch schedule-workflow with workflow_id=<id>."
+```
+
 If no `User-supplied change request:` section exists, you're in plain
 regeneration mode (FE-button or "refresh the workflow" intent).
+
+### Intent recognition for setting changes
+
+Many change requests don't change the *graph* — they change a *setting*. Recognize the intent and apply the change at the right level. The defaults block is `default_node_settings` on the workflow; per-node deviations live in each node's `settings` field. Workflow defaults inherit down; per-node values override.
+
+Common phrases and where they land:
+
+| User phrase | Where to apply |
+|---|---|
+| "all steps should use Opus" / "switch the model to Opus" | `default_node_settings.model = "claude-opus-4-7"` (workflow) |
+| "the synth step should use Opus" | that one node's `settings.model = "claude-opus-4-7"` (override) |
+| "use Sonnet everywhere except the writer step, which should be Opus" | workflow `default_node_settings.model = "claude-sonnet-4-6"` AND that one node's `settings.model = "claude-opus-4-7"` |
+| "give it a $50 budget" / "raise the budget to $50" | workflow-level `budget_usd = 50.0`. This is the cumulative cap across the whole workflow run (passed to benji as `maxSessionCostUsd`). |
+| "cap the synth step at $5" / per-step budget intents | Reject. Budget caps are workflow-level only — benji enforces them across the whole run, not per step. Reply: "Budget caps apply to the whole workflow run, not individual steps. I'll set the workflow budget to $5 if that's what you meant." |
+| "this step shouldn't auto-approve" / "make me approve the email step" | that one node's `settings.approval_mode = "manual"` |
+| "auto-approve everything" | workflow `default_node_settings.approval_mode = "auto"` AND clear `approval_mode` from any per-node `settings` overrides (so they inherit) |
+| "always respond in IST" / "use markdown for replies" / "cite sources" | `default_node_settings.instructions = "<phrase>"` (workflow) — voice/format/locale guidance lives at the workflow level |
+| "for this step, prefer concise bullets" | that one node's `settings.instructions = "<phrase>"` — appends to the workflow-level instructions |
+| "give it more turns" / "let each step go up to 80 turns" | `default_node_settings.max_turns = 80` (workflow) |
+| "let the synth step take longer" | that one node's `settings.max_turns = 80` (override) |
+| "turn extended thinking off" | `default_node_settings.thinking = "off"` (workflow) |
+| "turn admin on" | `default_node_settings.admin = true` — only when the user explicitly asks. Off by default. |
+
+**Inheritance model — be explicit in the user reply.** When you change a
+workflow default, mention what it implies for nodes that had overrides
+("Set the workflow default to Opus and cleared the node override on the
+synth step so it inherits."). When you set a node override, name the node
+("Switched the synth step to Opus; other steps still use the workflow
+default of Sonnet."). The user's mental model of "default + override" only
+holds if you describe changes in those terms.
+
+**Don't touch settings the user didn't ask about.** Carry the existing
+`default_node_settings` and per-node `settings` through unchanged from
+`get_workflow` (step 1). Edit only the fields the user named.
 
 Then compare the existing definition against the current task corpus:
 - Are there new tasks the existing graph doesn't reflect? Add nodes.
@@ -163,6 +223,8 @@ change request, if present, tells you *which* 20% to actually touch.
 - Concrete prompts with real business context baked in. No generic templates.
 - **Each node `prompt` ends with the closing-instruction template** (see "Closing instruction per node" above) — non-negotiable. If you carry an old node forward unchanged, verify it still has the closing template; if not, append it.
 - **Each node carries `required_toolkits`** — never omit; `[]` for orchestration / file-only nodes.
+- **Each node carries `settings`** — usually `{}`. Carry forward any existing per-node overrides from the `get_workflow` response, plus or minus what the user is changing in this request. Don't drop overrides the user didn't mention.
+- **Carry forward `default_node_settings`** from the existing workflow, edited only where the user asked. If the existing workflow has an empty / missing block (older definitions), seed it with the same sensible defaults create-workflow uses (`model=claude-sonnet-4-6`, `effort=medium`, `thinking=adaptive`, `max_turns=35`, `admin=false`, `budget_usd=25.0`, `approval_mode=auto`, `instructions=""`).
 - Sequential `unique_id` integers starting at 1 (numbering can be different
   from the existing version — uniqueness is what matters).
 - Dependencies via the top-level `edges` array, never on nodes.
@@ -183,6 +245,11 @@ in your `nodes` array, confirm each of these fields is present:
 - `assigned_agent` — name of an existing agent
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits` — copied from the corresponding source task's `required_toolkits`. Use `[]` for orchestration / file-only nodes; never omit the field.**
+- **`settings` — JSONB; preserve existing per-node overrides from `get_workflow`, edit only where the user asked. `{}` when the node has no overrides.**
+
+And on the call itself:
+
+- **`default_node_settings`** — carry the existing block forward (or seed sensible defaults if the existing one is empty), then apply any workflow-wide setting changes the user requested.
 
 Two common bugs that silently break downstream behaviour, both as fatal as in `save_workflow`:
 1. Missing `required_toolkits` — kills Evaluate's missing-connection warnings.
@@ -210,18 +277,21 @@ npx mcporter call brahmi.update_workflow \
   name="Updated Workflow Name" \
   description="What this workflow does in 1-2 sentences" \
   env_variables='{}' \
+  default_node_settings='{"model":"claude-opus-4-7","effort":"medium","thinking":"adaptive","max_turns":35,"admin":false,"budget_usd":50.0,"approval_mode":"auto","instructions":""}' \
   nodes='[
-    {"unique_id": 1, "name": "First step",  "prompt": "<body + closing template>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": ["GMAIL"]},
-    {"unique_id": 2, "name": "Second step", "prompt": "<body + closing template>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": []}
+    {"unique_id": 1, "name": "First step",  "prompt": "<body + closing template>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": ["GMAIL"], "settings": {}},
+    {"unique_id": 2, "name": "Second step", "prompt": "<body + closing template>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": [],        "settings": {"approval_mode":"manual"}}
   ]' \
   edges='[
     {"source": 1, "target": 2}
   ]'
 ```
 
-`name`, `description`, `env_variables` are optional — omit them to keep the
-existing values. `nodes` is required and must not be empty. `edges` may be `[]`
-for a single-node workflow.
+The example above shows a workflow whose user said "switch the model to Opus and raise the budget to $50, but make me approve step 2" — workflow-level changes land in `default_node_settings`, the per-step gating lands in node 2's `settings`.
+
+`name`, `description`, `env_variables`, `default_node_settings` are optional —
+omit them to keep the existing values. `nodes` is required and must not be
+empty. `edges` may be `[]` for a single-node workflow.
 
 **`required_toolkits` per node — always include it.** Copy the existing
 list from the matching node in `get_workflow` (step 1), plus or minus
@@ -241,7 +311,18 @@ The response `status` will always be `"draft"` after a successful update —
 brahmi demotes every updated workflow back to draft so the user can re-publish
 deliberately. (See "side effects" below.)
 
-### 5. Tell the user about side effects
+### 5. Tell the user about side effects + setting changes
+
+**Describe setting changes in inheritance terms.** The user's mental model
+of these settings is "workflow default + per-node override." When you write
+the closing summary, frame it that way so they can predict behavior:
+
+- workflow default change → "Set the workflow default model to Opus." (one line, applies everywhere)
+- per-node override → "Switched the synth step to Opus; other steps still use the workflow default of Sonnet."
+- removing an override → "Cleared the node-level model override on the synth step so it inherits the workflow default."
+- mixed → "Set the workflow default to Sonnet AND overrode the writer step to Opus."
+
+If you only edited the graph (no settings touched), no settings line needed.
 
 **Status is now `draft` — re-publish required.** Every successful update
 demotes the workflow to `draft`, regardless of where it was before (active,
@@ -269,7 +350,15 @@ On success — use the workflow_id from the response (same as the input):
 npx mcporter call brahmi.update_task \
   task_id="<your task_id>" \
   status="done" \
-  outputs='{"workflow_id":"<workflow_id>","node_count":<number>,"summary":"Updated workflow: <one-line summary of what changed>. Status: draft (re-publish to put it live). Stateful chain: preserved | reset. Schedule: unchanged | paused."}'
+  outputs='{"workflow_id":"<workflow_id>","node_count":<number>,"summary":"Updated workflow: <one-line summary of what changed, in inheritance terms when settings were touched>. Status: draft (re-publish to put it live). Stateful chain: preserved | reset. Schedule: unchanged | paused."}'
+```
+
+If the user's request also contained a schedule-shaped phrase that you didn't
+handle (mixed intent), include `"schedule_hint"` so master can dispatch
+`schedule-workflow` next:
+
+```
+"schedule_hint":"User also asked to change the schedule: \"<verbatim phrase>\". Dispatch schedule-workflow with workflow_id=<id>."
 ```
 
 On failure — list_tasks error, get_workflow error, update_workflow error
@@ -296,6 +385,10 @@ workflow as gone.
 - Each node's `prompt` must carry the real business context baked in.
 - **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `update_my_workflow_step` at the end of its run (see "Closing instruction per node — MANDATORY" section). Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)" for every step.
 - **Each node carries `required_toolkits`** — copied from the source tasks; `[]` when the node touches no third-party service; never omit.
+- **Each node carries `settings`** — preserve existing per-node overrides from `get_workflow`; `{}` when the node has no overrides.
+- **Carry `default_node_settings`** forward unchanged from `get_workflow`, edited only where the user asked. Never silently drop the workflow defaults block.
+- **Reject schedule-shaped change requests** ("change the schedule to weekly", "stop the cron", "move it to UTC"). Close as failed with a `rejection_reason` telling master to dispatch `schedule-workflow` instead. Cron/timezone/enabled is the schedule-workflow skill's responsibility, not this skill's.
+- **Apply setting changes at the right level** (see "Intent recognition for setting changes"): workflow-wide phrases like "all steps" / "the workflow" / "everywhere" → `default_node_settings`. Single-step phrases like "the synth step" / "this step" → that one node's `settings` override.
 - Only use `{{env.VARIABLE_NAME}}` for secrets, identity, or URLs — empty
   `env_variables` is the common case.
 - `unique_id` values are sequential integers starting at 1.

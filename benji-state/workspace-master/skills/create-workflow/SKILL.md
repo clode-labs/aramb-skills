@@ -18,8 +18,10 @@ Analyze completed tasks and consolidate them into a generalized, repeatable work
 
 1. **Every node in `save_workflow` MUST carry `required_toolkits`.** Copy the array from each source task's `required_toolkits` field. Use `[]` (not omitted) when the node touches no third-party service.
    - **Failure mode:** Omitting `required_toolkits` from `save_workflow` nodes means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. ALWAYS copy from each source task's `required_toolkits` field. Empty array `[]` is correct when the node touches no third-party service.
-2. Call `save_workflow` exactly once. Success or failure — never retry.
-3. Always close the task with `update_task` (`status=done` on success, `status=failed` on any error). Never leave it `in_progress`.
+2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `update_my_workflow_step` at the end of its run. This is the workflow-node equivalent of the `When done: npx mcporter call brahmi.update_my_task` line that every task description carries (see `workspace-master/SOUL.md`). See section "Closing instruction per node" below for the exact template.
+   - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble then shows "(no summary)" instead of the real hand-off, and the chain works visually but with zero context flowing between steps. Outputs are load-bearing — make every prompt include the closing line.
+3. Call `save_workflow` exactly once. Success or failure — never retry.
+4. Always close the task with `update_task` (`status=done` on success, `status=failed` on any error). Never leave it `in_progress`.
 
 You are running as a **task** assigned to master. Brahmi dispatched you with an
 extra-system-prompt block named "Your task id" that gives you:
@@ -99,6 +101,70 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape.
 - **Keep agent assignments** unless a different agent fits better for the generalized version.
 - **Carry `required_toolkits` per node — MANDATORY, never omit.** For each node, list the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Source the slugs from the source tasks' `required_toolkits` field (primary) and from the actual tool calls you observe in the task outputs (cross-check). Empty array (`[]`) when a node only writes files / orchestrates and does not touch a third-party service — `[]` is REQUIRED, not optional; do not omit the field. Slugs are uppercase, exactly as Composio reports them. Brahmi snapshots this list onto every workflow run step at trigger time so the executing agent sees the same dependencies the planner declared, and the Evaluate step uses it to surface missing-connection warnings before publish.
+- **Set `default_node_settings` on the workflow.** Always emit a sensible defaults block — see "Default node settings — workflow-level" below. Don't leave it empty: the FE renders the settings tray off these values, and a missing block surfaces as blank fields the user has to fill in by hand.
+- **Per-node `settings` typically stays empty (`{}`)** — defaults inherit from the workflow. The exception: if a node clearly does something destructive or externally visible (posts to Linear, sends an email, writes to a customer DB, deletes files), set that one node's `settings.approval_mode = "manual"` so a human has to approve the step before it runs. Use this heuristic sparingly — over-gating turns every run into a clickfest.
+- **Per-node attachments** only when the user explicitly mentioned files in chat ("here's the spreadsheet", "use this PDF as the spec"). Never invent attachments — empty `input_attachments` is the default.
+- **End every node `prompt` with the closing-instruction template.** The agent has no other path to populate `outputs` — without this template the hand-off chain runs blind. See the next section for the exact text.
+
+## Closing instruction per node — MANDATORY
+
+Every node's `prompt` MUST end with this exact block, with `<summary>` and `<files>` substituted to match what the node will actually produce. Treat it the same way the task-description template treats `When done: npx mcporter call brahmi.update_my_task` — non-negotiable, baked into every prompt at authoring time.
+
+Append this to every node's `prompt`:
+
+```
+When done — record your output for the next step:
+  npx mcporter call brahmi.update_my_workflow_step status="done" outputs='{"summary":"<one-paragraph hand-off, under 500 chars>","files":["relative/path/to/output.json"]}'
+
+If you can't complete the step:
+  npx mcporter call brahmi.update_my_workflow_step status="failed" error="<concise reason + any partial progress>"
+```
+
+Why both `summary` and `files`:
+- `summary` is a paragraph the next agent reads as preamble — the hand-off vocabulary that makes the chain coherent. Keep it under 500 chars; focus on what's useful downstream, not how the work was done.
+- `files` is a list of paths (relative to the workspace working directory) the next agent reads to dig deeper. Empty array `[]` is correct when the node only sends a message / posts to an external service and produces no files.
+
+Notes:
+- The brahmi MCP server resolves `step_id` from session metadata, so no `step_id` argument is needed.
+- Do NOT call `brahmi.update_my_task` or `brahmi.update_task` from a workflow-step prompt — those are for ad-hoc tasks and won't resolve workflow-step context. Only `update_my_workflow_step` works in this dispatch.
+- The full skill reference for `update_my_workflow_step` lives in `workspace-developer/skills/brahmi/SKILL.md` (and the equivalent for every executing agent identity); the agent already has it. The template above is the minimum the prompt must spell out so the agent sees it without needing to search.
+
+## Default node settings — workflow-level
+
+Every workflow carries a `default_node_settings` JSONB block on the workflow itself. The FE renders the workflow settings tray from these values, and brahmi merges them per-step at dispatch time (workflow defaults ⊕ node overrides). Always emit it — leaving it `{}` makes the FE render blanks and the runtime fall back to coarse defaults.
+
+Sensible default block to emit unless the user said otherwise:
+
+```json
+{
+  "model": "claude-sonnet-4-6",
+  "effort": "medium",
+  "thinking": "adaptive",
+  "max_turns": 35,
+  "admin": false,
+  "budget_usd": 25.0,
+  "approval_mode": "auto",
+  "instructions": ""
+}
+```
+
+Field-by-field guidance:
+
+- `model` — workflow-wide model. Sonnet 4.6 is the everyday default; promote to `claude-opus-4-7` only if the user said "use Opus", or the work obviously needs heavier reasoning (deep code synthesis, long planning). Demote to `claude-haiku-4-5` only on explicit user request.
+- `effort` — `medium` is the default. Bump to `high` if the user emphasized care / depth, drop to `low` for trivially mechanical workflows (e.g. simple calendar scrape + email).
+- `thinking` — `adaptive` is the default; only flip if the user said something specific ("turn extended thinking off", "always think hard").
+- `max_turns` — `35` is the default per step. Raise (60–80) only for steps the user explicitly described as long / iterative.
+- `admin` — `false`. Don't enable graph-edit privilege without an explicit user ask.
+- `budget_usd` — `25.0` is the workflow-wide ceiling. Increase only when the user named a higher number.
+- `approval_mode` — `auto` workflow-wide. Manual gating belongs on individual node `settings`, not the workflow default — see the per-node heuristic above.
+- `instructions` — usually `""`. Fill from chat if the user expressed a *cross-workflow* style preference ("respond in IST", "use markdown for replies", "always cite sources"). The string is appended to every step's prompt at dispatch, so it should be voice / format / locale guidance — never task-specific content.
+
+Per-node `settings` overrides only fire when the user asked for variation. Common patterns:
+- "the synth step should use Opus" → that one node's `settings.model = "claude-opus-4-7"`.
+- a destructive / external-effect step → that node's `settings.approval_mode = "manual"`.
+- a step the user said is bigger than the others → that node's `settings.max_turns = 80`.
+
+Otherwise leave each node's `settings: {}`.
 
 ### 4. Identify environment variables
 
@@ -143,17 +209,38 @@ in your `nodes` array, confirm each of these fields is present:
 
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
-- `prompt` — concrete instruction with business context baked in
+- `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template** (see "Closing instruction per node — MANDATORY" above)
 - `assigned_agent` — name of an existing agent
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits` — copied from the corresponding source task's `required_toolkits`. Use `[]` for orchestration / file-only nodes; never omit the field.**
 - **`source_task_id` — the `task_id` of the originating task from `list_tasks`. Required whenever this node consolidates from one user task. Powers the FE "show me the task that produced this node" link and cost reconciliation. Omit only for nodes that don't correspond to a single source task (e.g. a glue / orchestration node you invented).**
+- **`settings` — JSONB; usually `{}`. Set keys only when this node deviates from the workflow defaults (e.g. `{"approval_mode":"manual"}` on a destructive step, `{"model":"claude-opus-4-7"}` on a heavy-reasoning step). Defaults inherit from the workflow's `default_node_settings`.**
 
-If any node is missing `required_toolkits`, fix the payload before calling
-`save_workflow`. Calling `save_workflow` with the field absent is the most
-common bug in this skill — it silently kills downstream Evaluate. The same
-goes for `source_task_id` — once the workflow is saved, the link is gone
-unless you emit it now.
+And on the call itself:
+
+- **`default_node_settings`** — the workflow-wide defaults block. See "Default node settings — workflow-level" above. Emit it; don't leave it empty.
+
+Three bugs silently break downstream behaviour — all three are non-negotiable, fix the payload before calling `save_workflow`:
+1. Missing `required_toolkits` — kills Evaluate's missing-connection warnings.
+2. Missing `source_task_id` — once saved, the link to the originating user task is gone for good (cost reconciliation + FE deep-link both stop working).
+3. Missing closing instruction in `prompt` — the executing agent finishes its LLM session, brahmi safety-net auto-closes the step but `outputs` stays NULL, downstream sees "(no summary)" in its preamble.
+
+**Each node's `prompt` should look like this (markdown, multi-line) before you JSON-encode it for `save_workflow`:**
+
+```
+Read events from the primary calendar for the current day. Save the
+result as JSON to .planning/calendar.json.
+
+When done — record your output for the next step:
+  npx mcporter call brahmi.update_my_workflow_step status="done" outputs='{"summary":"Fetched N calendar events for today; saved JSON.","files":[".planning/calendar.json"]}'
+
+If you can't complete the step:
+  npx mcporter call brahmi.update_my_workflow_step status="failed" error="<concise reason>"
+```
+
+The instruction body (top paragraph) is per-node business context. The `When done` / `If you can't complete` blocks below are the closing template — identical structure across every node, only the `summary` / `files` content differs to match what each node produces. Compose the prompt with both halves, then JSON-encode the full string into the `prompt` field of a `save_workflow` node.
+
+`save_workflow` skeleton (each node's `prompt` carries its full body + closing template — abbreviated below for readability):
 
 ```bash
 npx mcporter call brahmi.save_workflow \
@@ -162,22 +249,26 @@ npx mcporter call brahmi.save_workflow \
   name="Descriptive Workflow Name" \
   description="What this workflow does in 1-2 sentences" \
   env_variables='{}' \
+  default_node_settings='{"model":"claude-sonnet-4-6","effort":"medium","thinking":"adaptive","max_turns":35,"admin":false,"budget_usd":25.0,"approval_mode":"auto","instructions":""}' \
   nodes='[
-    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "Read events from the primary calendar for the current day.", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "source_task_id": "<task_id from list_tasks>"},
-    {"unique_id": 2, "name": "Summarize",             "prompt": "Write a one-paragraph briefing from the events.",            "assigned_agent": "developer", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "source_task_id": "<task_id from list_tasks>"},
-    {"unique_id": 3, "name": "Email the summary",     "prompt": "Send the briefing to the user via Gmail.",                   "assigned_agent": "developer", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "source_task_id": "<task_id from list_tasks>"}
+    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<body + closing template>", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "source_task_id": "<task_id from list_tasks>", "settings": {}},
+    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>", "assigned_agent": "developer", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "source_task_id": "<task_id from list_tasks>", "settings": {}},
+    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>", "assigned_agent": "developer", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "source_task_id": "<task_id from list_tasks>", "settings": {"approval_mode":"manual"}}
   ]' \
   edges='[
-    {"source": 1, "target": 2},
-    {"source": 2, "target": 3}
+    {"source": 1, "target": 2}
   ]'
 ```
+
+Note on the example: node 3 ("Email the summary") carries `settings.approval_mode = "manual"` because it sends an external-facing message — exactly the kind of step the per-node manual-approval heuristic catches. Nodes 1 and 2 keep `settings: {}` and inherit the workflow defaults.
 
 Note how each node's `required_toolkits` is present: nodes 1 and 3 have the
 slugs they actually call, and node 2 (pure summarization, no third-party
 service) carries `[]` rather than omitting the field. Each `source_task_id`
 is the literal `task_id` UUID from `list_tasks` — copy it directly, do not
-fabricate one.
+fabricate one. Each `prompt` carries the full body AND the closing-instruction
+template (omitted in the skeleton above for readability — see the multi-line
+example earlier in this section for the exact shape).
 
 Node objects carry ONLY the node fields (unique_id / name / prompt / assigned_agent / acceptance_criteria / approval_mode / required_toolkits / source_task_id). Dependencies live in the separate top-level `edges` array — each edge is `{source: <unique_id>, target: <unique_id>}`, meaning "the target node depends on the source node." A cycle in edges will cause the save to fail.
 
@@ -210,6 +301,18 @@ npx mcporter call brahmi.update_task \
   outputs='{"workflow_id":"<workflow_id from save_workflow response>","node_count":<number>,"summary":"Consolidated N tasks into M nodes across L levels."}'
 ```
 
+**Compound-schedule handoff.** If the user's original create message *also*
+contained a scheduling phrase ("a daily standup workflow that runs at 9am",
+"build the digest, run it Mondays at 8am UTC"), this skill does NOT set the
+schedule itself — it only produces the workflow. Add a `schedule_hint` field
+to your `outputs` so master can dispatch `schedule-workflow` next:
+
+```bash
+outputs='{"workflow_id":"<id>","node_count":<n>,"summary":"...","schedule_hint":"User also asked for a schedule: \"daily at 9am IST\". Run schedule-workflow next with workflow_id=<id> and the user phrase verbatim."}'
+```
+
+If there was no scheduling intent in the original message, omit `schedule_hint`. Master reads outputs after the task closes; it dispatches the schedule-workflow skill when `schedule_hint` is present.
+
 On failure — if any step above failed (list_tasks error, save_workflow error,
 cycle detected in dependencies, etc.):
 
@@ -225,6 +328,10 @@ npx mcporter call brahmi.update_task \
 ## Rules
 
 - Each node's `prompt` should carry the real business context baked in
+- **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `update_my_workflow_step` at the end of its run (see "Closing instruction per node — MANDATORY" section). Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)" for every step.
+- **Always emit `default_node_settings`** with the full sensible-defaults block (see "Default node settings — workflow-level"); never leave it empty
+- **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
+- **Never set the cron schedule from this skill.** If the user asked for one, surface a `schedule_hint` in your task outputs so master can dispatch `schedule-workflow`.
 - Only use `{{env.VARIABLE_NAME}}` for secrets, identity, or URLs — empty `env_variables` is the common case
 - `unique_id` values are sequential integers starting at 1 (never 0)
 - Dependencies are expressed ONLY via the top-level `edges` array — each edge is `{"source": <upstream unique_id>, "target": <downstream unique_id>}`. Never put `dependencies` / `depends_on` / `dependsOn` on node objects; brahmi rejects the call.

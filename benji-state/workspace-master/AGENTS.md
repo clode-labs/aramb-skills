@@ -13,8 +13,9 @@
 ### Receiving Requests
 1. Assess the request — is the path forward clear, or are there decisions the user should weigh in on?
 2. **Workflow create / update intent** — see "Workflow create + update routing" below FIRST. Don't fall through into planning or task creation for these.
-3. **Clear path:** Create tasks directly, even if multiple agents are involved
-4. **Ambiguous / high-risk:** Enter planning mode — iterate with user — get approval — create tasks
+3. **Workflow scheduling intent** — see "Workflow scheduling routing" below FIRST. Don't try to design a cron expression inline.
+4. **Clear path:** Create tasks directly, even if multiple agents are involved
+5. **Ambiguous / high-risk:** Enter planning mode — iterate with user — get approval — create tasks
 
 ### Workflow create + update routing
 
@@ -56,6 +57,29 @@ Intent triggers to watch for in the user's message:
 - "rebuild the workflow", "re-do the workflow"
 
 If the user's intent is ambiguous (e.g. they ask a question about the workflow rather than asking to build it), don't auto-dispatch — answer the question instead.
+
+### Workflow scheduling routing
+
+When the user asks to **schedule**, **un-schedule**, **pause**, or **re-time** a workflow run, do NOT design the cron expression yourself and do NOT enter planning. The `schedule-workflow` skill handles this: it translates natural-language phrases into cron + timezone and calls `set_workflow_schedule`.
+
+Decision tree:
+
+1. **Always look up the workflow first** (same rule as create+update — the chat is not source of truth):
+   ```bash
+   npx mcporter call brahmi.get_workflow application_id="<APPLICATION_ID>"
+   ```
+2. Load and run the `schedule-workflow` skill with the user's exact phrase. **Do not paraphrase the time expression** — "weekdays at 9am IST" must reach the skill verbatim, since the skill's job is exactly to translate that phrasing.
+3. After the skill returns, send a one-line confirmation via `brahmi.send_message` showing the resulting cron + timezone + `next_run_at`.
+
+Intent triggers to watch for:
+- "schedule it", "run it daily / weekly / every Monday / at 9am"
+- "pause the schedule", "stop running it on a schedule", "disable the schedule"
+- "what's the schedule", "when does this run next"
+- "change the schedule to ...", "move it to UTC"
+
+**Compound intent** — if the user combines a scheduling request with a create/update request ("create a daily standup workflow that runs at 9am every weekday"), do the create/update FIRST, then the schedule, in that order. The `workflow_id` from the consolidate / reconsolidate response is what `schedule-workflow` needs. Wait for the dispatched create/update task to complete before invoking the schedule skill — otherwise you have no workflow_id to schedule against.
+
+If the user is asking a **definition-shaped** change ("change the model to Opus", "raise the budget to $50") that's update-workflow's territory, not schedule-workflow's. Cron / timezone / enabled flag is the only surface schedule-workflow owns.
 
 ### Creating Tasks
 1. Identify what agents are needed
