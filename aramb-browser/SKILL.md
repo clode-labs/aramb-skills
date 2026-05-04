@@ -30,6 +30,60 @@ Use aramb-browser any time the task involves:
 
 ---
 
+## BROWSER REUSE FLOW
+
+**Always check for an existing browser before creating one.** Browsers are named after the app slug (e.g. `my-app`) — the same name the user or Brahmi uses to identify this application (same convention as `aramb expose --name <app-slug>`).
+
+### Step 1 — List existing browsers
+
+```bash
+mcporter call aramb-browser.browser_list
+```
+
+- **A browser named `<app-slug>` exists** → reuse it (go to Step 2a).
+- **No match** → create a new one (go to the Provider Decision Flow, then Step 2b).
+
+### Step 2a — Reuse an existing browser
+
+Open a fresh empty tab in the existing browser and capture the `target` from the response footer:
+
+```bash
+mcporter call aramb-browser.new_page browser=<app-slug>
+```
+
+Every tool response ends with a footer:
+```
+---
+browser: <app-slug> | target: <targetId> | url: <url>
+```
+
+Read the `target` value from this footer — use it as `target=<targetId>` in every subsequent call.
+
+```bash
+# All subsequent calls must include both browser= and target=
+mcporter call aramb-browser.navigate_page browser=<app-slug> target=<targetId> url=https://...
+mcporter call aramb-browser.take_snapshot browser=<app-slug> target=<targetId>
+mcporter call aramb-browser.click browser=<app-slug> target=<targetId> uid=<uid>
+```
+
+### Step 2b — Create a new browser (no match found)
+
+Follow the Provider Decision Flow below to decide on provider and network. Always use the app slug as the name:
+
+```bash
+mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb ttl_minutes=30
+```
+
+After creation, open an initial page and get the `target` from the footer:
+
+```bash
+mcporter call aramb-browser.navigate_page browser=<app-slug> url=about:blank
+# → footer gives you: target: <targetId>
+# Use target=<targetId> for all subsequent calls
+```
+
+---
+
 ## PROVIDER DECISION FLOW
 
 Before creating a browser, follow this flow every time:
@@ -87,13 +141,13 @@ Then **stop and wait**. Do not proceed until the user responds.
 ### Step 3 — Create browser with user-network (for popular sites)
 
 ```bash
-mcporter call aramb-browser.browser_create name=<label> provider=aramb \
+mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb \
   use_user_network=true harbor_client_id=<id> ttl_minutes=30
 ```
 
 If aramb creation fails → fallback to jumbo with user-network:
 ```bash
-mcporter call aramb-browser.browser_create name=<label> provider=jumbo \
+mcporter call aramb-browser.browser_create name=<app-slug> provider=jumbo \
   use_user_network=true harbor_client_id=<id> ttl_minutes=60
 ```
 
@@ -101,22 +155,34 @@ mcporter call aramb-browser.browser_create name=<label> provider=jumbo \
 
 ```bash
 # Default: aramb
-mcporter call aramb-browser.browser_create name=<label> provider=aramb ttl_minutes=30
+mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb ttl_minutes=30
 ```
 
 If aramb creation fails → fallback to jumbo:
 ```bash
-mcporter call aramb-browser.browser_create name=<label> provider=jumbo ttl_minutes=60
+mcporter call aramb-browser.browser_create name=<app-slug> provider=jumbo ttl_minutes=60
 ```
 
 ---
 
 ## RULES — Non-Negotiable
 
-### Always name the browser and always pass `browser=`
-- **`name` is mandatory** on every `browser_create` call. Choose a short descriptive label (e.g. `name=scraper`, `name=task1`).
-- **Every tool call that accepts a `browser` param must include it** — `navigate_page`, `take_snapshot`, `take_screenshot`, `click`, `fill`, `new_page`, `select_page`, `close_page`, `list_pages`, `wait_for`, `evaluate_script`, `list_console_messages`, `list_network_requests`, etc.
-- **Why:** `registry.json` persists browsers across sessions. Omitting `browser=` defaults to whatever is currently set as default — two agents can accidentally operate on the same page, causing interference.
+### Always name the browser with the app slug
+- **`name` is mandatory** on every `browser_create` call. Use the app slug (e.g. `my-app`) — the same name used in `aramb expose --name <app-slug>`.
+- Names are used as the browser ID directly — `browser=my-app` works in all subsequent calls.
+
+### Always pass `browser=` and `target=` together
+- **Every tool call must include both `browser=<app-slug>` and `target=<targetId>`** — `navigate_page`, `take_snapshot`, `take_screenshot`, `click`, `fill`, `new_page`, `select_page`, `close_page`, `list_pages`, `wait_for`, `evaluate_script`, `list_console_messages`, `list_network_requests`, etc.
+- The `target` is the CDP tab UUID printed in every tool response footer. Read it once after creating a page and carry it forward.
+- **Why:** Two parallel agents or sub-agents sharing the same browser must each work on their own tab. Without `target=`, the call defaults to whichever tab is currently selected — causing interference between agents.
+
+### Reading the footer
+Every browser tool response ends with:
+```
+---
+browser: <name> | target: <targetId> | url: <url>
+```
+After any tool call, update your working `target` from this footer — it confirms which tab you're on.
 
 ### Obstacle escalation
 - If a bot check, CAPTCHA, login wall, challenge page, or unexpected redirect appears — **stop immediately**.
@@ -143,17 +209,17 @@ mcporter call aramb-browser.browser_create name=<label> provider=jumbo ttl_minut
 
 ## Browser Lifecycle
 
-### Create (always with a name)
+### Create (always with app slug as name)
 ```bash
 # Standard — aramb, no user network
-mcporter call aramb-browser.browser_create name=<label> provider=aramb ttl_minutes=30
+mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb ttl_minutes=30
 
 # Bot-sensitive site — aramb with user network
-mcporter call aramb-browser.browser_create name=<label> provider=aramb \
+mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb \
   use_user_network=true harbor_client_id=<id> ttl_minutes=30
 
 # Harbor — real browser on user's machine
-mcporter call aramb-browser.browser_create name=<label> provider=harbor harbor_client_id=<id>
+mcporter call aramb-browser.browser_create name=<app-slug> provider=harbor harbor_client_id=<id>
 ```
 
 Before using `use_user_network=true` or `harbor`:
@@ -174,14 +240,14 @@ Then **stop and wait** — do not proceed until the client appears in `browser_c
 
 ### Destroy (auto-terminates Aramb session)
 ```bash
-mcporter call aramb-browser.browser_destroy browser=<name>
+mcporter call aramb-browser.browser_destroy browser=<app-slug>
 # Automatically destroys the associated Aramb session — no need to pass session ID separately
 ```
 
 ### List / switch
 ```bash
 mcporter call aramb-browser.browser_list
-mcporter call aramb-browser.browser_switch browser=<name>
+mcporter call aramb-browser.browser_switch browser=<app-slug>
 mcporter call aramb-browser.browser_session_list
 mcporter call aramb-browser.browser_session_extend session_id=<id> minutes=<n>
 ```
@@ -192,11 +258,34 @@ mcporter call aramb-browser.browser_session_extend session_id=<id> minutes=<n>
 
 ### Scrape a public site (generic, not bot-protected)
 ```bash
-mcporter call aramb-browser.browser_create name=scraper provider=aramb ttl_minutes=30
-mcporter call aramb-browser.navigate_page browser=scraper url=https://example.com
-mcporter call aramb-browser.take_snapshot browser=scraper
+# 1. Check for an existing browser first
+mcporter call aramb-browser.browser_list
+# → no browser named <app-slug>: create one
+mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb ttl_minutes=30
+
+# 2. Open initial page and capture targetId from footer
+mcporter call aramb-browser.navigate_page browser=<app-slug> url=https://example.com
+# footer → target: <targetId>
+
+# 3. All subsequent calls use both browser= and target=
+mcporter call aramb-browser.take_snapshot browser=<app-slug> target=<targetId>
 # extract data from snapshot, click/fill as needed
-mcporter call aramb-browser.browser_destroy browser=scraper
+mcporter call aramb-browser.browser_destroy browser=<app-slug>
+```
+
+### Reuse an existing browser (app slug already registered)
+```bash
+# 1. List browsers — find <app-slug>
+mcporter call aramb-browser.browser_list
+# → browser named <app-slug> found
+
+# 2. Open a fresh empty tab
+mcporter call aramb-browser.new_page browser=<app-slug>
+# footer → target: <targetId>  ← capture this
+
+# 3. Navigate and work on that tab
+mcporter call aramb-browser.navigate_page browser=<app-slug> target=<targetId> url=https://example.com
+mcporter call aramb-browser.take_snapshot browser=<app-slug> target=<targetId>
 ```
 
 ### Scrape a popular / bot-protected site (Reddit, LinkedIn, etc.)
@@ -206,25 +295,36 @@ mcporter call aramb-browser.browser_clients_list
 # → no clients: run the Step 3a user prompt above, wait for user response
 # → clients found: confirm client ID with user, then:
 
-# 2. Create browser with user-network
-mcporter call aramb-browser.browser_create name=scraper provider=aramb \
+# 2. Check for existing browser, create if needed
+mcporter call aramb-browser.browser_list
+mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb \
   use_user_network=true harbor_client_id=<id> ttl_minutes=30
 
-# 3. Navigate and extract
-mcporter call aramb-browser.navigate_page browser=scraper url=https://www.reddit.com/r/example/
-mcporter call aramb-browser.take_snapshot browser=scraper filePath=/tmp/snap.txt
-mcporter call aramb-browser.browser_destroy browser=scraper
+# 3. Navigate and capture targetId
+mcporter call aramb-browser.navigate_page browser=<app-slug> url=https://www.reddit.com/r/example/
+# footer → target: <targetId>
+
+mcporter call aramb-browser.take_snapshot browser=<app-slug> target=<targetId> filePath=/tmp/snap.txt
+mcporter call aramb-browser.browser_destroy browser=<app-slug>
 ```
 
-### Open multiple tabs in one browser
+### Parallel sub-agents sharing one browser (multi-tab)
 ```bash
-mcporter call aramb-browser.browser_create name=multi provider=aramb ttl_minutes=30
-mcporter call aramb-browser.navigate_page browser=multi url=https://site-a.com
-mcporter call aramb-browser.new_page browser=multi url=https://site-b.com
-mcporter call aramb-browser.list_pages browser=multi
-mcporter call aramb-browser.select_page browser=multi pageId=2
-mcporter call aramb-browser.take_snapshot browser=multi
-mcporter call aramb-browser.browser_destroy browser=multi
+# Root agent creates the browser once
+mcporter call aramb-browser.browser_list
+# → no <app-slug> browser: create
+mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb ttl_minutes=30
+
+# Each sub-agent opens its own tab and captures its own targetId
+# Sub-agent A:
+mcporter call aramb-browser.new_page browser=<app-slug>
+# footer → target: <targetId-A>
+mcporter call aramb-browser.navigate_page browser=<app-slug> target=<targetId-A> url=https://site-a.com
+
+# Sub-agent B (parallel, independent):
+mcporter call aramb-browser.new_page browser=<app-slug>
+# footer → target: <targetId-B>
+mcporter call aramb-browser.navigate_page browser=<app-slug> target=<targetId-B> url=https://site-b.com
 ```
 
 ### Use a real browser on user's machine (harbor)
@@ -232,9 +332,12 @@ mcporter call aramb-browser.browser_destroy browser=multi
 mcporter call aramb-browser.browser_clients_list
 # → no clients: tell user to run `aramb harbor`, wait for reconnect
 # → clients found: confirm client ID with user, then:
-mcporter call aramb-browser.browser_create name=local provider=harbor harbor_client_id=<id> ttl_minutes=30
-mcporter call aramb-browser.navigate_page browser=local url=https://example.com
-mcporter call aramb-browser.browser_destroy browser=local
+mcporter call aramb-browser.browser_list
+# → no <app-slug> browser: create
+mcporter call aramb-browser.browser_create name=<app-slug> provider=harbor harbor_client_id=<id> ttl_minutes=30
+mcporter call aramb-browser.navigate_page browser=<app-slug> url=https://example.com
+# footer → target: <targetId>
+mcporter call aramb-browser.browser_destroy browser=<app-slug>
 ```
 
 ---
