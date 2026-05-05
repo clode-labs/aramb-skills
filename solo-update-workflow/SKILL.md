@@ -1,19 +1,23 @@
 ---
 name: solo-update-workflow
 description: >
-  Update / refresh / regenerate / tweak an existing workflow directly from the
-  user's prompt — for the solo (direct-execution) agent. Use when the user
-  asks to change an existing workflow in chat. NOT for: dispatching as a task,
-  consolidating completed tasks (use `update-workflow` in task mode instead),
-  creating from scratch (use `solo-create-workflow`), or editing schedules
-  (use `schedule-workflow`).
+  Update / refresh / regenerate / tweak an existing workflow — for solo agent.
+  Triggered either by an explicit user change request ("add a Slack DM step",
+  "remove the synth node") or by the canned button-driven message ("update
+  the existing workflow based on the work done in this chat"). NOT for:
+  dispatching as a task, consolidating completed tasks (use `update-workflow`
+  in task mode instead), creating from scratch (use `solo-create-workflow`),
+  or editing schedules (use `schedule-workflow`).
 ---
 
 # Solo Update Workflow
 
-You are solo. The user asked to change an existing workflow in chat. Your job
-is to read the current definition, compute the delta, and call
-`brahmi.update_workflow` once with the full replacement nodes + edges set.
+You are solo. The user wants to change an existing workflow. The change spec
+comes from one of two sources: an explicit description in their message, or
+the new work you've done in this conversation since the workflow was last
+saved. Identify which, then read the current definition, compute the delta,
+and call `brahmi.update_workflow` once with the full replacement nodes +
+edges set.
 
 The workflow ALREADY exists. Brahmi will atomically swap the new definition
 in when you call `update_workflow`. The old definition stays in effect until
@@ -50,17 +54,21 @@ Notes:
 - Do NOT call `brahmi.update_my_task` or `brahmi.update_task` from a workflow-step prompt — only `update_my_workflow_step` works in this dispatch.
 - When carrying over node prompts from the existing definition, **re-verify the closing template is present**. If the existing version pre-dates this rule, append the template now.
 
-## Where the spec comes from
+## Where the change spec comes from
 
-You're running as solo in a regular chat dispatch. There's no `task_id`, no
-`list_tasks` call. The change spec comes from the user's most recent
-message + this chat's history. The current workflow definition (your
-starting point) comes from `brahmi.get_workflow` — see Step 1.
+You're running as solo in a regular chat dispatch. There's no `task_id`. The
+change spec comes from one of:
+
+- **(a) An explicit change** in the user's message — e.g. "add a Slack DM step", "remove the email triage", "change the synth step to also include the calendar". Use that as the change spec verbatim.
+- **(b) New work done in this conversation** — when the user's message is the canned button phrase ("update the existing workflow based on the work done in this chat"). Treat your conversation since the existing workflow was last saved as the evidence: identify what new work happened, what was tried-and-discarded, which steps gained new logic, then design the delta.
+
+The current workflow definition (your starting point either way) comes from
+`brahmi.get_workflow` — see Step 1.
 
 ## Progress updates — keep the user in the loop
 
 Stream short progress updates via `brahmi.send_message` at three checkpoints:
-1. Restate what you understood ("Updating <workflow name> — adding a Slack DM step at the end").
+1. Restate what you understood **and which evidence source you're using** ("Updating <workflow name> from your description: adding a Slack DM step at the end" / "Consolidating updates from the work we did in this chat into <workflow name>").
 2. When designing the delta ("New node count: 4. Reusing 3 existing nodes, adding 1.").
 3. Just before save ("Saving updated workflow…").
 
@@ -97,7 +105,25 @@ The response from `get_workflow` is the full canvas: `name`, `description`,
 `status`, plus `schedule` if one is configured. **Read it carefully — that is
 your starting point.** Do not throw it away unless you have a reason.
 
-### 2. Reject schedule-shaped requests
+### 2. Identify change-spec source, then gather it
+
+**Classify the user's message:**
+
+- *Explicit change* (e.g. "add a Slack DM step", "remove the email triage", "change the synth step to also include the calendar"): use the user's message as the change spec verbatim, same as today's task-mode `update-workflow`. Skip ahead to Step 3.
+- *History-derived* (canned button message: "update the existing workflow based on the work done in this chat", "regenerate the workflow from what we just did", or any phrasing that points at the conversation as the evidence): treat your conversation since the existing workflow was last saved as the evidence. Identify what new work happened, what was tried-and-discarded, which steps gained new logic.
+
+For history-derived intent, walk back through the conversation and produce, in your reasoning:
+
+(a) what new ordered steps you ran since the last save,
+(b) the explicit and implicit data hand-offs between them,
+(c) the toolkits actually called,
+(d) one-off specifics vs the recurring shape.
+
+**Generalize, don't transcribe.** Same rule as `solo-create-workflow` — strip
+one-off dates / values when carrying new work into node prompts. The
+workflow is a recipe.
+
+### 3. Reject schedule-shaped requests
 
 If the user's message is solely about cron / timing ("change the schedule to
 weekly", "stop the cron", "move it to UTC", "run it every Monday at 9am
@@ -115,23 +141,26 @@ sentence), apply the definition change here per the rest of this skill, then
 call `set_workflow_schedule` yourself right after `update_workflow` succeeds —
 same pattern as `solo-create-workflow`.
 
-### 3. Analyze the delta
+### 4. Analyze the delta
 
 Send a progress update describing what you're about to do.
 
-The user's chat message is the change spec. Compare it against the existing
-definition you fetched in Step 1:
+The delta is the difference between the existing workflow definition and
+either (a) the user's explicit change spec, or (b) the new work done in this
+conversation. Read both, compute the change, design the new full nodes/edges
+set:
 
-- Are there new steps the user described that the existing graph doesn't have? Add nodes.
-- Are some existing nodes obsolete now (the user said to remove them, or they no longer make sense)? Drop them.
-- Did the user reword a step? Update that node's `prompt`.
-- Did the user change agent assignments? Update `assigned_agent` per node.
-- Did the user mention env variables? Drop unused ones, add new required ones.
+- Are there new steps the user described (or that you ran in chat) that the existing graph doesn't have? Add nodes.
+- Are some existing nodes obsolete now (the user said to remove them, or new chat work supersedes them)? Drop them.
+- Did the user reword a step / did the new work change a step's logic? Update that node's `prompt`.
+- Did agent assignments change? Update `assigned_agent` per node.
+- Did env variables change? Drop unused ones, add new required ones.
 
 **Lean on the existing definition.** Resist rewriting from scratch. If 80%
 of the graph is unchanged, keep 80% of the graph unchanged. The user already
-saw and accepted the existing version. The user's message tells you *which*
-20% to actually touch.
+saw and accepted the existing version. The change spec tells you *which*
+20% to actually touch. Carry forward node prompts and assignments unless
+they need to change.
 
 ### Intent recognition for setting changes
 
@@ -173,8 +202,9 @@ you set a node override, name the node. The user's mental model of
 - Sequential `unique_id` integers starting at 1 (numbering can be different from the existing version — uniqueness is what matters).
 - Dependencies via the top-level `edges` array, never on nodes.
 - Be stingy with env variables. Most workflows have zero, one, or two.
+- For history-derived deltas, generalise the new work — strip one-off specifics from any new node prompts you add.
 
-### 4. Call update_workflow
+### 5. Call update_workflow
 
 Send a progress update: "Saving updated workflow…".
 
@@ -247,7 +277,7 @@ deliberately.
 If it errors out (bad payload, cycle in edges, etc.), tell the user the
 concise reason and stop — don't retry silently.
 
-### 5. Tell the user about side effects + setting changes
+### 6. Tell the user about side effects + setting changes
 
 **Describe setting changes in inheritance terms.** The user's mental model of
 these settings is "workflow default + per-node override." Frame your reply
@@ -276,7 +306,7 @@ the new env_variables no longer satisfy required keys, so brahmi auto-paused
 it. Tell the user the reason and that they can resume the schedule once the
 env values are sorted out.
 
-### 6. Confirm to the user
+### 7. Confirm to the user
 
 Send a one-line confirmation via `brahmi.send_message`:
 
@@ -308,6 +338,7 @@ atomic and any rejection happens before the swap.
 - **Carry `default_node_settings`** forward unchanged from `get_workflow`, edited only where the user asked. Never silently drop the workflow defaults block.
 - **Reject pure schedule-shaped change requests** — use `schedule-workflow` instead. Only call `update_workflow` for definition changes.
 - **Apply setting changes at the right level**: workflow-wide phrases like "all steps" / "the workflow" / "everywhere" → `default_node_settings`. Single-step phrases like "the synth step" / "this step" → that one node's `settings` override.
+- **For history-derived deltas, generalise the new work** — strip one-off dates / values from any new node prompts before adding them.
 - Only use `{{env.VARIABLE_NAME}}` for secrets, identity, or URLs — empty `env_variables` is the common case.
 - `unique_id` values are sequential integers starting at 1.
 - Dependencies live ONLY in the top-level `edges` array. Never on nodes.
