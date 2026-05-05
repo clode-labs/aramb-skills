@@ -15,18 +15,46 @@
 
 ## Goal
 
-When a chat in solo mode receives a request like:
-- "build a workflow that fetches today's emails, writes them to a sheet,
-  emails me when done"
-- "add a Slack DM step at the end of the existing workflow"
-- "schedule the workflow to run weekdays at 9am"
-
-solo authors / edits / schedules the workflow directly via
+Solo authors / edits / schedules workflows directly via
 `brahmi.save_workflow`, `brahmi.update_workflow`, and
 `brahmi.set_workflow_schedule` — no `consolidate_workflow`, no system task.
 
 `schedule-workflow` is already in solo's loadout and works as-is (it's
 schedule-only, not task-coupled). This phase only adds creation + update.
+
+### Two trigger paths converge on the same skills
+
+Solo's create/update workflow skills must handle **both** trigger modes
+that exist in the product today:
+
+| Trigger | Spec source for the workflow |
+|---|---|
+| **Conversational** — user types "build a workflow that fetches today's emails, writes them to a sheet, emails me when done" | The user's prompt content. Explicit. |
+| **Button** — user clicks "Create workflow" / "Update workflow" in the Workflows tab (visible on grow / research workspaces). FE redirects to a canned chat message: e.g. *"Create a workflow based on the work done so far in this chat"* / *"Update the existing workflow based on the work done in this chat"* | The session itself: solo's prior tool calls, files written, ordered actions taken in this conversation. **Symmetric to how master's `create-workflow` consolidates from completed tasks today** — but the evidence is conversation history, not task records. |
+
+Both paths land as a normal chat turn at solo. The agent infers which
+mode applies from the message content (explicit description vs.
+"based on work done"). The skills cover both.
+
+### FE button redirect (in scope)
+
+The "Create workflow" / "Update workflow" buttons on grow / research
+workspaces today dispatch `brahmi.consolidate_workflow` /
+`brahmi.reconsolidate_workflow` — task-coupled MCP calls that solo
+mode rejects. In solo mode, the buttons must instead **send a chat
+message** through the normal send-message endpoint with canned text:
+
+- "Create workflow" → `Create a workflow based on the work done so far in this chat.`
+- "Update workflow" → `Update the existing workflow based on the work done in this chat.`
+
+That message routes through brahmi → solo → the new skill → save_workflow.
+Branch on `chatSettings.tasks_enabled`:
+- `true` → existing flow (consolidate_workflow MCP).
+- `false` → send canned chat message instead.
+
+This is a small FE change in `web-app-v2`. Captured separately at the
+end of this doc and in `web-app-v2/claude/tasks/solo-mode.md` so the
+FE session can pick it up alongside the chat-settings work.
 
 ## Two new skills to write
 
@@ -45,13 +73,13 @@ For **`solo-create-workflow`**, source map from `create-workflow/SKILL.md`:
 
 | Section in create-workflow | Solo treatment |
 |---|---|
-| Frontmatter (`name`, `description`) | Rewrite — name `solo-create-workflow`, description "Author a new workflow directly from the user's prompt — for solo agent. NOT for: dispatching as a task." |
-| Intro paragraph | Rewrite — "You are solo. The user described a workflow in chat. Your job is to design and save it." |
+| Frontmatter (`name`, `description`) | Rewrite — name `solo-create-workflow`, description "Author a new workflow — for solo agent. Triggered either by an explicit user request or by 'create a workflow based on the work done so far' (button-driven). NOT for: dispatching as a task." |
+| Intro paragraph | Rewrite — "You are solo. The user wants you to author a new workflow. The spec comes from one of two sources: an explicit description in their message, or the work you've already done in this conversation. Identify which, then design and save." |
 | MUST rules (1 closing instruction, 2 required_toolkits, 3 save_workflow once) | **Keep verbatim** (with rule 4 about `update_task` removed — solo never closes a task) |
-| "You are running as a task assigned to master" paragraph | **Replace** with: "You're running as solo in a regular chat dispatch. There's no task_id. The workflow spec comes from the user's most recent message + this chat's history." |
-| Progress reports section (update_task with `## Progress`) | **Replace** with: "Stream short progress updates via `brahmi.send_message chat_location='main'` at three checkpoints: 1) restating the workflow you're about to build, 2) when designing nodes, 3) just before save." |
-| Step 1: Fetch completed tasks via `list_tasks` | **Replace** with: "Read the user's most recent message in chat — that's the workflow spec. If under-specified (no clear sequence, no clear trigger, no clear data flow), ask 1–2 specific clarifying questions via `brahmi.ask_question` BEFORE designing. Don't ask more than 2; pick sensible defaults for the rest and tell the user what you picked." |
-| Step 2: Analyze tasks | **Replace** with: "Decompose the user's intent into ordered steps in your reasoning. For each step: what data flows in (from user / previous step), what the step produces, which agent identity should run it, which Composio toolkit slugs it touches." |
+| "You are running as a task assigned to master" paragraph | **Replace** with: "You're running as solo in a regular chat dispatch. There's no task_id. The workflow spec comes from one of: (a) the user's explicit description in their most recent message, (b) the work already done in this chat (their message will be a canned 'create a workflow based on the work done so far' / similar phrasing — that's the consolidate-from-history signal)." |
+| Progress reports section (update_task with `## Progress`) | **Replace** with: "Stream short progress updates via `brahmi.send_message chat_location='main'` at three checkpoints: 1) restating the workflow you're about to build (and which evidence source you're using), 2) when designing nodes, 3) just before save." |
+| Step 1: Fetch completed tasks via `list_tasks` | **Replace** with: <br/>**Step 1 (solo): Identify spec source, then gather it.**<br/><br/>First, classify the user's message: <br/>- *Explicit description* (e.g. "build a workflow that fetches today's emails…"): the spec **is** the message. Don't analyze conversation history. <br/>- *History-derived* (e.g. "create a workflow based on the work done so far", "based on what we just did, build a workflow", or any phrasing that points at the conversation as the evidence): consolidate from your own session. Identify the ordered steps you took, the tool calls made, the files written, the toolkits touched. This is the same role master's `create-workflow` plays today — but the evidence is your conversation history, not completed tasks.<br/><br/>For history-derived intent, walk back through the conversation and produce, in your reasoning: <br/>(a) ordered list of meaningful steps the user/you took, <br/>(b) the explicit and implicit data hand-offs between them, <br/>(c) the Composio toolkit slugs you actually called (Gmail, Sheets, Slack, etc. — be honest, infer from real tool calls), <br/>(d) any constants or specific values that should NOT be re-parameterized (the recipe baked-in vs. the env-vars you genuinely need). <br/><br/>**Generalize, don't transcribe.** A workflow is a *learned recipe* that should run again. If you fetched yesterday's emails for the user as a one-off, the workflow node should be "fetch the most recent day's emails", not "fetch emails dated 2026-05-04". Same for sheet ranges, time windows, etc.<br/><br/>If under-specified (either path), ask 1–2 targeted clarifying questions via `brahmi.ask_question` BEFORE designing. Don't ask more than 2; pick sensible defaults for the rest and tell the user what you picked. |
+| Step 2: Analyze tasks | **Replace** with: "Decompose the spec into ordered steps in your reasoning. For each step: what data flows in (from user / previous step), what the step produces, which agent identity should run it, which Composio toolkit slugs it touches. For history-derived intent, this is the merge / generalize / split pass — combine adjacent same-agent calls into one node where it makes the workflow cleaner; split steps that mixed responsibilities." |
 | Step 3: Design the workflow (the bullet list of design rules) | **Keep verbatim** — same schema rules apply. The only line to drop: "Source the slugs from the source tasks' `required_toolkits` field (primary)" — replace with "infer slugs from the action you're describing (Gmail action → `[\"GMAIL\"]`, Google Sheets → `[\"GOOGLESHEETS\"]`, etc.)." |
 | Closing instruction per node | **Keep verbatim** — `update_my_workflow_step` is the same in both modes. |
 | Default node settings (workflow-level) | **Keep verbatim** — same defaults block, same per-node override heuristics. |
@@ -66,8 +94,10 @@ For **`solo-update-workflow`**, source map from `update-workflow/SKILL.md`:
 Same translation rules as above, plus:
 - "If you were NOT dispatched" branch: **delete** (solo is never dispatched as a task; always called from chat).
 - Step 1 (Fetch existing definition via `get_workflow`): **keep verbatim** — works the same in solo.
-- Step 2 (Fetch completed tasks via `list_tasks`): **delete entirely**. The change spec comes from the user's chat message, not from new tasks.
-- Step 3 (Analyze the delta): **adapt**. The delta is the difference between the existing workflow definition and what the user just asked for in chat. Read both, compute the change, design the new full nodes/edges set.
+- Step 2 (Fetch completed tasks via `list_tasks`): **replace with dual-mode spec source**, mirroring the create skill:
+  - *Explicit change* in the user's message ("add a Slack DM step", "remove the email triage", "change the synth step to also include the calendar"): use that as the change spec verbatim, same as today's `update-workflow`.
+  - *History-derived change* (canned button message: "update the existing workflow based on the work done in this chat"): treat your conversation since the existing workflow was last saved as the evidence. Identify what new work happened, what was tried-and-discarded, which steps gained new logic, then design the delta.
+- Step 3 (Analyze the delta): **adapt**. The delta is the difference between the existing workflow definition and either (a) the user's explicit change spec, or (b) the new work done in this conversation. Read both, compute the change, design the new full nodes/edges set. **Lean on the existing definition** — carry forward node prompts and assignments unless they need to change.
 - Step 4 (Call update_workflow): **keep verbatim** — same schema, same atomic-replace semantics.
 - Step 5 (Tell the user about side effects + setting changes): **keep verbatim** — solo should still surface "this update demoted the workflow back to draft; re-publish to make it live again" via `send_message`.
 - Step 6 (Close your task): **delete**.
@@ -94,13 +124,28 @@ Replace with:
 ```
 ## Workflows
 
-You can author, update, and schedule workflows directly:
+You can author, update, and schedule workflows directly. Two trigger
+paths land at you as normal chat turns; recognise both:
 
-- **User asks to build a new workflow** → use the `solo-create-workflow` skill. Read its SKILL.md, gather/clarify the spec from the user's message, design nodes + edges, call `brahmi.save_workflow` once.
-- **User asks to update / refresh / regenerate / tweak an existing workflow** → use the `solo-update-workflow` skill. Always look up the current definition with `brahmi.get_workflow` first; the chat is not the source of truth, the database is.
-- **User asks to schedule / pause / change the cron of a workflow** → use the `schedule-workflow` skill. Strictly cron-only; never bundle schedule changes into save/update_workflow calls.
+- **User describes a workflow explicitly** (e.g. "build a workflow that fetches today's emails…")
+  → use the `solo-create-workflow` skill. The spec is the message itself.
 
-You do NOT call `consolidate_workflow` or `reconsolidate_workflow` — those exist for the task-mode (master) path and the MCP server will reject them in solo mode. The save/update/schedule workflow tools are not gated and work for you directly.
+- **User says "create a workflow based on the work done so far in this chat"** (or similar — this is the canned message the FE sends when they click the "Create workflow" button on a grow / research workspace)
+  → use the `solo-create-workflow` skill. The spec is THIS conversation: walk back through the work you did, the tool calls you made, the files you produced, and consolidate. Generalize — do not transcribe specific dates / values into the workflow.
+
+- **User describes an explicit change** to an existing workflow (e.g. "add a Slack DM step", "remove the synth node")
+  → use the `solo-update-workflow` skill. Always fetch the current definition first via `brahmi.get_workflow`; the chat is not the source of truth, the database is.
+
+- **User says "update the existing workflow based on the work done in this chat"** (button-driven canned message)
+  → use the `solo-update-workflow` skill. Compute the delta between the existing definition and the new work in this session, then write the full replacement.
+
+- **User asks to schedule / pause / change the cron of a workflow**
+  → use the `schedule-workflow` skill. Strictly cron-only; never bundle schedule changes into save/update_workflow calls.
+
+You do NOT call `consolidate_workflow` or `reconsolidate_workflow` — those
+exist for the task-mode (master) path and the MCP server will reject them
+in solo mode. The save / update / get / set_workflow_schedule tools are
+not gated and work for you directly.
 ```
 
 ## Add to solo's skill loadout
@@ -194,6 +239,31 @@ Manually inject a `consolidate_workflow` MCP call from solo's session.
 Brahmi MCP guard should reject with "You are not allowed to create tasks
 in solo mode" — confirms the gating doesn't accidentally exempt
 workflow-consolidation tools.
+
+### Path E5: button-driven create from history
+
+In a solo-mode chat on a grow / research workspace, do some real work
+first (e.g. "fetch my last 5 emails and write them to a sheet" — solo
+runs the actions). Then click **Create workflow** in the Workflows tab.
+The FE should send `Create a workflow based on the work done so far in
+this chat.` as a chat message. Expect:
+- Solo recognises the canned phrase, classifies as history-derived intent
+- Solo walks its conversation: identifies the email-fetch + sheet-write
+  steps, the toolkits used, the data flow
+- Solo calls `brahmi.save_workflow` once with generalised node prompts
+  (no "today's date" hardcoding)
+- Confirmation message + workflow visible in the Workflows tab
+
+### Path E6: button-driven update from history
+
+In a solo-mode chat that has an existing workflow + new work done after
+the workflow was last saved, click **Update workflow**. FE sends `Update
+the existing workflow based on the work done in this chat.`. Expect:
+- Solo calls `brahmi.get_workflow` first
+- Solo computes delta between the existing definition and the new work
+  done since
+- Solo calls `brahmi.update_workflow` once with the merged node/edge set
+- Confirmation message including the "demoted to draft — re-publish" note
 
 ## Out of scope for this phase
 

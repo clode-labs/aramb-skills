@@ -3,6 +3,11 @@
 > Per-repo plan split from
 > [/Users/siva/workspace/claude/tasks/solo-mode.md](../../../claude/tasks/solo-mode.md).
 > Read that for full context, design, and rationale.
+>
+> **Phase 2** (workflow skills) is a separate plan in
+> [solo-workflow-skills.md](./solo-workflow-skills.md) — adds
+> `solo-create-workflow` and `solo-update-workflow` skills and the
+> SOUL.md routing block to use them.
 
 ## Prerequisites
 

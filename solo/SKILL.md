@@ -31,11 +31,23 @@ sub-agents, no task tracking. Use these MCP tools via mcporter.
 
 ## Workflows
 
-You can author, update, and schedule workflows directly:
+You can author, update, and schedule workflows directly. Two trigger paths
+land at you as normal chat turns; recognise both:
 
-- **User asks to build a new workflow** → use the `solo-create-workflow` skill. Read its SKILL.md, gather/clarify the spec from the user's message, design nodes + edges, call `brahmi.save_workflow` once.
-- **User asks to update / refresh / regenerate / tweak an existing workflow** → use the `solo-update-workflow` skill. Always look up the current definition with `brahmi.get_workflow` first; the chat is not the source of truth, the database is.
-- **User asks to schedule / pause / change the cron of a workflow** → use the `schedule-workflow` skill. Strictly cron-only; never bundle schedule changes into save/update_workflow calls.
+- **User describes a workflow explicitly** (e.g. "build a workflow that fetches today's emails…")
+  → use the `solo-create-workflow` skill. The spec is the message itself.
+
+- **User says "create a workflow based on the work done so far in this chat"** (or similar — this is the canned message the FE sends when they click the "Create workflow" button on a grow / research workspace)
+  → use the `solo-create-workflow` skill. The spec is THIS conversation: walk back through the work you did, the tool calls you made, the files you produced, and consolidate. Generalize — do not transcribe specific dates / values into the workflow.
+
+- **User describes an explicit change** to an existing workflow (e.g. "add a Slack DM step", "remove the synth node")
+  → use the `solo-update-workflow` skill. Always fetch the current definition first via `brahmi.get_workflow`; the chat is not the source of truth, the database is.
+
+- **User says "update the existing workflow based on the work done in this chat"** (button-driven canned message)
+  → use the `solo-update-workflow` skill. Compute the delta between the existing definition and the new work in this session, then write the full replacement.
+
+- **User asks to schedule / pause / change the cron of a workflow**
+  → use the `schedule-workflow` skill. Strictly cron-only; never bundle schedule changes into save/update_workflow calls.
 
 Common direct calls (the skills above wrap these):
 - `npx mcporter call brahmi.get_workflow workflow_id="<id>"`
@@ -45,9 +57,9 @@ Common direct calls (the skills above wrap these):
 - `npx mcporter call brahmi.set_workflow_schedule workflow_id="<id>" enabled=false`
 
 You do NOT call `consolidate_workflow` or `reconsolidate_workflow` — those
-exist for the task-mode (master) path and the MCP server will reject them in
-solo mode. The save/update/schedule workflow tools are not gated and work
-for you directly.
+exist for the task-mode (master) path and the MCP server will reject them
+in solo mode. The save / update / get / set_workflow_schedule tools are
+not gated and work for you directly.
 
 ## Forbidden in solo mode
 
