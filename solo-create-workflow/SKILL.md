@@ -1,17 +1,20 @@
 ---
 name: solo-create-workflow
 description: >
-  Author a new workflow directly from the user's prompt — for the solo
-  (direct-execution) agent. Use when the user asks to build / create / set up
-  a workflow in chat. NOT for: dispatching as a task, consolidating completed
-  tasks (use `create-workflow` in task mode instead), executing workflows, or
-  editing existing workflows (use `solo-update-workflow`).
+  Author a new workflow — for solo agent. Triggered either by an explicit user
+  request ("build a workflow that…") or by the canned button-driven message
+  ("create a workflow based on the work done so far in this chat"). NOT for:
+  dispatching as a task, consolidating completed tasks (use `create-workflow`
+  in task mode instead), executing workflows, or editing existing workflows
+  (use `solo-update-workflow`).
 ---
 
 # Solo Create Workflow
 
-You are solo. The user described a workflow in chat. Your job is to design it
-and save it via `brahmi.save_workflow`.
+You are solo. The user wants you to author a new workflow. The spec comes
+from one of two sources: an explicit description in their message, or the
+work you've already done in this conversation. Identify which, then design
+and save.
 
 > **If asked to update an existing workflow instead, use the `solo-update-workflow` skill.**
 > This skill only handles the first-time creation flow (no workflow exists yet).
@@ -21,21 +24,25 @@ and save it via `brahmi.save_workflow`.
 1. **Every node in `save_workflow` MUST carry `required_toolkits`.** Use `[]` (not omitted) when the node touches no third-party service.
    - **Failure mode:** Omitting `required_toolkits` from `save_workflow` nodes means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. Empty array `[]` is correct when the node touches no third-party service — never omit the field.
 2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `update_my_workflow_step` at the end of its run. See section "Closing instruction per node" below for the exact template.
-   - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble shows "(no summary)" instead of the real hand-off, and the chain works visually but with zero context flowing between steps. Outputs are load-bearing — every prompt must include the closing line.
+   - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble shows "(no summary)" instead of the real hand-off. Outputs are load-bearing — every prompt must include the closing line.
 3. Call `save_workflow` exactly once. Success or failure — never retry.
 
 ## Where the spec comes from
 
-You're running as solo in a regular chat dispatch. There's no `task_id` and no
-`list_tasks` to fetch. The workflow spec comes from the user's most recent
-message + this chat's history. **The workflow does NOT exist yet.** Brahmi
-creates it atomically when you call `save_workflow`.
+You're running as solo in a regular chat dispatch. There's no `task_id`. The
+workflow spec comes from one of:
+
+- **(a) The user's explicit description** in their most recent message — e.g. "build a workflow that fetches today's emails, writes them to a sheet, and emails me when done". The spec **is** the message.
+- **(b) The work already done in this chat** — when the user's message is the canned button phrase ("create a workflow based on the work done so far in this chat", "based on what we just did, build a workflow", or any phrasing that points at the conversation as the evidence). The spec is **this conversation**: the ordered tool calls you made, the files written, the toolkits touched. This is the same role master's `create-workflow` plays today — but the evidence is your conversation history, not completed tasks.
+
+**The workflow does NOT exist yet.** Brahmi creates it atomically when you
+call `save_workflow`.
 
 ## Progress updates — keep the user in the loop
 
 The user does not see a task card; they see chat. Stream short progress
 updates via `brahmi.send_message` at three checkpoints:
-1. Restate the workflow you're about to build (one line).
+1. Restate the workflow you're about to build **and which evidence source you're using** ("Building from your description: 3-step Gmail → Sheet → email digest" / "Consolidating from the work we did earlier in this chat: 3 steps I see — fetch, write, notify").
 2. When you start designing nodes ("Designing 3 nodes — Gmail fetch → Sheet append → notify").
 3. Just before save ("Saving workflow…").
 
@@ -49,17 +56,23 @@ Three messages is usually right. Don't spam.
 
 ## Workflow
 
-### 1. Read the user's spec; clarify if needed
+### 1. Identify spec source, then gather it
 
-Read the user's most recent message. That is the workflow spec. Look back over
-chat history if the message is short ("yes do that") and references earlier
-discussion.
+First, **classify the user's message**:
 
-If the spec is under-specified — no clear sequence, no clear trigger, no clear
-data flow, missing identity / account info — ask **1–2** specific clarifying
-questions via `brahmi.ask_question` BEFORE designing. Don't ask more than 2;
-pick sensible defaults for the rest and tell the user what you picked when you
-confirm.
+- *Explicit description* (e.g. "build a workflow that fetches today's emails…"): the spec **is** the message. Don't analyze conversation history. Skip ahead to designing.
+- *History-derived* (e.g. "create a workflow based on the work done so far", "based on what we just did, build a workflow", or any phrasing that points at the conversation as the evidence): consolidate from your own session. Identify the ordered steps you took, the tool calls made, the files written, the toolkits touched. This is the same role master's `create-workflow` plays today — but the evidence is your conversation history, not completed tasks.
+
+For history-derived intent, walk back through the conversation and produce, in your reasoning:
+
+(a) ordered list of meaningful steps the user/you took,
+(b) the explicit and implicit data hand-offs between them,
+(c) the Composio toolkit slugs you actually called (Gmail, Sheets, Slack, etc. — be honest, infer from real tool calls),
+(d) any constants or specific values that should NOT be re-parameterized (the recipe baked-in vs. the env-vars you genuinely need).
+
+**Generalize, don't transcribe.** A workflow is a *learned recipe* that should run again. If you fetched yesterday's emails for the user as a one-off, the workflow node should be "fetch the most recent day's emails", not "fetch emails dated 2026-05-04". Same for sheet ranges, time windows, recipient lists — bake the *shape* of the recipe, not the *specifics* of this one run.
+
+If under-specified (either path), ask **1–2** specific clarifying questions via `brahmi.ask_question` BEFORE designing. Don't ask more than 2; pick sensible defaults for the rest and tell the user what you picked when you confirm.
 
 ```bash
 npx mcporter call brahmi.ask_question \
@@ -69,32 +82,33 @@ npx mcporter call brahmi.ask_question \
 Common reasons to clarify:
 - Identity: which account / inbox / sheet / channel
 - Notification target: who gets emailed / DM'd at the end
-- Cadence vs trigger: is this on-demand only, or should it run on a schedule?
-  (If they want a schedule, capture the cron phrase verbatim — you'll wire it
-  in via `set_workflow_schedule` after save.)
+- Cadence vs trigger: is this on-demand only, or should it run on a schedule? (If they want a schedule, capture the cron phrase verbatim — you'll wire it in via `set_workflow_schedule` after save.)
 
 If the spec is clear, skip the questions and go straight to design.
 
-### 2. Decompose intent into ordered steps
+### 2. Decompose the spec into ordered steps
 
-In your reasoning, break the user's intent into ordered steps. For each step
+In your reasoning, decompose the spec into ordered steps. For each step
 identify:
 - What data flows in (from the user / from the previous step)
 - What the step produces
 - Which agent identity should run it (`developer`, `aramb-deployer`, etc.)
 - Which Composio toolkit slugs it touches (`["GMAIL"]`, `["GOOGLESHEETS"]`, `[]` for orchestration-only)
 
-Don't write a plan document. Hold the design in your reasoning, then go
-straight to step 3.
+For history-derived intent, this is the **merge / generalize / split** pass:
+combine adjacent same-agent calls into one node where it makes the workflow
+cleaner; split steps that mixed responsibilities; rename concrete one-off
+artefacts ("the email about Q3 review") into the recurring shape they
+represent ("the most recent end-of-quarter email").
 
 ### 3. Design the workflow
 
 Send a progress update: "Designing workflow graph — N nodes, M levels".
 
-- **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what the user described and bake the specifics in.
+- **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what the user described (or what you actually did, generalised) and bake the specifics in.
 - **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape.
 - **Pick agent assignments** that match the work — `developer` for code/data work, `aramb-deployer` for deploys, `local-deployer` for tunnels, etc.
-- **Carry `required_toolkits` per node — MANDATORY, never omit.** For each node, list the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Infer the slugs from the action you're describing — Gmail action → `["GMAIL"]`, Google Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates and does not touch a third-party service — `[]` is REQUIRED, not optional; do not omit the field. Slugs are uppercase, exactly as Composio reports them. Brahmi snapshots this list onto every workflow run step at trigger time so the executing agent sees the same dependencies the planner declared, and the Evaluate step uses it to surface missing-connection warnings before publish.
+- **Carry `required_toolkits` per node — MANDATORY, never omit.** For each node, list the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Infer slugs from the action you're describing — Gmail action → `["GMAIL"]`, Google Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates and does not touch a third-party service — `[]` is REQUIRED, not optional; do not omit the field. Slugs are uppercase, exactly as Composio reports them. Brahmi snapshots this list onto every workflow run step at trigger time so the executing agent sees the same dependencies the planner declared, and the Evaluate step uses it to surface missing-connection warnings before publish.
 - **Set `default_node_settings` on the workflow.** Always emit a sensible defaults block — see "Default node settings — workflow-level" below. Don't leave it empty: the FE renders the settings tray off these values, and a missing block surfaces as blank fields the user has to fill in by hand.
 - **Per-node `settings` typically stays empty (`{}`)** — defaults inherit from the workflow. The exception: if a node clearly does something destructive or externally visible (posts to Linear, sends an email, writes to a customer DB, deletes files), set that one node's `settings.approval_mode = "manual"` so a human has to approve the step before it runs. Use this heuristic sparingly — over-gating turns every run into a clickfest.
 - **Per-node attachments** only when the user explicitly mentioned files in chat ("here's the spreadsheet", "use this PDF as the spec"). Never invent attachments — empty `input_attachments` is the default.
@@ -283,6 +297,7 @@ If `save_workflow` returned an error, tell the user the concise reason via
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
 - **`source_task_id` is omitted (or `null`) for every node** — solo doesn't have source tasks
 - **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls; `[]` when the node touches no third-party service; never omit
+- **For history-derived intent, generalise** — strip one-off dates / values from prompts; the recipe should run again with fresh inputs
 - Only use `{{env.VARIABLE_NAME}}` for secrets, identity, or URLs — empty `env_variables` is the common case
 - `unique_id` values are sequential integers starting at 1 (never 0)
 - Dependencies are expressed ONLY via the top-level `edges` array; never put `dependencies` / `depends_on` / `dependsOn` on node objects
