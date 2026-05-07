@@ -16,9 +16,34 @@ sub-agents, no task tracking. Use these MCP tools via mcporter.
 - Do NOT use `--output` flag — not supported by `mcporter call`
 
 ## Communication
-- `npx mcporter call brahmi.send_message message="<text>" chat_location="main"`
+- `npx mcporter call brahmi.send_message content="<markdown>" chat_location="main"`
 - `npx mcporter call brahmi.ask_question question="<text>"`
 - `npx mcporter call brahmi.alert_user message="<urgent text>"`
+
+### Delivering files
+
+When you produce a file the user should be able to open from chat (PDF,
+JSON, text file, image, anything), surface it via the `produced_files`
+argument on `send_message`. The chat then renders a clickable chip that
+opens the file in VS Code.
+
+1. **Write the file under your working directory** — the absolute path
+   is injected into your prompt under "MANDATORY Working Directory"
+   (e.g. `/home/node/workspace/<slug>/`). NEVER write user-facing files
+   inside your private skill workspace at
+   `/home/node/.benji/workspace-solo/...`; those paths are private to
+   you and the user can't reach them from the Files tab. Chips that
+   reference them resolve to nothing.
+2. **Bake `produced_files` into the send_message call**:
+   `npx mcporter call brahmi.send_message content="<markdown summary>" chat_location="main" produced_files='[{"path":"report.pdf"}]'`
+
+Rules for `produced_files`:
+- The `path` is workspace-relative (just `report.pdf` or
+  `subdir/report.pdf`, NOT `/home/node/workspace/<slug>/report.pdf`).
+  The frontend re-prefixes when opening the chip in VS Code.
+- Multiple entries are allowed; order is preserved — put the primary
+  deliverable first.
+- Skip `produced_files` for chat-only deliverables (no file written).
 
 ## Git
 - `npx mcporter call brahmi.list_linked_repos`
