@@ -30,9 +30,48 @@ Use aramb-browser any time the task involves:
 
 ---
 
+## BROWSER & TARGET INJECTION (READ THIS FIRST)
+
+Every browser-bound tool response ends with a footer:
+
+```
+---
+browser: <app-slug> | target: <targetId> | url: <url>
+```
+
+- **`browser`** is the registered browser name (the `<app-slug>` you used at create time).
+- **`target`** is the CDP tab UUID for the currently selected page in that browser.
+- **`url`** is the URL of that selected tab.
+
+**Rule:** every tool call against a page must pass both `browser=<app-slug>` and `target=<targetId>`. After any tool call, update your working `target` from the footer — it confirms which tab you're on.
+
+**Why both:** parallel agents or sub-agents sharing the same browser must each work on their own tab. Without `target=`, the call defaults to whichever tab is currently selected, causing interference.
+
+---
+
+## BROWSER_* COMMANDS (full list)
+
+These are the lifecycle / management tools. They operate on the registry or the ARAMB API, not on a page, so they do **not** take `target=`. Most accept an optional `application_id` that overrides the `ARAMB_APP_ID` env var for ARAMB session tracking.
+
+| Tool | Purpose | Takes `browser=` | Takes `target=` | Takes `application_id=` |
+|---|---|---|---|---|
+| `browser_create` | Create a new browser (ARAMB session + registry entry) | no (uses `name=`) | no | yes |
+| `browser_list` | List all registered browsers | no | no | no |
+| `browser_switch` | Change the default browser | yes (required) | no | no |
+| `browser_destroy` | Destroy a browser + auto-terminate its ARAMB session | yes (required) | no | yes |
+| `browser_stats` | Registry statistics | no | no | no |
+| `browser_clients_list` | List connected harbor (Louie) clients | no | no | yes |
+| `browser_session_list` | List ARAMB sessions (status filter, pagination) | no | no | yes |
+| `browser_session_info` | Detailed info for one ARAMB session | no | no | yes |
+| `browser_session_extend` | Extend an ARAMB session TTL by N minutes | no | no | yes |
+
+**`application_id` behavior:** if omitted, the server falls back to `ARAMB_APP_ID` from the environment. Pass `application_id=<id>` only when you need to override that env var for a specific call (e.g. operating against a different ARAMB application than the default).
+
+---
+
 ## BROWSER REUSE FLOW
 
-**Always check for an existing browser before creating one.** Browsers are named after the app slug (e.g. `my-app`) — the same name the user or Brahmi uses to identify this application (same convention as `aramb expose --name <app-slug>`).
+**Always check for an existing browser before creating one.** Browsers are named after the app slug (e.g. `my-app`).
 
 ### Step 1 — List existing browsers
 
@@ -51,13 +90,7 @@ Open a fresh empty tab in the existing browser and capture the `target` from the
 mcporter call aramb-browser.new_page browser=<app-slug>
 ```
 
-Every tool response ends with a footer:
-```
----
-browser: <app-slug> | target: <targetId> | url: <url>
-```
-
-Read the `target` value from this footer — use it as `target=<targetId>` in every subsequent call.
+Read the `target` value from the footer — use it as `target=<targetId>` in every subsequent call.
 
 ```bash
 # All subsequent calls must include both browser= and target=
@@ -72,6 +105,7 @@ Follow the Provider Decision Flow below to decide on provider and network. Alway
 
 ```bash
 mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb ttl_minutes=30
+# Optional: application_id=<id> to override ARAMB_APP_ID for this call
 ```
 
 After creation, open an initial page and get the `target` from the footer:
@@ -168,19 +202,24 @@ mcporter call aramb-browser.browser_create name=<app-slug> provider=jumbo ttl_mi
 ## RULES — Non-Negotiable
 
 ### Always name the browser with the app slug
-- **`name` is mandatory** on every `browser_create` call. Use the app slug (e.g. `my-app`) — the same name used in `aramb expose --name <app-slug>`.
-- Names are used as the browser ID directly — `browser=my-app` works in all subsequent calls.
+- **`name` is mandatory** on every `browser_create` call. Use the app slug (e.g. `my-app`).
+- The name is used as the browser ID directly — `browser=my-app` works in all subsequent calls.
 
 ### Always pass `browser=` and `target=` together
-- **Every tool call must include both `browser=<app-slug>` and `target=<targetId>`** — `navigate_page`, `take_snapshot`, `take_screenshot`, `click`, `fill`, `new_page`, `select_page`, `close_page`, `list_pages`, `wait_for`, `evaluate_script`, `list_console_messages`, `list_network_requests`, etc.
+- **Every page-level tool call must include both `browser=<app-slug>` and `target=<targetId>`** — `navigate_page`, `take_snapshot`, `take_screenshot`, `click`, `fill`, `new_page`, `select_page`, `close_page`, `list_pages`, `wait_for`, `evaluate_script`, `list_console_messages`, `list_network_requests`, etc.
 - The `target` is the CDP tab UUID printed in every tool response footer. Read it once after creating a page and carry it forward.
-- **Why:** Two parallel agents or sub-agents sharing the same browser must each work on their own tab. Without `target=`, the call defaults to whichever tab is currently selected — causing interference between agents.
+- The `browser_*` lifecycle tools (see table above) do not take `target=` — they operate on the registry or ARAMB API, not on a page.
+
+### `application_id` on browser_* tools
+- `browser_create`, `browser_destroy`, `browser_clients_list`, `browser_session_list`, `browser_session_info`, and `browser_session_extend` all accept an optional `application_id=<id>`.
+- It overrides the `ARAMB_APP_ID` environment variable for that single call.
+- Omit it to use the configured environment default.
 
 ### Reading the footer
-Every browser tool response ends with:
+Every page-level tool response ends with:
 ```
 ---
-browser: <name> | target: <targetId> | url: <url>
+browser: <app-slug> | target: <targetId> | url: <url>
 ```
 After any tool call, update your working `target` from this footer — it confirms which tab you're on.
 
@@ -220,6 +259,10 @@ mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb \
 
 # Harbor — real browser on user's machine
 mcporter call aramb-browser.browser_create name=<app-slug> provider=harbor harbor_client_id=<id>
+
+# Override ARAMB_APP_ID for this call only
+mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb \
+  application_id=<id> ttl_minutes=30
 ```
 
 Before using `use_user_network=true` or `harbor`:
@@ -238,17 +281,20 @@ If no harbor client is connected, tell the user:
 
 Then **stop and wait** — do not proceed until the client appears in `browser_clients_list`.
 
-### Destroy (auto-terminates Aramb session)
+### Destroy (auto-terminates ARAMB session)
 ```bash
 mcporter call aramb-browser.browser_destroy browser=<app-slug>
-# Automatically destroys the associated Aramb session — no need to pass session ID separately
+# Optional: application_id=<id>
+# Automatically destroys the associated ARAMB session — no need to pass session ID separately
 ```
 
-### List / switch
+### List / switch / inspect sessions
 ```bash
 mcporter call aramb-browser.browser_list
 mcporter call aramb-browser.browser_switch browser=<app-slug>
+mcporter call aramb-browser.browser_stats
 mcporter call aramb-browser.browser_session_list
+mcporter call aramb-browser.browser_session_info session_id=<id>
 mcporter call aramb-browser.browser_session_extend session_id=<id> minutes=<n>
 ```
 
