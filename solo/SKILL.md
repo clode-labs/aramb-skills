@@ -16,16 +16,16 @@ sub-agents, no task tracking. Use these MCP tools via mcporter.
 - Do NOT use `--output` flag — not supported by `mcporter call`
 
 ## Communication
-- `npx mcporter call brahmi.send_message content="<markdown>" chat_location="main"`
+- `npx mcporter call brahmi.send_message content="<markdown>" chat_location="main"` — text-only updates
 - `npx mcporter call brahmi.ask_question question="<text>"`
 - `npx mcporter call brahmi.alert_user message="<urgent text>"`
 
 ### Delivering files
 
 When you produce a file the user should be able to open from chat (PDF,
-JSON, text file, image, anything), surface it via the `produced_files`
-argument on `send_message`. The chat then renders a clickable chip that
-opens the file in VS Code.
+JSON, text file, image, anything), surface it via `deliver_artifacts`.
+Brahmi composes the chat row with a clickable chip that opens the
+file in VS Code.
 
 1. **Write the file under your working directory** — the absolute path
    is injected into your prompt under "MANDATORY Working Directory"
@@ -34,16 +34,28 @@ opens the file in VS Code.
    `/home/node/.benji/workspace-solo/...`; those paths are private to
    you and the user can't reach them from the Files tab. Chips that
    reference them resolve to nothing.
-2. **Bake `produced_files` into the send_message call**:
-   `npx mcporter call brahmi.send_message content="<markdown summary>" chat_location="main" produced_files='[{"path":"report.pdf"}]'`
+2. **Call `deliver_artifacts`** with the file paths:
+   ```
+   npx mcporter call brahmi.deliver_artifacts \
+     artifacts='[{"path":"report.pdf"}]' \
+     content="<optional markdown blurb>"
+   ```
 
-Rules for `produced_files`:
+Use the same call when the user later asks about something you produced
+earlier in this chat ("show me that report") — pass the relevant
+artifacts and brahmi posts a fresh row with the chips.
+
+Rules for `artifacts`:
 - The `path` is workspace-relative (just `report.pdf` or
   `subdir/report.pdf`, NOT `/home/node/workspace/<slug>/report.pdf`).
   The frontend re-prefixes when opening the chip in VS Code.
 - Multiple entries are allowed; order is preserved — put the primary
   deliverable first.
-- Skip `produced_files` for chat-only deliverables (no file written).
+- `artifacts` is required and non-empty. For chat-only updates with no
+  file output, use `send_message` instead.
+
+Do not pass `produced_files` to `send_message` — that path is deprecated
+in favour of `deliver_artifacts`.
 
 ## Git
 - `npx mcporter call brahmi.list_linked_repos`
