@@ -90,33 +90,39 @@ If the user is asking a **definition-shaped** change ("change the model to Opus"
 6. Set `acceptance_criteria` on every task (see SOUL.md for rules)
 7. Testing/validation tasks: set acceptance_criteria to "run all suites, report results" — never "all tests must pass"
 8. For work tasks with observable outputs: read checker-prompt skill, write `checker_prompt`, set `enable_checker: true`
-9. **Bake delivery into every task description** — see "Delivering to the user" below. Without it the sub-agent runs `update_my_task=done` and the user sees only system task badges.
-10. Submit via `brahmi.create_tasks`
+9. Submit via `brahmi.create_tasks`
 
 ### Delivering to the user
 
-Every sub-agent task description MUST end with an explicit `brahmi.send_message` call. Without it, the sub-agent marks the task done via `update_my_task` and the user sees only the task badges — no content, no chip. **Pick one of the two patterns for every task:**
+Sub-agents never write directly to chat. Brahmi composes every chat row from the agent's structured MCP calls. Two surfaces:
 
-**Chat-only deliverable** — the task answers in chat and writes no file:
+**Task completion** — the sub-agent's `update_my_task` close call carries the deliverable:
+
 ```
-npx mcporter call brahmi.send_message project_id="<...>" application_id="<...>" content="<markdown>" chat_location="main"
+npx mcporter call brahmi.update_my_task task_id="<...>" status="done" \
+  summary="<markdown body shown to the user>" \
+  artifacts='[{"path":"report.pdf"}]'
 ```
 
-**File deliverable** — the task writes one or more files for the user:
+Brahmi auto-emits the rich completion message with chips alongside the lifecycle badge — no separate `send_message` needed, no "Starting X" / "Done X" pairs to bake. Set `summary` whenever there's anything for the user to read; set `artifacts` whenever the sub-agent wrote files. Both are optional, both work the same way for `status="failed"` (partial outputs are still surfaced).
 
-1. Tell the sub-agent to write the file under the application's working directory. The absolute path is already injected into its prompt under "MANDATORY Working Directory" — name it explicitly in the task description so the sub-agent uses an absolute path on `Write` calls (e.g. `Write the report to <WORKING_DIR>/report.pdf`).
-2. **Sub-agents MUST NEVER write user-facing files inside their own private skill workspace** (`/home/node/.benji/workspace-<agent-name>/...`). Those paths are private to the agent; the user can't reach them from the Files tab and chips referencing them resolve to nothing.
-3. Bake `produced_files` into the send_message call so the user gets a clickable chip:
-   ```
-   npx mcporter call brahmi.send_message project_id="<...>" application_id="<...>" content="<markdown summary>" chat_location="main" produced_files='[{"path":"report.pdf"}]'
-   ```
+**On-the-fly recall** — when the user asks about something the agent already produced ("show me that report you made earlier"), the sub-agent calls `deliver_artifacts`:
 
-`produced_files` rules:
-- The `path` is workspace-relative (just `report.pdf` or `subdir/report.pdf`, NOT the absolute `/home/node/workspace/<slug>/...` form). The frontend re-prefixes when opening the chip in VS Code.
-- Multiple entries are allowed; order is preserved — put the primary deliverable first.
-- Skip `produced_files` for chat-only deliverables.
+```
+npx mcporter call brahmi.deliver_artifacts \
+  artifacts='[{"path":"report.pdf"}]' \
+  content="<optional markdown blurb>"
+```
 
-These rules apply unconditionally — also for "research", "summary", "list", and similar tasks where you might be tempted to drop the bake. If the task produces user-facing output, the user sees it via `send_message`. No exceptions.
+Brahmi posts a fresh chat row with the chips. Same render as task completion, just not tied to a status transition.
+
+**Path discipline:**
+- `summary` and `content` are markdown shown verbatim to the user. Keep them concise — links, key findings, headers — not full prose dumps when a chip will do.
+- `artifacts[].path` is workspace-relative (`report.pdf`, `reports/q3.md`), NOT the absolute `/home/node/workspace/<slug>/...` form. The frontend re-prefixes for VS Code.
+- **Sub-agents MUST write user-facing files under the application's working directory.** The absolute path is injected into their prompt as "MANDATORY Working Directory". They MUST NOT write user-facing files inside their private skill workspace (`/home/node/.benji/workspace-<agent-name>/...`); those paths are private and chips referencing them resolve to nothing.
+- Multiple `artifacts` entries allowed; order is preserved — primary deliverable first.
+
+**Do NOT use `send_message`.** It is deprecated and being removed. Anything you'd have surfaced through it now goes via `update_my_task` (during a task) or `deliver_artifacts` (after).
 
 ### Monitoring
 - Track task statuses via `brahmi.list_tasks`
