@@ -25,7 +25,9 @@ and save.
    - **Failure mode:** Omitting `required_toolkits` from `save_workflow` nodes means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. Empty array `[]` is correct when the node touches no third-party service — never omit the field.
 2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `update_my_workflow_step` at the end of its run. See section "Closing instruction per node" below for the exact template.
    - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble shows "(no summary)" instead of the real hand-off. Outputs are load-bearing — every prompt must include the closing line.
-3. Call `save_workflow` exactly once. Success or failure — never retry.
+3. **Every node's `assigned_agent` MUST be `"solo"`.** Do not pick `developer`, `aramb-deployer`, `local-deployer`, or any other persona — those exist only in team mode. Solo has one agent, and that agent (you) executes every step.
+   - **Failure mode:** Stamping a team-mode persona on a solo workflow makes brahmi try to provision an agent that doesn't exist in the solo image. Dispatch fails when the step tries to spin up the named persona. The string `"solo"` is the only valid value for `assigned_agent` in this skill — `null`, empty string, omitted field, or any team-mode persona name will be rejected at save time.
+4. Call `save_workflow` exactly once. Success or failure — never retry.
 
 ## Where the spec comes from
 
@@ -88,11 +90,14 @@ If the spec is clear, skip the questions and go straight to design.
 
 ### 2. Decompose the spec into ordered steps
 
+Solo mode has one agent. Decomposition is about ordering work and picking
+toolkits, not about picking a persona — every node will carry
+`assigned_agent: "solo"` (see MUST rule #3).
+
 In your reasoning, decompose the spec into ordered steps. For each step
 identify:
 - What data flows in (from the user / from the previous step)
 - What the step produces
-- Which agent identity should run it (`developer`, `aramb-deployer`, etc.)
 - Which Composio toolkit slugs it touches (`["GMAIL"]`, `["GOOGLESHEETS"]`, `[]` for orchestration-only)
 
 For history-derived intent, this is the **merge / generalize / split** pass:
@@ -107,7 +112,7 @@ Send a progress update: "Designing workflow graph — N nodes, M levels".
 
 - **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what the user described (or what you actually did, generalised) and bake the specifics in.
 - **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape.
-- **Pick agent assignments** that match the work — `developer` for code/data work, `aramb-deployer` for deploys, `local-deployer` for tunnels, etc.
+- **Stamp `assigned_agent: "solo"` on every node.** Solo mode has only one agent identity. Do not pick team-mode personas (`developer`, `aramb-deployer`, `local-deployer`, etc.) — they do not exist in the solo image and dispatch will fail.
 - **Carry `required_toolkits` per node — MANDATORY, never omit.** For each node, list the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Infer slugs from the action you're describing — Gmail action → `["GMAIL"]`, Google Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates and does not touch a third-party service — `[]` is REQUIRED, not optional; do not omit the field. Slugs are uppercase, exactly as Composio reports them. Brahmi snapshots this list onto every workflow run step at trigger time so the executing agent sees the same dependencies the planner declared, and the Evaluate step uses it to surface missing-connection warnings before publish.
 - **Set `default_node_settings` on the workflow.** Always emit a sensible defaults block — see "Default node settings — workflow-level" below. Don't leave it empty: the FE renders the settings tray off these values, and a missing block surfaces as blank fields the user has to fill in by hand.
 - **Per-node `settings` typically stays empty (`{}`)** — defaults inherit from the workflow. The exception: if a node clearly does something destructive or externally visible (posts to Linear, sends an email, writes to a customer DB, deletes files), set that one node's `settings.approval_mode = "manual"` so a human has to approve the step before it runs. Use this heuristic sparingly — over-gating turns every run into a clickfest.
@@ -207,7 +212,7 @@ a single transaction.
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
 - `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
-- `assigned_agent` — name of an existing agent
+- **`assigned_agent` — solo has only one agent. Stamp `"solo"` on every node. Do NOT use team-mode personas (`developer`, `aramb-deployer`, `local-deployer`, etc.) — they don't exist in the solo image. Brahmi rejects any other value for solo-mode workflows (defensive save-time override).**
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits` — list of Composio slugs the node calls; `[]` for orchestration / file-only nodes; never omit.**
 - **`source_task_id` — solo doesn't have source tasks. Omit the field for every node, OR pass `null`. Brahmi accepts both.**
@@ -243,9 +248,9 @@ npx mcporter call brahmi.save_workflow \
   env_variables='{}' \
   default_node_settings='{"model":"claude-sonnet-4-6","effort":"medium","thinking":"adaptive","max_turns":35,"admin":false,"budget_usd":25.0,"approval_mode":"auto","instructions":""}' \
   nodes='[
-    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<body + closing template>", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "settings": {}},
-    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>", "assigned_agent": "developer", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "settings": {}},
-    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>", "assigned_agent": "developer", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "settings": {"approval_mode":"manual"}}
+    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<body + closing template>", "assigned_agent": "solo", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "settings": {}},
+    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>", "assigned_agent": "solo", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "settings": {}},
+    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>", "assigned_agent": "solo", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "settings": {"approval_mode":"manual"}}
   ]' \
   edges='[
     {"source": 1, "target": 2},
@@ -303,7 +308,7 @@ If `save_workflow` returned an error, tell the user the concise reason via
 - Dependencies are expressed ONLY via the top-level `edges` array; never put `dependencies` / `depends_on` / `dependsOn` on node objects
 - `edges` must be a DAG — no cycles. If no edges are needed (single-node workflow), pass `'[]'` or omit
 - Give the workflow a clear, descriptive name (not "Workflow 1")
-- `assigned_agent` should match existing agent names
+- **`assigned_agent` is `"solo"` on every node** — solo mode has only one agent; team-mode personas (`developer`, `aramb-deployer`, `local-deployer`, etc.) do NOT exist in the solo image
 - Never call `save_workflow` more than once — one shot, success or failure
 - Confirm to the user via `brahmi.send_message` at the end (success or failure)
 - If the user also asked for a schedule, call `set_workflow_schedule` yourself right after save — don't punt to the user

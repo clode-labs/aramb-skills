@@ -22,10 +22,12 @@ sub-agents, no task tracking. Use these MCP tools via mcporter.
 
 ### Delivering files
 
-When you produce a file the user should be able to open from chat (PDF,
-JSON, text file, image, anything), surface it via `deliver_artifacts`.
-Brahmi composes the chat row with a clickable chip that opens the
-file in VS Code.
+For any user-facing file you produced under your working directory in this
+turn (PDF, JSON, text file, image, anything), surface it via
+`deliver_artifacts`. Brahmi composes the chat row with a clickable chip that
+opens the file in VS Code. There is no "the user could just read it from my
+reply text" exception — any file the agent wrote means `deliver_artifacts` is
+required.
 
 1. **Write the file under your working directory** — the absolute path
    is injected into your prompt under "MANDATORY Working Directory"
@@ -63,8 +65,35 @@ in favour of `deliver_artifacts`.
 - `npx mcporter call brahmi.git_token`
 
 ## Deployment
-- `npx mcporter call brahmi.update_preview_url url="<url>" environment="local"`
-- `npx mcporter call brahmi.update_preview_url url="<url>" environment="deployed"`
+
+When you expose a service the user can reach in chat (local tunnel, deployed
+app, public proxy URL), surface it through TWO MCP calls. `update_preview_url`
+registers the URL with brahmi (state — powers the in-app iframe and app header
+preview surface). `deliver_artifacts` with `kind: "url"` emits the clickable
+tile on the chat row (chip render). The two backend entry points serve
+different purposes; a URL deliverable needs both.
+
+1. **Call `update_preview_url`** — state update. Use `environment="local"`
+   for tunnel-style URLs you exposed from this agent's machine,
+   `environment="deployed"` for URLs pointing at hosted infrastructure.
+   ```
+   npx mcporter call brahmi.update_preview_url url="<url>" environment="local"
+   npx mcporter call brahmi.update_preview_url url="<url>" environment="deployed"
+   ```
+2. **Call `deliver_artifacts`** with a `kind: "url"` entry — chip emit. The
+   `environment` field on the artifact must match what you passed to
+   `update_preview_url`.
+   ```
+   npx mcporter call brahmi.deliver_artifacts \
+     artifacts='[{"kind":"url","url":"<url>","title":"Preview URL","environment":"local"}]'
+   ```
+
+Rules for preview URLs:
+- The rule fires whenever a deploy / expose step produced any URL the user can reach (frontend, API, tunnel, public proxy).
+- BOTH `update_preview_url` AND `deliver_artifacts` (with `kind: "url"`) are mandatory for the primary frontend URL. Order: state update first, chip emit second.
+- Mentioning the URL only in chat prose is forbidden. State update and chip emit are independent responsibilities; the URL needs both calls even if the URL also appears in the reply text.
+- `environment` must match between the two calls (`local` for tunnels you ran from this container, `deployed` for hosted infra).
+- The chip is for the *primary* frontend URL only. Secondary backend / API URLs can stay in the plain-text summary — one URL chip per chat row is plenty.
 
 ## Workflows
 
@@ -109,6 +138,10 @@ Forbidden tools:
 - `create_tasks`, `update_task`, `update_my_task`, `get_my_tasks`, `list_tasks`
 - `start_planning`, `submit_plan`, `finish_planning`
 - `consolidate_workflow`, `reconsolidate_workflow`
+
+Also forbidden:
+- Reporting an exposed URL only in chat prose, OR calling only one of `update_preview_url` / `deliver_artifacts` (instead of both), is forbidden. State update and chip emit are independent responsibilities; the URL needs both.
+- Mentioning a workspace file path in your reply text without first calling `deliver_artifacts` is forbidden. Inline paths are dead text — the chip pipeline cannot turn them into clickable chips after the fact.
 
 If you need to track multi-step work in your head, keep a TODO list in
 your reasoning or notes in `/home/node/workspace/`. Do not call the task
