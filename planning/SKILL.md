@@ -38,26 +38,23 @@ Call `brahmi.start_planning` with `file_path=".planning/<descriptive-name>.md"` 
 
 ### 3. Interactive Q&A
 
-Ask ONE question at a time. Show progress and multiple choice options:
+Ask ONE question at a time using `brahmi.ask_question`. NEVER use `send_message` for questions — it stores the row as `message_type=text` with no `options`, the frontend cannot render a picker, and the user reply comes back as unstructured free text.
 
-```
-**Question 1/5**: What authentication approach should we use?
+Pass choices as the `options` array — do NOT inline them as a numbered list in the `question` body. Brahmi stores the array structurally so the UI renders a real choice picker and the answer comes back as `selected_option`.
 
-1. **JWT tokens** — Stateless, good for APIs. Requires refresh token logic.
-2. **Session-based** — Simpler, server-side state. Better for traditional web apps.
-3. **OAuth 2.0** — Delegate to provider (Google, GitHub). Best for apps with social login.
-
-Pick a number or describe your preference.
+```bash
+npx mcporter call brahmi.ask_question \
+  project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
+  question="Question 1/5 — What authentication approach should we use?" \
+  options='["JWT tokens — stateless, good for APIs", "Session-based — simpler, server-side state", "OAuth 2.0 — delegate to Google/GitHub"]'
 ```
 
 Rules:
-- Always show progress (Question 1/5, 2/5, etc.) — count can change dynamically
-- Each option has a brief description with pros/cons
-- 2-4 options per question
-- After each answer: update the plan file, then ask the next question
-- The user is watching the plan file in VS Code — keep it current
-
-Use `brahmi.send_message` or `brahmi.ask_question` for each question.
+- ALWAYS `brahmi.ask_question`. Never `send_message`, never inline-numbered-list questions.
+- Include the progress marker in the `question` string (Question 1/5, 2/5, …) — count can change dynamically.
+- 2-4 options per question. Each option is a short label with a brief pro/con after an em-dash.
+- After each answer: update the plan file, then ask the next question.
+- The user is watching the plan file in VS Code — keep it current.
 
 ### 3b. Handling "Surprise me!" / defaults
 
