@@ -5,7 +5,17 @@ description: Build and deploy applications using aramb-cli. Covers aramb-cli ins
 
 # Aramb Deployment
 
-Build and deploy applications using `aramb` CLI. Follow this workflow strictly. If any step fails, EXIT immediately with a clear error message. Do NOT attempt to debug or fix aramb-cli issues.
+Build and deploy applications using the `aramb` CLI. **Follow this workflow exactly. Do NOT improvise. Do NOT debug the CLI, the registry, the build host, or networking.** If any step fails, EXIT immediately with a clear error message.
+
+The fixed flow is:
+
+```
+generate TOML → fill secrets → services create --from-toml → (no-git only: build --push, update TOML)
+              → deploy --from-toml --yes → poll deploy status → done
+```
+
+`services create --from-toml` resolves/creates services only — it does NOT push configuration.
+`deploy --from-toml --yes` pushes the merged configuration AND triggers the deployment in one step.
 
 ---
 
@@ -49,15 +59,12 @@ If resumed with `mode="qa"`:
 
 ## Required Environment Variables
 
-- `ARAMB_API_TOKEN` — Authentication for all aramb operations
-- `JUMBO_URL` — Jumbo platform URL for service creation and deployment (base URL only, e.g., `http://jumbo:8080`)
+- `ARAMB_API_TOKEN` — Authentication for all aramb operations (also authenticates against the built-in registry)
+- `JUMBO_URL` — Jumbo platform URL (base URL only, e.g., `http://jumbo:8080`)
 - `APPLICATION_ID` — Application identifier; passed to the aramb-toml skill and used in all service definitions
-- `BUILDKIT_HOST` — Remote BuildKit server for Docker image builds (required for no-git local builds only)
+- `BUILDKIT_HOST` — Remote BuildKit endpoint (required for no-git local builds only)
 
-Optional:
-- `DOCKER_REGISTRY` — Custom Docker registry URL (default: aramb's built-in registry)
-- `DOCKER_REGISTRY_USER` — Registry username for custom registry push
-- `DOCKER_REGISTRY_PASSWORD` — Registry password for custom registry push
+The CLI's built-in registry is `registry.clode.space`. It is **private** and authenticates automatically through `ARAMB_API_TOKEN` during `aramb build --push`. Do NOT probe, curl, `docker pull`, or otherwise inspect this registry directly — anonymous requests are rejected and tell you nothing about the build.
 
 Validate before starting:
 
@@ -115,7 +122,7 @@ Invoke the **aramb-toml** skill with:
 - `mode = "git"`
 - `repoUrl = $REPO_URL`
 
-The skill will scan the codebase and write `aramb.toml` with build + runtime service pairs for own-codebase services. Do NOT write TOML yourself — delegate entirely to the skill.
+The skill writes `aramb.toml` with build + runtime service pairs for own-codebase services. Do NOT write TOML yourself — delegate entirely to the skill.
 
 ---
 
@@ -135,15 +142,17 @@ The skill will scan the codebase and write `aramb.toml` with build + runtime ser
 
 ### Step 3: Create Services from TOML
 
+This resolves project/application/service references and creates any missing services. It does NOT push configuration — that happens in Step 4.
+
 ```bash
-# Ignore config update errors — only fail if service creation itself fails
-aramb services create --from-toml 2>&1 | tee /tmp/services_create.log
-grep -i "error" /tmp/services_create.log | grep -iv "config" && { echo "ERROR: Service creation failed"; exit 1; } || true
+aramb services create --from-toml || { echo "ERROR: Service creation failed"; exit 1; }
 ```
 
 ---
 
 ### Step 4: Deploy All Services from TOML
+
+This merges and pushes the configuration AND triggers deployment in a single call.
 
 ```bash
 aramb deploy --from-toml --yes || { echo "ERROR: Deploy failed"; exit 1; }
@@ -151,7 +160,9 @@ aramb deploy --from-toml --yes || { echo "ERROR: Deploy failed"; exit 1; }
 
 ---
 
-### Step 5: Validate and Return Outputs
+### Step 5: Poll Deploy Status
+
+**The only source of truth for "is the deployment done" is `aramb deploy status`.** Do NOT use `aramb logs`, `aramb services logs`, `aramb logs history`, `curl`, `wget`, `docker logs`, or any other tool to determine deployment health. They are not part of this flow.
 
 ```bash
 SERVICE_SLUGS=$(aramb services list --application "$APPLICATION_ID" --output json \
@@ -174,6 +185,8 @@ for SERVICE_SLUG in $SERVICE_SLUGS; do
   fi
 done
 ```
+
+`--loop --interval 5` blocks until the deployment reaches a terminal state. The follow-up `--output json` call reads the final state. Nothing else is needed — no log polling, no HTTP probes.
 
 Set structured outputs before completing (CRITICAL — planner uses these to answer questions without resuming you):
 
@@ -202,14 +215,11 @@ Set structured outputs before completing (CRITICAL — planner uses these to ans
 
 ## Path B: No-Git Local Build Deployment
 
-Use when the project directory has no remote git repository. Services are created from TOML, images are built and pushed locally, then deployed.
+Use when the project directory has no remote git repository. Services are created from TOML, images are built and pushed locally, then the TOML is updated with image URLs and deployed.
 
 ### Step 1: Generate aramb.toml
 
-Invoke the **aramb-toml** skill with:
-- `mode = "no-git"`
-
-The skill will write `aramb.toml` with runtime-only services (no build services) and `image = ""` placeholders for own-codebase services.
+Invoke the **aramb-toml** skill with `mode = "no-git"`. The skill writes `aramb.toml` with runtime-only services (no `[[services]]` of `type=build`) and `image = ""` placeholders for own-codebase services.
 
 ---
 
@@ -222,34 +232,35 @@ Same as Path A Step 2.
 ### Step 3: Create Services from TOML
 
 ```bash
-# Ignore config update errors — only fail if service creation itself fails
-aramb services create --from-toml 2>&1 | tee /tmp/services_create.log
-grep -i "error" /tmp/services_create.log | grep -iv "config" && { echo "ERROR: Service creation failed"; exit 1; } || true
+aramb services create --from-toml || { echo "ERROR: Service creation failed"; exit 1; }
 ```
+
+After this step the TOML has actual `slug` and `id` values written back for each service. Use those slugs in Step 4 — do not invent slugs or use names.
 
 ---
 
 ### Step 4: Build and Push Images Locally
 
-Always use `--push`. The CLI uses its built-in registry by default — no registry-conditional logic needed.
-
-After `services create --from-toml`, the TOML has actual `slug` values written back. Read those slugs and the corresponding build paths, then build each own-codebase service. Skip database and public-image services (those with a non-empty `image` already set).
+Always use `--push`. The CLI's built-in registry handles authentication automatically through `ARAMB_API_TOKEN`. There is no separate registry login step.
 
 ```bash
 [ -n "$BUILDKIT_HOST" ] || { echo "ERROR: BUILDKIT_HOST not set"; exit 1; }
 
-# Read own-codebase service slugs and build paths from aramb.toml
-# For each service with image = "" (own-codebase), extract its slug and build path
-# then run aramb build pointing at that service's source directory
+# For each own-codebase service in aramb.toml (those with image = ""),
+# read its slug and build path, then build. Skip services that already
+# have a non-empty image (postgres, redis, public-image services).
 
-# Example — replace SERVICE_SLUG and BUILD_PATH with values read from aramb.toml:
 IMAGE_URL=$(aramb build {BUILD_PATH} --service {SERVICE_SLUG} --push \
   | jq -r '.IMAGE_URL') || { echo "ERROR: Build failed for {SERVICE_SLUG}"; exit 1; }
 ```
 
 Where:
-- `{BUILD_PATH}` — the local directory containing the Dockerfile for this service (read from codebase analysis, e.g. `./backend`, `./frontend`)
-- `{SERVICE_SLUG}` — the `slug` field written into aramb.toml by `services create --from-toml` for the runtime service (not the build service)
+- `{BUILD_PATH}` — the local directory containing the Dockerfile for this service (`./backend`, `./services/auth-service`, etc.)
+- `{SERVICE_SLUG}` — the `slug` field written into aramb.toml by `services create --from-toml` for the runtime service
+
+**If `BUILDKIT_HOST` is unset → EXIT.** Do not improvise. Do not `docker inspect buildkitd`, do not DNS-probe, do not start `dockerd` manually, do not change networking. If the build host is missing, the harness is misconfigured — that is not yours to fix.
+
+**If `aramb build` fails → EXIT.** Do not retry with alternate flags, alternate build hosts, or manual Docker calls. Log the slug and path and exit.
 
 ---
 
@@ -258,13 +269,15 @@ Where:
 For each service built in Step 4, replace its `image = ""` placeholder using the slug to scope the replacement:
 
 ```bash
-# Use the service slug (from aramb.toml) to scope the sed replacement
 SERVICE_SLUG={slug from aramb.toml}
 IMAGE_URL={IMAGE_URL from aramb build output}
 
 sed -i "/slug = \"${SERVICE_SLUG}\"/,/\[\[/ s|image = \"\"|image = \"${IMAGE_URL}\"|" aramb.toml
+```
 
-# After all services are updated, verify no placeholders remain
+After all services are updated, verify no placeholders remain:
+
+```bash
 grep 'image = ""' aramb.toml && { echo "ERROR: Some service images not updated"; exit 1; } || true
 ```
 
@@ -278,29 +291,9 @@ aramb deploy --from-toml --yes || { echo "ERROR: Deploy failed"; exit 1; }
 
 ---
 
-### Step 7: Validate and Return Outputs
+### Step 7: Poll Deploy Status
 
-```bash
-SERVICE_SLUGS=$(aramb services list --application "$APPLICATION_ID" --output json \
-  | jq -r '.[] | select(.type != "build") | .slug')
-
-declare -A URLS
-for SERVICE_SLUG in $SERVICE_SLUGS; do
-  echo "Waiting for $SERVICE_SLUG..."
-  aramb deploy status --service "$SERVICE_SLUG" --loop --interval 5
-
-  RESULT=$(aramb deploy status --service "$SERVICE_SLUG" --output json)
-  STATUS=$(echo "$RESULT" | jq -r '.status')
-
-  if [ "$STATUS" = "completed" ]; then
-    PUBLIC_URL=$(echo "$RESULT" | jq -r '.outputs.PUBLIC_URL // empty')
-    [ -n "$PUBLIC_URL" ] && URLS[$SERVICE_SLUG]="$PUBLIC_URL" && echo "$SERVICE_SLUG live at: $PUBLIC_URL"
-  else
-    echo "ERROR: $SERVICE_SLUG deploy status: $STATUS"
-    exit 1
-  fi
-done
-```
+Same as Path A Step 5 — use `aramb deploy status --loop` and `--output json`, nothing else.
 
 Same output format as Path A. Set `"deploy_mode": "no-git"` and include a `"build"` object:
 
@@ -312,6 +305,24 @@ Same output format as Path A. Set `"deploy_mode": "no-git"` and include a `"buil
   "frontend_image": "..."
 }
 ```
+
+---
+
+## Forbidden Actions
+
+Past task traces show agents wasting 30–80 tool calls on the items below. **Do not do any of these.** If you find yourself reaching for them, you are deviating from the flow — EXIT instead.
+
+| Don't do this | Why |
+|---|---|
+| Probe `registry.clode.space` via `curl`, `docker pull`, `docker login`, etc. | It is a private registry. Anonymous access is rejected. `aramb build --push` handles auth. |
+| Set `BUILDKIT_HOST` yourself via `docker inspect buildkitd`, DNS lookups, `/etc/hosts` parsing | If the env var isn't provided, the harness is misconfigured. EXIT. |
+| Start the Docker daemon (`sudo dockerd`, `systemctl start docker`, etc.) | Same as above — environment, not your problem. |
+| Use `aramb services create -n NAME -t TYPE -p ... -a ...` (without `--from-toml`) | Creates orphan services that won't match the TOML. Always use `--from-toml`. |
+| `cd /tmp` before running `aramb` commands | The workspace directory contains `aramb.toml`. Stay there. |
+| Run `aramb logs`, `aramb services logs`, `aramb logs history` | None of these are part of the deployment flow. `aramb deploy status` is the only check. |
+| `curl`/`wget` public URLs to verify the deployment | A non-2xx response is not your signal. `deploy status: completed` is authoritative. |
+| Debug TOML schema by trial-and-error | The TOML is written by the aramb-toml skill. If you have to hand-author TOML, EXIT. |
+| Try to fix `aramb` CLI bugs or work around them | EXIT with the CLI's error message verbatim. |
 
 ---
 
@@ -327,22 +338,23 @@ Details: {relevant context}
 
 ### Error Policy
 
-- Any error at any step → EXIT immediately with clear error message
-- Do NOT retry failed builds
-- Do NOT attempt to debug or fix aramb-cli issues
-- Do NOT attempt to login or authenticate manually
-- `aramb services create --from-toml`: ignore config update errors, EXIT only if service creation fails
-- If `aramb deploy --from-toml` fails → check TOML validity before retrying
+- Any error at any step → EXIT immediately with a clear error message.
+- Do NOT retry. Do NOT debug. Do NOT improvise.
+- Report the failing CLI command and its stderr/exit code verbatim — that is what the user needs to investigate.
 
 ### Service Creation Failures
 
-If `aramb services create --from-toml` fails on service creation:
-- Check for name conflicts with existing services
-- Try a different service name (service may persist after failure — no automatic cleanup)
+If `aramb services create --from-toml` fails:
+- Check for name conflicts with existing services in the application.
+- Try a different service name in the TOML (services may persist after failure — there is no automatic cleanup).
 
 ### Build Failures
 
-If `aramb build` fails: log the service slug and build path, EXIT without deploying.
+If `aramb build` fails: log the service slug, the build path, and the build's stderr. EXIT without deploying. Do not try alternate build methods.
+
+### Deploy Status `failed`/`error`
+
+If `aramb deploy status` reports a non-`completed` terminal state, report the JSON output verbatim and EXIT. Do not chase logs.
 
 ---
 
@@ -361,7 +373,9 @@ aramb.toml services (generated by aramb-toml skill):
   frontend-build   (type=build,    buildPath=./frontend)
   frontend-web     (type=frontend, image=${103.outputs.IMAGE_URL}, API_URL=${102.outputs.PRIVATE_URL})
 
+→ aramb services create --from-toml
 → aramb deploy --from-toml --yes
+→ poll aramb deploy status for each non-build service
 ```
 
 ### Scenario 2: Full-Stack App (No Git Remote)
@@ -378,6 +392,7 @@ aramb.toml services (generated by aramb-toml skill):
 → aramb build ./api --service backend-api --push   → update image in TOML
 → aramb build ./web --service frontend-web --push   → update image in TOML
 → aramb deploy --from-toml --yes
+→ poll aramb deploy status for each non-build service
 ```
 
 ### Scenario 3: Frontend-Only
@@ -386,13 +401,17 @@ aramb.toml services (generated by aramb-toml skill):
 Git-connected:
   frontend-build  (type=build,    buildPath=.)
   frontend-web    (type=frontend, image=${100.outputs.IMAGE_URL})
+→ aramb services create --from-toml
 → aramb deploy --from-toml --yes
+→ poll deploy status
 
 No-git:
   frontend-web  (type=frontend, image="")
 → aramb services create --from-toml
 → aramb build . --service frontend-web --push
-→ update TOML → aramb deploy --from-toml --yes
+→ update TOML
+→ aramb deploy --from-toml --yes
+→ poll deploy status
 ```
 
 ### Scenario 4: Pre-Built/Third-Party Backend
@@ -404,5 +423,7 @@ Uses public API image + own frontend codebase. Git remote: YES
   frontend-build  (type=build,    buildPath=./frontend)
   frontend-web    (type=frontend, image=${102.outputs.IMAGE_URL}, API_URL=${101.outputs.PRIVATE_URL})
 
+→ aramb services create --from-toml
 → aramb deploy --from-toml --yes
+→ poll deploy status
 ```
