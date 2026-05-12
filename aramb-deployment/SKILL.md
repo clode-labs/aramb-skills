@@ -62,7 +62,7 @@ If resumed with `mode="qa"`:
 - `ARAMB_API_TOKEN` — Authentication for all aramb operations (also authenticates against the built-in registry)
 - `JUMBO_URL` — Jumbo platform URL (base URL only, e.g., `http://jumbo:8080`)
 - `APPLICATION_ID` — Application identifier; passed to the aramb-toml skill and used in all service definitions
-- `BUILDKIT_HOST` — Remote BuildKit endpoint (required for no-git local builds only)
+- `BUILDKIT_HOST` — *Optional.* Remote BuildKit endpoint. When unset (or unreachable), `aramb build` falls back to `docker build` against the local Docker daemon. The aramb CLI runs in a docker-in-docker environment, so this fallback is the expected path.
 
 The CLI's built-in registry is `registry.clode.space`. It is **private** and authenticates automatically through `ARAMB_API_TOKEN` during `aramb build --push`. Do NOT probe, curl, `docker pull`, or otherwise inspect this registry directly — anonymous requests are rejected and tell you nothing about the build.
 
@@ -243,9 +243,13 @@ After this step the TOML has actual `slug` and `id` values written back for each
 
 Always use `--push`. The CLI's built-in registry handles authentication automatically through `ARAMB_API_TOKEN`. There is no separate registry login step.
 
-```bash
-[ -n "$BUILDKIT_HOST" ] || { echo "ERROR: BUILDKIT_HOST not set"; exit 1; }
+The CLI picks its build backend automatically:
+- If `BUILDKIT_HOST` is set and reachable → BuildKit
+- Otherwise → falls back to `docker build` against the local Docker daemon (the expected path in the docker-in-docker environment)
 
+You do not need to set, check, or probe `BUILDKIT_HOST`. Just run `aramb build`.
+
+```bash
 # For each own-codebase service in aramb.toml (those with image = ""),
 # read its slug and build path, then build. Skip services that already
 # have a non-empty image (postgres, redis, public-image services).
@@ -258,9 +262,7 @@ Where:
 - `{BUILD_PATH}` — the local directory containing the Dockerfile for this service (`./backend`, `./services/auth-service`, etc.)
 - `{SERVICE_SLUG}` — the `slug` field written into aramb.toml by `services create --from-toml` for the runtime service
 
-**If `BUILDKIT_HOST` is unset → EXIT.** Do not improvise. Do not `docker inspect buildkitd`, do not DNS-probe, do not start `dockerd` manually, do not change networking. If the build host is missing, the harness is misconfigured — that is not yours to fix.
-
-**If `aramb build` fails → EXIT.** Do not retry with alternate flags, alternate build hosts, or manual Docker calls. Log the slug and path and exit.
+**If `aramb build` fails → EXIT.** Do not retry with alternate flags, alternate build hosts, or manual Docker calls. Do not try to set `BUILDKIT_HOST`, start `dockerd`, or otherwise tamper with the build environment — that is not yours to fix. Log the slug and path and exit.
 
 ---
 
@@ -315,8 +317,8 @@ Past task traces show agents wasting 30–80 tool calls on the items below. **Do
 | Don't do this | Why |
 |---|---|
 | Probe `registry.clode.space` via `curl`, `docker pull`, `docker login`, etc. | It is a private registry. Anonymous access is rejected. `aramb build --push` handles auth. |
-| Set `BUILDKIT_HOST` yourself via `docker inspect buildkitd`, DNS lookups, `/etc/hosts` parsing | If the env var isn't provided, the harness is misconfigured. EXIT. |
-| Start the Docker daemon (`sudo dockerd`, `systemctl start docker`, etc.) | Same as above — environment, not your problem. |
+| Set `BUILDKIT_HOST` yourself via `docker inspect buildkitd`, DNS lookups, `/etc/hosts` parsing | Not needed. `aramb build` falls back to `docker build` automatically. |
+| Start the Docker daemon (`sudo dockerd`, `systemctl start docker`, etc.) | The DinD environment manages this. If Docker is unavailable, EXIT — not yours to fix. |
 | Use `aramb services create -n NAME -t TYPE -p ... -a ...` (without `--from-toml`) | Creates orphan services that won't match the TOML. Always use `--from-toml`. |
 | `cd /tmp` before running `aramb` commands | The workspace directory contains `aramb.toml`. Stay there. |
 | Run `aramb logs`, `aramb services logs`, `aramb logs history` | None of these are part of the deployment flow. `aramb deploy status` is the only check. |
