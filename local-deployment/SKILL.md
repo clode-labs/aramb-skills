@@ -391,14 +391,22 @@ docker compose logs <service> --tail=30
 
 ## Step 8: Report
 
-Once ALL URLs are verified:
+Once ALL URLs are verified, for the primary frontend URL **call BOTH `update_preview_url` AND `deliver_artifacts`**. They are independent backend entry points — state update vs chip emit — and a URL deliverable needs both. Then list every public URL in the chat summary.
 
-1. Update preview URL (primary frontend):
+1. **Call `update_preview_url`** for the primary frontend URL — state update. Registers the URL with brahmi (powers the in-app iframe / preview surface).
    ```
-   npx mcporter call brahmi.update_preview_url project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" url="<FRONTEND_URL>"
+   npx mcporter call brahmi.update_preview_url \
+     project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
+     url="$FRONTEND_URL" environment="deployed"
    ```
 
-2. Report all URLs to main chat:
+2. **Call `deliver_artifacts`** with a `kind: "url"` entry — chip emit. Surfaces the URL as a clickable tile on the chat row.
+   ```
+   npx mcporter call brahmi.deliver_artifacts \
+     artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]'
+   ```
+
+3. **Report all URLs** to main chat (plain-text summary):
    ```
    npx mcporter call brahmi.send_message project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" content="✅ App live (tunnel PID: $EXPOSE_PID):
    - frontend: $FRONTEND_URL
@@ -406,10 +414,17 @@ Once ALL URLs are verified:
    Env overrides injected: $DEPLOY_ENV_FILE" chat_location="main"
    ```
 
-3. Complete the task:
+4. **Complete the task:**
    ```
    npx mcporter call brahmi.update_my_task status="done" summary="App live at $FRONTEND_URL — all services exposed"
    ```
+
+Rules for preview URLs:
+- The rule fires whenever this skill produced any URL the user can reach (frontend, API, tunnel, public proxy).
+- BOTH `update_preview_url` AND `deliver_artifacts` (with `kind: "url"`) are mandatory for the primary frontend URL. Order: state update first, chip emit second.
+- Mentioning the URL only in chat prose is forbidden. State update and chip emit are independent responsibilities; the URL needs both calls even if the URL also appears in the summary text.
+- For aramb-expose tunnels the `environment` field is `"deployed"` (the URL is a public proxy.clode.space hostname reachable outside the agent's container).
+- The chip is for the *primary* frontend URL only. Secondary backend / API URLs can stay in the plain-text summary — one URL chip per chat row is plenty.
 
 ---
 
