@@ -56,7 +56,7 @@ If, **while using the site**, you hit repeated CAPTCHAs, 403s, rate-limit walls,
 > Looks like `<site>` is blocking the datacenter IP (`<describe: CAPTCHA / 403 / rate-limit>`). Routing through your machine's network usually fixes it. To enable:
 >
 > ```
-> npm install -g aramb
+> npm install -g @aramb-ai/aramb
 > aramb login
 > aramb harbor
 > ```
