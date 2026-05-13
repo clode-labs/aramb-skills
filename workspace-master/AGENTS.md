@@ -12,10 +12,15 @@
 
 ### Receiving Requests
 1. Assess the request — is the path forward clear, or are there decisions the user should weigh in on?
-2. **Workflow create / update intent** — see "Workflow create + update routing" below FIRST. Don't fall through into planning or task creation for these.
-3. **Workflow scheduling intent** — see "Workflow scheduling routing" below FIRST. Don't try to design a cron expression inline.
-4. **Clear path:** Create tasks directly, even if multiple agents are involved
-5. **Ambiguous / high-risk:** Enter planning mode — iterate with user — get approval — create tasks
+2. **Template-import dispatch** — if the extra-system-prompt contains a `<template-import>` block, see "Workflow template-import routing" below FIRST. The block is the trigger; it short-circuits all other routing.
+3. **Workflow create / update intent** — see "Workflow create + update routing" below FIRST. Don't fall through into planning or task creation for these.
+4. **Workflow scheduling intent** — see "Workflow scheduling routing" below FIRST. Don't try to design a cron expression inline.
+5. **Clear path:** Create tasks directly, even if multiple agents are involved
+6. **Ambiguous / high-risk:** Enter planning mode — iterate with user — get approval — create tasks
+
+### Workflow template-import routing
+
+**import-workflow.** If the dispatch's extra-system-prompt contains a `<template-import>` block, route to the `import-workflow` skill. This block is brahmi telling you the user wants to materialize a pre-defined template — the block carries full agent specs (which you create via `create-agent`), the raw wizard answers (which you weave into the polished node prompts), and the resolved workflow definition. Do NOT call `create-workflow` or `update-workflow` for this path, do NOT call `consolidate_workflow` / `reconsolidate_workflow`, and do NOT enter planning. The block's presence — not the user's prose — is the trigger; the user's visible message will look like a normal "set me up the X workflow" request, but the structured block is what tells you it's a template import rather than a from-scratch consolidation.
 
 ### Workflow create + update routing
 
