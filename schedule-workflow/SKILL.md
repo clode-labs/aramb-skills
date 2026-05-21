@@ -40,7 +40,7 @@ Three branches:
 ### 2. Clarify if ambiguous
 
 Some phrases do not have enough information to map to a cron expression. Ask
-the user **one** clarifying question via `brahmi.send_message` and stop until
+the user **one** clarifying question via `brahmi.ask_question` and stop until
 they answer. Do NOT invent a default like "Sunday midnight UTC" silently.
 
 Phrases that need a clarifying question:
@@ -116,19 +116,14 @@ that to the user.
 
 ### 5. Confirm in chat
 
-Reply to the user via `brahmi.send_message` with `chat_location="main"` (or
-the Workflow chat — match the location they wrote from). Confirm:
+Write the confirmation in your reply text (brahmi saves it as the chat row — no MCP call needed). Confirm:
 
 - The cron expression in plain English ("Mondays at 9am UTC")
 - The next scheduled run (from `next_run_at` in the response)
 - Any caveats (auto_triggerable=false, missing_required_env list)
 
-```bash
-npx mcporter call brahmi.send_message \
-  project_id="<PROJECT_ID>" \
-  application_id="<APPLICATION_ID>" \
-  content="Schedule set: every Monday at 9am UTC. Next run: 2026-05-04 09:00 UTC." \
-  chat_location="main"
+```
+Schedule set: every Monday at 9am UTC. Next run: 2026-05-04 09:00 UTC.
 ```
 
 For a pause:

@@ -11,8 +11,8 @@ description: >
 
 ## MUST rules — read before anything else
 
-1. **If this skill exposes a URL the user can reach, call BOTH `brahmi.update_preview_url` (state update) AND `brahmi.deliver_artifacts` (chip emit) before composing the user-facing reply.** Both calls are mandatory; mentioning the URL in chat prose is not a substitute for either. Order: `update_preview_url` first (registers the URL with brahmi), `deliver_artifacts` second with `kind: "url"` (emits the clickable chip in chat). The two backend entry points serve different purposes — state update and chip render — and a URL deliverable needs both.
-   - **Failure mode:** Calling only `update_preview_url` updates `applications.preview_urls` but leaves no chip in chat — the user has no clickable surface in the conversation. Calling only `deliver_artifacts` produces a chip but the in-app iframe / preview surface stays unwired to the new URL. Skipping both and putting the URL in prose only is the worst case: dead text, no chip, no preview state.
+1. **If this skill exposes a URL the user can reach, surface it as a URL-kind artifact** — either on `brahmi.update_my_task` (when closing a task) or on `brahmi.deliver_artifacts` (solo / mid-task recall). Brahmi auto-registers the preview-URL state from that single call — no separate `update_preview_url` step. Mentioning the URL in chat prose is not a substitute — the chip pipeline cannot reconstruct chips from prose after the fact.
+   - **Failure mode:** Putting the URL only in prose leaves the user with dead text — no clickable chip, no preview state, no in-app iframe wiring.
 
 ## Overview
 
@@ -159,32 +159,30 @@ verify_url "$API_URL" "api"
 
 ### Step 6 — Report all URLs
 
-For the primary frontend URL, call BOTH `update_preview_url` AND `deliver_artifacts`. Then list all URLs in a chat message.
+Surface the primary frontend URL as a URL-kind artifact on your task close (in-task) or on a `deliver_artifacts` call (solo). Brahmi auto-registers the preview-URL state. Secondary backend / API URLs go in the inline reply text alongside.
 
 ```bash
-# 1. State update — register the preview URL with brahmi (powers the in-app iframe / preview surface).
-npx mcporter call brahmi.update_preview_url \
-  project_id="<PROJECT_ID>" url="$FRONTEND_URL" environment="deployed"
-
-# 2. Chip emit — surface the URL as a clickable tile on the chat row.
-npx mcporter call brahmi.deliver_artifacts \
-  artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]'
-
-# 3. Plain-text summary listing every public URL, for context.
-npx mcporter call brahmi.send_message \
-  project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
-  content="✅ Tunnels live (PID: $EXPOSE_PID):
+# In a task: chip + status close + preview state in ONE call
+npx mcporter call brahmi.update_my_task status="done" \
+  summary="✅ Tunnels live (PID: $EXPOSE_PID):
 - frontend: $FRONTEND_URL
 - api: $API_URL" \
-  chat_location="main"
+  artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]'
+
+# Solo / mid-task recall: same artifact shape via deliver_artifacts
+npx mcporter call brahmi.deliver_artifacts \
+  artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]' \
+  summary="✅ Tunnels live (PID: $EXPOSE_PID):
+- frontend: $FRONTEND_URL
+- api: $API_URL"
 ```
 
 Rules for preview URLs:
 - The rule fires whenever this skill produced any URL the user can reach (frontend, API, tunnel, public proxy).
-- BOTH `update_preview_url` AND `deliver_artifacts` (with `kind: "url"`) are mandatory for the primary frontend URL. Order: state update first, chip emit second.
-- Mentioning the URL only in chat prose is forbidden. State update and chip emit are independent responsibilities; the URL needs both calls even if the URL also appears in the reply text.
+- A URL-kind artifact on `update_my_task.artifacts` (in-task) or `deliver_artifacts.artifacts` (solo) is mandatory for the primary frontend URL.
+- Mentioning the URL only in chat prose is forbidden — the chip pipeline cannot reconstruct chips from prose after the fact.
 - For aramb-expose tunnels the `environment` field is `"deployed"` (the URL is a public proxy.clode.space hostname reachable outside the agent's container).
-- The chip is for the *primary* frontend URL only. Secondary backend / API URLs can stay in the plain-text summary — one chip per chat row is plenty.
+- The chip is for the *primary* frontend URL only. Secondary backend / API URLs can stay in the `summary` text — one chip per chat row is plenty.
 
 ---
 
