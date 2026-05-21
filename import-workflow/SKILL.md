@@ -52,12 +52,7 @@ user's wizard answers, then call `save_workflow` exactly once.
    failure mode as `create-workflow`: omitting kills the Evaluate
    missing-connection warnings and renders the Required-toolkits row empty in
    the FE node panel.
-6. **Every node's `prompt` MUST end with the workflow-step closing
-   instruction** so the executing agent calls `update_my_workflow_step` at the
-   end of its run. Pre-resolved prompts from brahmi already include this
-   block; your polish (step 3) MUST NOT remove or alter it. Same rule as
-   `create-workflow`. See the `create-workflow` skill for the exact closing
-   template.
+6. **Do NOT bake the `update_my_workflow_step` closing block into node prompts during polish.** The workflow-step executor system prompt already mandates the closing call with full schema (summary ≤500 chars, files as relative paths, success vs failure shapes). If the template ships a node prompt that already contains a literal `npx mcporter call brahmi.update_my_workflow_step …` block (older templates authored before this rule), your polish pass SHOULD strip it out and replace it with a one-line output contract describing what `outputs.summary` / `outputs.files` should contain for the next step. See "Output contract per node" below. If the template ships node prompts without such a block, leave that absence as-is — do NOT add the block. The runtime owns the closing mechanic.
 
 You are running as the **master agent**, not as a task. Brahmi dispatched the
 chat message with an extra-system-prompt block named `<template-import>` that
@@ -76,6 +71,17 @@ gives you everything you need:
 **The workflow does NOT exist yet.** Brahmi creates it atomically when you
 call `save_workflow`. Don't ask for a workflow_id — you don't have one and
 don't need one.
+
+## Output contract per node — describe what, not how
+
+The workflow runtime owns the **mechanics** of closing a step. Every executing agent receives a system prompt (`workflow_step_executor_system_prompt`) that already mandates a final `update_my_workflow_step` call with `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths). The user message template repeats the same contract in the per-step acceptance checklist.
+
+That means the polished node `prompt` does NOT need a `npx mcporter call brahmi.update_my_workflow_step …` block at the end. If the template ships one (older templates), strip it during polish. What the polished prompt SHOULD carry, as a single short line at the end of the body, is the **per-node output contract** — what the next step is expected to read from this node's outputs. Examples:
+
+- `Outputs to next step: 'summary' describes the qualified prospect cohort with fit/intent scoring; 'files' includes the leads CSV.`
+- `Outputs to next step: 'summary' confirms the email sequence was queued and lists the recipient ids; 'files' is empty.`
+
+This per-node contract is what makes the chain coherent — the system prompt tells the agent **how** to close; your prompt tells it **what** the next step is going to consume.
 
 ## Workflow
 
@@ -147,6 +153,11 @@ What "substantive polish" looks like:
 - Add brief, neutral context implied by the inputs when it helps the
   executing agent do its job (e.g. infer the company is early-stage, infer
   the ICP is "indie-founder-style buyer", add one-line guidance).
+- **Strip any stale closing-call block** — if a template-shipped node prompt
+  ends with a literal `npx mcporter call brahmi.update_my_workflow_step …`
+  block (older templates authored before the runtime owned the closing
+  mechanic), remove it and put a one-line output contract in its place (see
+  "Output contract per node" above).
 
 What you MUST NOT change:
 
@@ -156,11 +167,11 @@ What you MUST NOT change:
 - The set of nodes (no adds, no removes)
 - Any edges (no adds, no removes, no reroutes)
 - `default_node_settings`, `budget_usd`, `stateful`
-- The workflow-step closing instruction at the end of every prompt — it must
-  survive your rewrite intact
 
 When `<wizard-answers>` is empty (`{}`), polish is optional: only rewrite if
-the resolved text is obviously broken. Otherwise pass through unchanged.
+the resolved text is obviously broken. The stale-closing-block strip above
+still applies even when there are no wizard answers — clean it whenever you
+encounter it.
 
 ### 4. Save the workflow
 
@@ -192,8 +203,7 @@ node in your `nodes` array, confirm:
 - `name`, `prompt` — may carry your polish from step 3
 - `required_toolkits` — present on every node, copied verbatim from the
   template payload (use `[]`, never omit)
-- `prompt` — ends with the workflow-step closing instruction (carried over
-  from the template payload; polish must not have stripped it)
+- `prompt` — does NOT contain a literal `npx mcporter call brahmi.update_my_workflow_step …` block. If the template shipped one, polish should have stripped it. The runtime injects the closing mechanic via the system prompt; the node prompt should carry only business context + a one-line output contract.
 
 And on the call itself:
 
@@ -266,14 +276,17 @@ After posting, STOP. Do not send follow-up messages.
 - Does NOT rewrite agent personas — `identity` / `soul` / `agentsDoc` from
   the `<agents>` specs land in benji verbatim. Polish (step 3) applies
   only to workflow node text.
+- Does NOT add `npx mcporter call brahmi.update_my_workflow_step …` blocks
+  to node prompts — the runtime owns that mechanic via the executor system
+  prompt; polish strips stale blocks if templates ship them.
 
 ## Rules
 
 - Trigger is the `<template-import>` block in the extra-system-prompt — never the user's prose
 - Create every agent from the `<agents>` array via `create-agent` before saving the workflow — verbatim persona content, no rewriting
-- Substantively polish node `name` / `prompt` text (and the workflow `name` / `description`) when `<wizard-answers>` is non-empty; structure (`assigned_agent`, `required_toolkits`, edges, settings, closing instruction) is immutable
+- Substantively polish node `name` / `prompt` text (and the workflow `name` / `description`) when `<wizard-answers>` is non-empty; structure (`assigned_agent`, `required_toolkits`, edges, settings) is immutable
 - Every node in `save_workflow` carries `required_toolkits` (use `[]` when empty, never omit)
-- Every node's `prompt` ends with the workflow-step closing instruction — polish must not strip it
+- **No `npx mcporter call brahmi.update_my_workflow_step …` block in any node `prompt`** — the workflow-step executor system prompt already mandates the closing call. If a template ships one (older authoring), polish strips it and replaces with a one-line output contract.
 - `save_workflow` runs exactly once; never retry
 - Always pass `template_slug` so brahmi records the workflow's origin
 - Post exactly one chat summary at the end (success or error); then STOP

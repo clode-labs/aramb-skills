@@ -23,8 +23,7 @@ and save.
 
 1. **Every node in `save_workflow` MUST carry `required_toolkits`.** Use `[]` (not omitted) when the node touches no third-party service.
    - **Failure mode:** Omitting `required_toolkits` from `save_workflow` nodes means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. Empty array `[]` is correct when the node touches no third-party service — never omit the field.
-2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `update_my_workflow_step` at the end of its run. See section "Closing instruction per node" below for the exact template.
-   - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble shows "(no summary)" instead of the real hand-off. Outputs are load-bearing — every prompt must include the closing line.
+2. **Do NOT bake the `update_my_workflow_step` closing block into node prompts.** The workflow-step executor system prompt already mandates the closing call with full schema (summary ≤500 chars, files as relative paths, success vs failure shapes). Putting the same `npx mcporter call brahmi.update_my_workflow_step …` block into the node `prompt` duplicates the system prompt, bloats the recipe, and will drift the day the runtime calling convention changes. What each node prompt SHOULD spell out is the per-node **output contract** — one line at the end of the body describing what the next step should expect to find in `outputs.summary` and `outputs.files`. See "Output contract per node" below.
 3. **Every node's `assigned_agent` MUST be `"solo"`.** Do not pick `developer`, `aramb-deployer`, `local-deployer`, or any other persona — those exist only in team mode. Solo has one agent, and that agent (you) executes every step.
    - **Failure mode:** Stamping a team-mode persona on a solo workflow makes brahmi try to provision an agent that doesn't exist in the solo image. Dispatch fails when the step tries to spin up the named persona. The string `"solo"` is the only valid value for `assigned_agent` in this skill — `null`, empty string, omitted field, or any team-mode persona name will be rejected at save time.
 4. Call `save_workflow` exactly once. Success or failure — never retry.
@@ -117,29 +116,21 @@ Send a progress update: "Designing workflow graph — N nodes, M levels".
 - **Set `default_node_settings` on the workflow.** Always emit a sensible defaults block — see "Default node settings — workflow-level" below. Don't leave it empty: the FE renders the settings tray off these values, and a missing block surfaces as blank fields the user has to fill in by hand.
 - **Per-node `settings` typically stays empty (`{}`)** — defaults inherit from the workflow. The exception: if a node clearly does something destructive or externally visible (posts to Linear, sends an email, writes to a customer DB, deletes files), set that one node's `settings.approval_mode = "manual"` so a human has to approve the step before it runs. Use this heuristic sparingly — over-gating turns every run into a clickfest.
 - **Per-node attachments** only when the user explicitly mentioned files in chat ("here's the spreadsheet", "use this PDF as the spec"). Never invent attachments — empty `input_attachments` is the default.
-- **End every node `prompt` with the closing-instruction template.** The agent has no other path to populate `outputs` — without this template the hand-off chain runs blind. See the next section for the exact text.
+- **End every node `prompt` with a one-line output contract** describing what the next step should find in this node's `outputs.summary` and `outputs.files`. Do NOT include the `npx mcporter call brahmi.update_my_workflow_step …` block — that mechanic is owned by the workflow-step executor system prompt, not the node prompt. See "Output contract per node" below.
 
-## Closing instruction per node — MANDATORY
+## Output contract per node — describe what, not how
 
-Every node's `prompt` MUST end with this exact block, with `<summary>` and `<files>` substituted to match what the node will actually produce. Non-negotiable, baked into every prompt at authoring time.
+The workflow runtime owns the **mechanics** of closing a step. Every executing agent receives a system prompt (`workflow_step_executor_system_prompt`) that already mandates a final `update_my_workflow_step` call with `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths). The user message template repeats the same contract in the per-step acceptance checklist.
 
-Append this to every node's `prompt`:
+That means **you do NOT need to author the `npx mcporter call brahmi.update_my_workflow_step …` block into the node `prompt`.** Doing so duplicates the system prompt, bloats every node, and creates a drift hazard the day the closing convention changes.
 
-```
-When done — record your output for the next step:
-  npx mcporter call brahmi.update_my_workflow_step status="done" outputs='{"summary":"<one-paragraph hand-off, under 500 chars>","files":["relative/path/to/output.json"]}'
+What each node prompt SHOULD carry, as a single short line at the end of the body, is the **per-node output contract** — what the next step is expected to read from this node's outputs. Examples:
 
-If you can't complete the step:
-  npx mcporter call brahmi.update_my_workflow_step status="failed" error="<concise reason + any partial progress>"
-```
+- `Outputs to next step: 'summary' describes the N events you fetched and the date window covered; 'files' includes .planning/calendar.json.`
+- `Outputs to next step: 'summary' confirms the message was sent and includes the Gmail message id; 'files' is empty.`
+- `Outputs to next step: 'summary' is a one-line user-facing confirmation; 'files' is empty.` (terminal node)
 
-Why both `summary` and `files`:
-- `summary` is a paragraph the next agent reads as preamble — the hand-off vocabulary that makes the chain coherent. Keep it under 500 chars; focus on what's useful downstream.
-- `files` is a list of paths (relative to the workspace working directory) the next agent reads to dig deeper. Empty array `[]` is correct when the node only sends a message / posts to an external service and produces no files.
-
-Notes:
-- The brahmi MCP server resolves `step_id` from session metadata, so no `step_id` argument is needed.
-- Do NOT call `brahmi.update_my_task` or `brahmi.update_task` from a workflow-step prompt — those are for ad-hoc tasks and won't resolve workflow-step context. Only `update_my_workflow_step` works in this dispatch.
+This per-node contract is what makes the chain coherent — the system prompt tells the agent **how** to close; your prompt tells it **what** the next step is going to consume.
 
 ## Default node settings — workflow-level
 
@@ -211,7 +202,7 @@ a single transaction.
 
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
-- `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
+- `prompt` — concrete instruction with business context baked in **AND a one-line output contract** at the end describing what `outputs.summary` / `outputs.files` will contain (see "Output contract per node" above). Do NOT include the `npx mcporter call brahmi.update_my_workflow_step …` block — the system prompt owns that mechanic.
 - **`assigned_agent` — solo has only one agent. Stamp `"solo"` on every node. Do NOT use team-mode personas (`developer`, `aramb-deployer`, `local-deployer`, etc.) — they don't exist in the solo image. Brahmi rejects any other value for solo-mode workflows (defensive save-time override).**
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits` — list of Composio slugs the node calls; `[]` for orchestration / file-only nodes; never omit.**
@@ -228,14 +219,11 @@ And on the call itself:
 Read events from the primary calendar for the current day. Save the
 result as JSON to .planning/calendar.json.
 
-When done — record your output for the next step:
-  npx mcporter call brahmi.update_my_workflow_step status="done" outputs='{"summary":"Fetched N calendar events for today; saved JSON.","files":[".planning/calendar.json"]}'
-
-If you can't complete the step:
-  npx mcporter call brahmi.update_my_workflow_step status="failed" error="<concise reason>"
+Outputs to next step: 'summary' describes the events fetched and the date
+window covered; 'files' includes .planning/calendar.json.
 ```
 
-The instruction body (top paragraph) is per-node business context. The `When done` / `If you can't complete` blocks below are the closing template — identical structure across every node, only the `summary` / `files` content differs.
+The instruction body (top paragraph) is per-node business context. The trailing `Outputs to next step:` line is the per-node output contract — identical structure across every node, only the description of `summary` / `files` content differs. The runtime injects the closing-call mechanics via the system prompt; you do not author them into the node `prompt`.
 
 `save_workflow` skeleton:
 
@@ -248,9 +236,9 @@ npx mcporter call brahmi.save_workflow \
   env_variables='{}' \
   default_node_settings='{"model":"claude-sonnet-4-6","effort":"medium","thinking":"adaptive","max_turns":35,"admin":false,"budget_usd":25.0,"approval_mode":"auto","instructions":""}' \
   nodes='[
-    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<body + closing template>", "assigned_agent": "solo", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "settings": {}},
-    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>", "assigned_agent": "solo", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "settings": {}},
-    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>", "assigned_agent": "solo", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "settings": {"approval_mode":"manual"}}
+    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<body + output contract>", "assigned_agent": "solo", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "settings": {}},
+    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + output contract>", "assigned_agent": "solo", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "settings": {}},
+    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + output contract>", "assigned_agent": "solo", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "settings": {"approval_mode":"manual"}}
   ]' \
   edges='[
     {"source": 1, "target": 2},
@@ -297,7 +285,7 @@ If `save_workflow` returned an error, tell the user the concise reason via
 ## Rules
 
 - Each node's `prompt` carries the real business context baked in
-- **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `update_my_workflow_step` at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)" for every step.
+- **Each node's `prompt` ends with a one-line output contract** describing what `outputs.summary` / `outputs.files` will contain for the next step. Do NOT bake the `npx mcporter call brahmi.update_my_workflow_step …` block into the prompt — the workflow-step executor system prompt already mandates the closing call.
 - **Always emit `default_node_settings`** with the full sensible-defaults block; never leave it empty
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
 - **`source_task_id` is omitted (or `null`) for every node** — solo doesn't have source tasks
