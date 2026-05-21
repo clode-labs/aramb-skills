@@ -220,7 +220,7 @@ change request, if present, tells you *which* 20% to actually touch.
 - **Carry forward `default_node_settings`** from the existing workflow, edited only where the user asked. If the existing workflow has an empty / missing block (older definitions), seed it with the same sensible defaults create-workflow uses (`model=claude-sonnet-4-6`, `effort=medium`, `thinking=adaptive`, `max_turns=35`, `admin=false`, `budget_usd=25.0`, `approval_mode=auto`, `instructions=""`).
 - Sequential `unique_id` integers starting at 1 (numbering can be different
   from the existing version — uniqueness is what matters).
-- Dependencies via the top-level `edges` array, never on nodes.
+- Dependencies via the top-level `edges` array, never on nodes. **Edge fields are `source`/`target` — not `from`/`to`.** You may see `from`/`to` referenced in the `aramb-templates` catalogue documentation; that's the template-publish path, a different layer. We're updating a workflow here (`update_workflow`), and brahmi's workflow storage uses `source`/`target`. Don't carry the template-doc shape over.
 - Be stingy with env variables. Same test as create-workflow: "would we ever
   rerun this with a different value?" If no, bake it into the prompt.
 - Most workflows have zero, one, or two env variables.

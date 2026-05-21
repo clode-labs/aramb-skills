@@ -191,7 +191,7 @@ you set a node override, name the node. The user's mental model of
 - **Each node carries `settings`** — usually `{}`. Carry forward any existing per-node overrides from the `get_workflow` response, plus or minus what the user is changing.
 - **Carry forward `default_node_settings`** from the existing workflow, edited only where the user asked. If the existing workflow has an empty / missing block (older definitions), seed it with the same sensible defaults `solo-create-workflow` uses (`model=claude-sonnet-4-6`, `effort=medium`, `thinking=adaptive`, `max_turns=35`, `admin=false`, `budget_usd=25.0`, `approval_mode=auto`, `instructions=""`).
 - Sequential `unique_id` integers starting at 1 (numbering can be different from the existing version — uniqueness is what matters).
-- Dependencies via the top-level `edges` array, never on nodes.
+- Dependencies via the top-level `edges` array, never on nodes. **Edge fields are `source`/`target` — not `from`/`to`.** You may see `from`/`to` referenced in the `aramb-templates` catalogue documentation; that's the template-publish path, a different layer. We're updating a workflow here (`update_workflow`), and brahmi's workflow storage uses `source`/`target`. Don't carry the template-doc shape over.
 - Be stingy with env variables. Most workflows have zero, one, or two.
 - For history-derived deltas, generalise the new work — strip one-off specifics from any new node prompts you add.
 

@@ -211,6 +211,7 @@ And on the call itself:
   workflow row records its origin
 - `default_node_settings` — verbatim from the template payload
 - `env_variables` — `'{}'` (templates do not declare env variables in v1)
+- `edges` — verbatim from the template payload. Each edge MUST be `{"source": <upstream unique_id>, "target": <downstream unique_id>}`. **Workflow edges use `source`/`target`, never `from`/`to`.** The `aramb-templates/README.md` doc may show `from`/`to` in places, but real template JSONs ship `source`/`target` already and that's what brahmi's `save_workflow` expects. If a payload arrives with `from`/`to`, that's a brahmi-side dispatch bug — close with the "malformed payload" error path (see Error handling).
 
 **Never retry `save_workflow`.** One shot — success or failure. If the call
 fails, surface the error in the chat summary (step 5) and stop.
