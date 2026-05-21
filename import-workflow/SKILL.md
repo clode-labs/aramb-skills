@@ -74,7 +74,11 @@ don't need one.
 
 ## Output contract per node
 
-End each polished node `prompt` with one short line naming what the next step will find in this node's `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths). Examples:
+End each polished node `prompt` with one short line naming what the next step will find in this node's `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths).
+
+Format `summary` as readable markdown — short headings or bullets where useful; code-fence identifiers, file paths, IDs, and small JSON snippets. It renders directly in the FE timeline for humans AND is parsed as preamble by the next agent, so both audiences benefit from the same structure. Avoid wall-of-text paragraphs; lead with the key facts.
+
+Examples:
 
 - `Outputs to next step: 'summary' describes the qualified prospect cohort with fit/intent scoring; 'files' includes the leads CSV.`
 - `Outputs to next step: 'summary' confirms the email sequence was queued and lists the recipient ids; 'files' is empty.`

@@ -120,7 +120,11 @@ Send a progress update: "Designing workflow graph — N nodes, M levels".
 
 ## Output contract per node
 
-End each node `prompt` with one short line naming what the next step will find in this node's `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths). Examples:
+End each node `prompt` with one short line naming what the next step will find in this node's `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths).
+
+Format `summary` as readable markdown — short headings or bullets where useful; code-fence identifiers, file paths, IDs, and small JSON snippets. It renders directly in the FE timeline for humans AND is parsed as preamble by the next agent, so both audiences benefit from the same structure. Avoid wall-of-text paragraphs; lead with the key facts.
+
+Examples:
 
 - `Outputs to next step: 'summary' describes the N events you fetched and the date window covered; 'files' includes .planning/calendar.json.`
 - `Outputs to next step: 'summary' confirms the message was sent and includes the Gmail message id; 'files' is empty.`
