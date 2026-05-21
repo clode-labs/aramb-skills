@@ -52,7 +52,7 @@ user's wizard answers, then call `save_workflow` exactly once.
    failure mode as `create-workflow`: omitting kills the Evaluate
    missing-connection warnings and renders the Required-toolkits row empty in
    the FE node panel.
-6. **Strip stale closing blocks during polish.** Older templates sometimes ship node prompts with a literal `npx mcporter call brahmi.update_my_workflow_step …` block tacked onto the bottom. If you see one during your polish pass (step 3), STRIP it and replace it with a one-line output contract describing what `outputs.summary` / `outputs.files` should contain for the next step. See "Output contract per node" below. The runtime closes each step; the block is dead weight.
+6. **Strip stale closing blocks during polish.** If a template-shipped node prompt ends with a literal `npx mcporter call brahmi.update_my_workflow_step …` block, strip it during polish (step 3) and replace it with a one-line output contract describing what `outputs.summary` / `outputs.files` should contain for the next step. See "Output contract per node" below.
 
 You are running as the **master agent**, not as a task. Brahmi dispatched the
 chat message with an extra-system-prompt block named `<template-import>` that
@@ -72,16 +72,14 @@ gives you everything you need:
 call `save_workflow`. Don't ask for a workflow_id — you don't have one and
 don't need one.
 
-## Output contract per node — describe what, not how
+## Output contract per node
 
-The workflow runtime closes each step for you. Every executing agent receives a system prompt that already records `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths) at step end — the polished node prompt doesn't need to author the closing mechanic.
-
-What the polished prompt SHOULD carry, as a single short line at the end of the body, is the **per-node output contract** — what the next step is expected to read from this node's outputs. Examples:
+End each polished node `prompt` with one short line naming what the next step will find in this node's `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths). Examples:
 
 - `Outputs to next step: 'summary' describes the qualified prospect cohort with fit/intent scoring; 'files' includes the leads CSV.`
 - `Outputs to next step: 'summary' confirms the email sequence was queued and lists the recipient ids; 'files' is empty.`
 
-**If the template ships an older node prompt with a literal `npx mcporter call brahmi.update_my_workflow_step …` block tacked onto the bottom, strip it during polish (step 3) and replace it with the contract line above.**
+If the template ships a node prompt with a literal `npx mcporter call brahmi.update_my_workflow_step …` block tacked onto the bottom, strip it during polish (step 3) and replace it with the contract line above.
 
 ## Workflow
 
@@ -155,8 +153,7 @@ What "substantive polish" looks like:
   the ICP is "indie-founder-style buyer", add one-line guidance).
 - **Strip any stale closing-call block** — if a template-shipped node prompt
   ends with a literal `npx mcporter call brahmi.update_my_workflow_step …`
-  block (older templates authored before the runtime owned the closing
-  mechanic), remove it and put a one-line output contract in its place (see
+  block, remove it and put a one-line output contract in its place (see
   "Output contract per node" above).
 
 What you MUST NOT change:
@@ -211,7 +208,7 @@ And on the call itself:
   workflow row records its origin
 - `default_node_settings` — verbatim from the template payload
 - `env_variables` — `'{}'` (templates do not declare env variables in v1)
-- `edges` — verbatim from the template payload. Each edge MUST be `{"source": <upstream unique_id>, "target": <downstream unique_id>}`. **Workflow edges use `source`/`target`, never `from`/`to`.** The `aramb-templates/README.md` doc may show `from`/`to` in places, but real template JSONs ship `source`/`target` already and that's what brahmi's `save_workflow` expects. If a payload arrives with `from`/`to`, that's a brahmi-side dispatch bug — close with the "malformed payload" error path (see Error handling).
+- `edges` — verbatim from the template payload (each edge `{source, target}`).
 
 **Never retry `save_workflow`.** One shot — success or failure. If the call
 fails, surface the error in the chat summary (step 5) and stop.

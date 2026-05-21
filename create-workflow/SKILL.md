@@ -97,7 +97,7 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 
 - **Merge or split** tasks where it makes the workflow cleaner. Not every task becomes a node — some may be combined, others split.
 - **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what actually worked from the session but keep the concrete subject matter.
-- **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape. **Edge fields are `source`/`target` — not `from`/`to`.** You may see `from`/`to` referenced in the `aramb-templates` catalogue documentation; that's the template-publish path, a different layer. We're authoring a workflow here (`save_workflow`), and brahmi's workflow storage uses `source`/`target`. Don't carry the template-doc shape over.
+- **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape.
 - **Keep agent assignments** unless a different agent fits better for the generalized version.
 - **Carry `required_toolkits` per node — MANDATORY, never omit.** For each node, list the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Source the slugs from the source tasks' `required_toolkits` field (primary) and from the actual tool calls you observe in the task outputs (cross-check). Empty array (`[]`) when a node only writes files / orchestrates and does not touch a third-party service — `[]` is REQUIRED, not optional; do not omit the field. Slugs are uppercase, exactly as Composio reports them. Brahmi snapshots this list onto every workflow run step at trigger time so the executing agent sees the same dependencies the planner declared, and the Evaluate step uses it to surface missing-connection warnings before publish.
 - **Set `default_node_settings` on the workflow.** Always emit a sensible defaults block — see "Default node settings — workflow-level" below. Don't leave it empty: the FE renders the settings tray off these values, and a missing block surfaces as blank fields the user has to fill in by hand.
@@ -105,19 +105,15 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **Per-node attachments** only when the user explicitly mentioned files in chat ("here's the spreadsheet", "use this PDF as the spec"). Never invent attachments — empty `input_attachments` is the default.
 - **End every node `prompt` with a one-line output contract** describing what the next step should find in this node's `outputs.summary` and `outputs.files`. See "Output contract per node" below.
 
-## Output contract per node — describe what, not how
+## Output contract per node
 
-The workflow runtime closes each step for you. Every executing agent receives a system prompt that already records `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths) at step end — you don't need to author the closing mechanic into the node prompt.
-
-What each node prompt SHOULD carry, as a single short line at the end of the body, is the **per-node output contract** — what the next step is expected to read from this node's outputs. Examples:
+End each node `prompt` with one short line naming what the next step will find in this node's `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths). Examples:
 
 - `Outputs to next step: 'summary' describes the N events you fetched and the date window covered; 'files' includes .planning/calendar.json.`
 - `Outputs to next step: 'summary' is a one-paragraph hand-off naming the prospect cohort and qualifier; 'files' includes the leads CSV.`
 - `Outputs to next step: 'summary' confirms the message was sent and includes the Gmail message id; 'files' is empty.`
 
-This per-node contract is what makes the chain coherent — the system prompt tells the agent **how** to close; your prompt tells it **what** the next step is going to consume. The executor reads your contract and shapes its `outputs.summary` / `outputs.files` to match.
-
-Terminal nodes (no downstream consumer) still benefit from a contract line — phrase it as `Outputs: 'summary' is a one-line user-facing confirmation; 'files' is empty.` Keeps the recipe consistent and gives the FE timeline a useful summary string.
+Terminal nodes (no downstream consumer) still get a contract line — phrase it as `Outputs: 'summary' is a one-line user-facing confirmation; 'files' is empty.` Keeps the recipe consistent and gives the FE timeline a useful summary string.
 
 ## Default node settings — workflow-level
 
