@@ -18,7 +18,7 @@ Analyze completed tasks and consolidate them into a generalized, repeatable work
 
 1. **Every node in `save_workflow` MUST carry `required_toolkits`.** Copy the array from each source task's `required_toolkits` field. Use `[]` (not omitted) when the node touches no third-party service.
    - **Failure mode:** Omitting `required_toolkits` from `save_workflow` nodes means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. ALWAYS copy from each source task's `required_toolkits` field. Empty array `[]` is correct when the node touches no third-party service.
-2. **Do NOT bake the `update_my_workflow_step` closing block into node prompts.** The workflow-step executor system prompt already mandates the closing call with full schema (summary ≤500 chars, files as relative paths, success vs failure shapes). Putting the same `npx mcporter call brahmi.update_my_workflow_step …` block into the node `prompt` duplicates the system prompt, bloats the recipe, and will drift the day the runtime calling convention changes. What each node prompt SHOULD spell out is the per-node **output contract** — one line at the end of the body describing what the next step should expect to find in `outputs.summary` and `outputs.files`. See "Output contract per node" below.
+2. **Every node's `prompt` MUST end with a one-line output contract** — one line describing what the next step should expect to find in `outputs.summary` and `outputs.files`. See "Output contract per node" below.
 3. Call `save_workflow` exactly once. Success or failure — never retry.
 4. Always close the task with `update_task` (`status=done` on success, `status=failed` on any error). Never leave it `in_progress`.
 
@@ -103,13 +103,11 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **Set `default_node_settings` on the workflow.** Always emit a sensible defaults block — see "Default node settings — workflow-level" below. Don't leave it empty: the FE renders the settings tray off these values, and a missing block surfaces as blank fields the user has to fill in by hand.
 - **Per-node `settings` typically stays empty (`{}`)** — defaults inherit from the workflow. The exception: if a node clearly does something destructive or externally visible (posts to Linear, sends an email, writes to a customer DB, deletes files), set that one node's `settings.approval_mode = "manual"` so a human has to approve the step before it runs. Use this heuristic sparingly — over-gating turns every run into a clickfest.
 - **Per-node attachments** only when the user explicitly mentioned files in chat ("here's the spreadsheet", "use this PDF as the spec"). Never invent attachments — empty `input_attachments` is the default.
-- **End every node `prompt` with a one-line output contract** describing what the next step should find in this node's `outputs.summary` and `outputs.files`. Do NOT include the `npx mcporter call brahmi.update_my_workflow_step …` block — that mechanic is owned by the workflow-step executor system prompt, not the node prompt. See "Output contract per node" below.
+- **End every node `prompt` with a one-line output contract** describing what the next step should find in this node's `outputs.summary` and `outputs.files`. See "Output contract per node" below.
 
 ## Output contract per node — describe what, not how
 
-The workflow runtime owns the **mechanics** of closing a step. Every executing agent receives a system prompt (`workflow_step_executor_system_prompt`) that already mandates a final `update_my_workflow_step` call with `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths). The user message template repeats the same contract in the per-step acceptance checklist.
-
-That means **you do NOT need to author the `npx mcporter call brahmi.update_my_workflow_step …` block into the node `prompt`.** Doing so duplicates the system prompt, bloats every node, and creates a drift hazard the day the closing convention changes.
+The workflow runtime closes each step for you. Every executing agent receives a system prompt that already records `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths) at step end — you don't need to author the closing mechanic into the node prompt.
 
 What each node prompt SHOULD carry, as a single short line at the end of the body, is the **per-node output contract** — what the next step is expected to read from this node's outputs. Examples:
 
@@ -201,7 +199,7 @@ in your `nodes` array, confirm each of these fields is present:
 
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
-- `prompt` — concrete instruction with business context baked in **AND a one-line output contract** at the end describing what `outputs.summary` / `outputs.files` will contain (see "Output contract per node" above). Do NOT include the `npx mcporter call brahmi.update_my_workflow_step …` block — the system prompt owns that mechanic.
+- `prompt` — concrete instruction with business context baked in **AND a one-line output contract** at the end describing what `outputs.summary` / `outputs.files` will contain (see "Output contract per node" above).
 - `assigned_agent` — name of an existing agent
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits` — copied from the corresponding source task's `required_toolkits`. Use `[]` for orchestration / file-only nodes; never omit the field.**
@@ -226,7 +224,7 @@ Outputs to next step: 'summary' describes the events fetched and the date
 window covered; 'files' includes .planning/calendar.json.
 ```
 
-The instruction body (top paragraph) is per-node business context. The trailing `Outputs to next step:` line is the per-node output contract — identical structure across every node, only the description of `summary` / `files` content differs to match what each node produces. The runtime injects the closing-call mechanics via the system prompt; you do not author them into the node `prompt`.
+The instruction body (top paragraph) is per-node business context. The trailing `Outputs to next step:` line is the per-node output contract — identical structure across every node, only the description of `summary` / `files` content differs to match what each node produces.
 
 `save_workflow` skeleton (each node's `prompt` carries its full body + output-contract line — abbreviated below for readability):
 
@@ -316,7 +314,7 @@ npx mcporter call brahmi.update_task \
 ## Rules
 
 - Each node's `prompt` should carry the real business context baked in
-- **Each node's `prompt` ends with a one-line output contract** describing what `outputs.summary` / `outputs.files` will contain for the next step. Do NOT bake the `npx mcporter call brahmi.update_my_workflow_step …` block into the prompt — the workflow-step executor system prompt already mandates the closing call.
+- **Each node's `prompt` ends with a one-line output contract** describing what `outputs.summary` / `outputs.files` will contain for the next step.
 - **Always emit `default_node_settings`** with the full sensible-defaults block (see "Default node settings — workflow-level"); never leave it empty
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
 - **Never set the cron schedule from this skill.** If the user asked for one, surface a `schedule_hint` in your task outputs so master can dispatch `schedule-workflow`.
