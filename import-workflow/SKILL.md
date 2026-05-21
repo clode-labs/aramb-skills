@@ -170,9 +170,8 @@ What you MUST NOT change:
 - `default_node_settings`, `budget_usd`, `stateful`
 
 When `<wizard-answers>` is empty (`{}`), polish is optional: only rewrite if
-the resolved text is obviously broken. The stale-closing-block strip above
-still applies even when there are no wizard answers — clean it whenever you
-encounter it.
+the resolved text is obviously broken. The stale-closing-block strip still
+applies.
 
 ### 4. Save the workflow
 
@@ -278,9 +277,6 @@ After posting, STOP. Do not send follow-up messages.
 - Does NOT rewrite agent personas — `identity` / `soul` / `agentsDoc` from
   the `<agents>` specs land in benji verbatim. Polish (step 3) applies
   only to workflow node text.
-- Does NOT keep stale `npx mcporter call brahmi.update_my_workflow_step …`
-  blocks if templates ship them — polish (step 3) strips them and puts a
-  one-line output contract in their place.
 
 ## Rules
 
@@ -288,7 +284,7 @@ After posting, STOP. Do not send follow-up messages.
 - Create every agent from the `<agents>` array via `create-agent` before saving the workflow — verbatim persona content, no rewriting
 - Substantively polish node `name` / `prompt` text (and the workflow `name` / `description`) when `<wizard-answers>` is non-empty; structure (`assigned_agent`, `required_toolkits`, edges, settings) is immutable
 - Every node in `save_workflow` carries `required_toolkits` (use `[]` when empty, never omit)
-- If a template ships an older node prompt with a literal `npx mcporter call brahmi.update_my_workflow_step …` block, polish (step 3) strips it and replaces with a one-line output contract.
+- Every node's `prompt` carries business context + a one-line output contract (see "Output contract per node")
 - `save_workflow` runs exactly once; never retry
 - Always pass `template_slug` so brahmi records the workflow's origin
 - Post exactly one chat summary at the end (success or error); then STOP
