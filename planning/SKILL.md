@@ -38,7 +38,7 @@ Call `brahmi.start_planning` with `file_path=".planning/<descriptive-name>.md"` 
 
 ### 3. Interactive Q&A
 
-Ask ONE question at a time using `brahmi.ask_question`. NEVER use `send_message` for questions — it stores the row as `message_type=text` with no `options`, the frontend cannot render a picker, and the user reply comes back as unstructured free text.
+Ask ONE question at a time using `brahmi.ask_question`. Never inline numbered-list questions in your reply text — they store as plain text with no `options`, the frontend cannot render a picker, and the user reply comes back as unstructured free text.
 
 Pass choices as the `options` array — do NOT inline them as a numbered list in the `question` body. Brahmi stores the array structurally so the UI renders a real choice picker and the answer comes back as `selected_option`.
 
@@ -50,7 +50,7 @@ npx mcporter call brahmi.ask_question \
 ```
 
 Rules:
-- ALWAYS `brahmi.ask_question`. Never `send_message`, never inline-numbered-list questions.
+- ALWAYS `brahmi.ask_question`. Never inline-numbered-list questions in your reply text.
 - Include the progress marker in the `question` string (Question 1/5, 2/5, …) — count can change dynamically.
 - 2-4 options per question. Each option is a short label with a brief pro/con after an em-dash.
 - After each answer: update the plan file, then ask the next question.

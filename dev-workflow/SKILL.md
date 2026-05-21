@@ -247,5 +247,5 @@ Before reporting a task as done, verify each item:
 
 Then report:
 ```
-npx mcporter call brahmi.update_my_task status="done" summary="<what was built, what was verified>"
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" summary="<what was built, what was verified>"
 ```

@@ -101,7 +101,7 @@ See `references/agent-template.md` for the full template structure.
 
 Operating instructions for the agent. Include:
 - Session startup checklist (read SOUL.md, memory, check Juno context, check pending tasks)
-- Task protocol (receive via brahmi → execute → report via `brahmi.update_my_task`)
+- Task protocol (receive via brahmi → execute → report via `brahmi.update_task` with the explicit `task_id` from the dispatch prompt)
 - Memory conventions (daily logs, what to persist, Juno for cross-session persistence)
 - Tools & skills available to this agent
 - Safety rules relevant to the domain

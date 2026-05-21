@@ -12,9 +12,11 @@ You MUST use these tools to manage tasks. Create tasks first, then execute them 
 ## CRITICAL: mcporter Syntax Rules
 - ALL arguments MUST use `key="value"` format (NOT positional args)
 - Do NOT use `--output` flag — it is not supported by mcporter call
-- Prefer `update_my_task` over `update_task` — it requires fewer arguments and automatically knows your context
-- Correct: `npx mcporter call brahmi.update_my_task status="done"`
-- WRONG: `npx mcporter call brahmi.update_task <project_id> <task_id> done`
+- Status updates use `update_task` with an explicit `task_id`. There is no `update_my_task` — do not call it.
+- Your dispatch prompt contains your task's UUID. Save it the first time you see it and pass it on every `update_task` call.
+- Correct: `npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done"`
+- WRONG: `npx mcporter call brahmi.update_my_task status="done"` (this tool does not exist for you)
+- WRONG: `npx mcporter call brahmi.update_task <project_id> <task_id> done` (positional args not supported)
 
 ## Commands
 
@@ -76,19 +78,12 @@ npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UU
 
 Patches silently no-op on terminal (done / failed) tasks — that's history, don't rewrite it. Calling with neither `status` nor any patch field returns an error.
 
-### Update your own task (agent context)
-```bash
-npx mcporter call brahmi.update_my_task status="in_progress"
-npx mcporter call brahmi.update_my_task status="done"
-npx mcporter call brahmi.update_my_task status="failed" error="reason"
-```
-
 ### Update a workflow run step (workflow dispatch only)
 If you were dispatched as part of a workflow run (not an ad-hoc task), use
-`update_my_workflow_step` INSTEAD OF `update_my_task` / `update_task`. Brahmi
-injects your step context from the dispatch session, so you don't pass
-`project_id` or `step_id`. The downstream step reads your `outputs.summary`
-and `outputs.files` as its preamble — so both fields are mandatory on
+`update_my_workflow_step` INSTEAD OF `update_task`. Brahmi injects your
+step context from the dispatch session, so you don't pass `project_id`
+or `step_id`. The downstream step reads your `outputs.summary` and
+`outputs.files` as its preamble — so both fields are mandatory on
 `status="done"`.
 
 ```bash
@@ -105,7 +100,7 @@ npx mcporter call brahmi.update_my_workflow_step status="in_progress"
 Rules for `update_my_workflow_step`:
 - `outputs.summary` is one paragraph under 500 characters describing what the step produced, for the next agent. Focus on what's useful downstream, not how you did it.
 - `outputs.files` is an array of paths RELATIVE to the workspace working directory. Paths only, no contents. Use `files:[]` if you produced no files.
-- Do NOT call `update_task` or `update_my_task` from within a workflow step session — they won't resolve your step context and the run will stall on the safety net.
+- Do NOT call `update_task` from within a workflow step session — it won't resolve your step context and the run will stall on the safety net.
 - `update_workflow_step step_id="<UUID>" status="..."` is the explicit-id form. Only use it if you need to update a DIFFERENT step from the one you're executing (rare — mostly for the master safety net).
 
 ### Spawn a workflow create / update from chat (master only)
@@ -135,14 +130,56 @@ npx mcporter call brahmi.get_my_tasks project_id="<PROJECT_ID>" status="in_progr
 npx mcporter call brahmi.list_tasks project_id="<PROJECT_ID>"
 ```
 
-### Send message to user
+### Send a plain-text message (progress pings)
+
+`brahmi.send_message` posts a plain text row to chat. Primary use: sub-agents pinging the user's MAIN chat from inside a task chat (your reply text lands in the task chat; `send_message chat_location="main"` is your only handle on main chat). Fire it BEFORE/DURING the work — for "🔨 Starting", "⚙️ Build passing", "🧪 Tests running", etc.
+
 ```bash
-npx mcporter call brahmi.send_message project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" content="Message text"
-npx mcporter call brahmi.send_message project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" content="Message text" chat_location="main"
+npx mcporter call brahmi.send_message project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" content="🔨 Starting: <task>" chat_location="main"
+npx mcporter call brahmi.send_message project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" content="⚙️ Build passing, deploying now" chat_location="main"
 ```
-- `chat_location`: `"main"` sends to the user's main chat, `"task"` sends to your current task chat. Default: auto (task chat if you are in a task context, main otherwise).
-- **Use for**: one-way notifications only — progress updates, status reports, task started/done/failed announcements.
-- **NEVER use** `send_message` to ask questions or gather input. Use `ask_question` instead. Using `send_message` for questions causes duplicate messages because the adapter saves your `finalText` on run completion in addition to the explicit tool call write — two rows, same content.
+
+Rules:
+- `chat_location="main"` to reach the user's main chat (the typical sub-agent → main use case).
+- `chat_location="task"` (or omit) for the current task chat.
+- **NEVER** use `send_message` to ask questions — use `ask_question` instead, which blocks the run until the user answers and returns a structured response.
+- **NEVER** call `send_message` right after closing a task with `update_my_task` (status=done|failed) that already carried `artifacts` or `summary`. The close already emits the chip-bearing chat row; a trailing send_message duplicates it. send_message is for BEFORE/DURING the work, not after the close.
+- For DELIVERABLES (files, URLs), use `update_my_task.artifacts` (in-task close) or `deliver_artifacts` (outside a task) — NOT this tool.
+
+### Deliver artifacts (files & URLs)
+
+Every user-facing deliverable (file you wrote, URL you exposed) MUST be surfaced as a chip. Two surfaces, same `artifacts` payload shape:
+
+- **In a task (team mode)**: pass `artifacts` on your `update_my_task` close call. The chip rides on the status close — same payload, single MCP call.
+- **Outside a task (solo, mid-task recall, master direct response)**: call `brahmi.deliver_artifacts` with the same `artifacts` payload.
+
+```bash
+# In-task close with a file deliverable (chip + status + done in one call)
+npx mcporter call brahmi.update_my_task status="done" \
+  summary="Top 5 stories compiled." \
+  artifacts='[{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/report.pdf"}]'
+
+# In-task close with a URL deliverable
+npx mcporter call brahmi.update_my_task status="done" \
+  summary="Frontend deployed." \
+  artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend","environment":"deployed"}]'
+
+# Solo / mid-task recall — file
+npx mcporter call brahmi.deliver_artifacts artifacts='[{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/report.pdf"}]'
+
+# Solo / mid-task recall — URL
+npx mcporter call brahmi.deliver_artifacts artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend"}]'
+
+# Failed task close (no chip needed — but allowed if you have partial outputs)
+npx mcporter call brahmi.update_my_task status="failed" error="API quota exhausted"
+```
+
+Rules for the `artifacts` payload (same in both tools):
+- **`kind` is required** on every entry: `"file"` or `"url"`. No inference.
+- **File paths must be absolute** under `/home/node/workspace/<YOUR_WD>/`. Your working directory is in the `## MANDATORY Working Directory` block of your system prompt. Relative paths are rejected; paths outside your wd are rejected with a corrective error.
+- **URLs auto-register the preview state** — you do NOT need a separate `update_preview_url` call.
+- **`summary`** is optional markdown commentary that accompanies the chip in the chat row.
+- **`chat_location`** on `deliver_artifacts` defaults to `"main"`. Override with `"task"` only if you have a task context and explicitly want the chip in the task chat instead of the main chat.
 
 ### Ask user a question
 ```bash
@@ -155,18 +192,7 @@ npx mcporter call brahmi.ask_question project_id="<PROJECT_ID>" application_id="
 - **Use for**: any time you need input from the user before proceeding — requirement gathering, clarifications, preference choices.
 - **Blocking**: the task is automatically paused and re-queued only after the user answers. You do NOT need to poll or loop.
 - **Returns**: `{"question_id": "<UUID>", "answer": "<user text or selected option>"}` — use the answer to continue.
-- **During planning**: ALWAYS use `ask_question` (not `send_message`) to collect requirements. Provide `options` when the choices are well-defined (tech stack, auth method, feature tier, etc.). This produces a single `message_type=question` row with structured `options`/`selected_option` fields — no duplicates.
-
-#### send_message vs ask_question — when to use which
-
-| | `send_message` | `ask_question` |
-|---|---|---|
-| Purpose | One-way notification | Gather user input |
-| Awaits reply | No | Yes — task pauses until answered |
-| DB `message_type` | `text` | `question` |
-| Causes duplicate messages | Yes, if used for questions | No |
-| Use during planning | Progress/status only | Requirement gathering |
-| Supports options | No | Yes (`options` array) |
+- **During planning**: ALWAYS use `ask_question` to collect requirements. Provide `options` when the choices are well-defined (tech stack, auth method, feature tier, etc.). This produces a single `message_type=question` row with structured `options`/`selected_option` fields.
 
 ## Git Integration
 
@@ -197,7 +223,7 @@ git push -u origin <branch>
 ## Planning (master agent)
 
 ### Planning workflow order
-1. **Gather requirements** — use `ask_question` (NOT `send_message`) to collect everything you need before writing the plan. Ask one question at a time. Use `options` for well-defined choices.
+1. **Gather requirements** — use `ask_question` to collect everything you need before writing the plan. Ask one question at a time. Use `options` for well-defined choices.
 2. **Start planning mode** — call `start_planning`, then write the plan to the file.
 3. **Submit plan** — call `submit_plan` for user approval.
 4. **Finish planning** — call `finish_planning` after the user approves, then create tasks.
@@ -227,9 +253,10 @@ npx mcporter call brahmi.finish_planning project_id="<PROJECT_ID>" application_i
 
 ## Preview URLs (local-deployer)
 
-### Update preview URLs after deployment
+After a deployment exposes a URL, surface it as a URL-kind artifact via `deliver_artifacts`. Brahmi auto-records the preview-URL state from that call — there is no separate `update_preview_url` step.
+
 ```bash
-npx mcporter call brahmi.update_preview_url application_id="<APPLICATION_ID>" preview_url='{"frontend":"https://abc.proxy.clode.space"}'
+npx mcporter call brahmi.deliver_artifacts artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend","environment":"local"}]'
 ```
 
 ## Testing/QA Verdict Protocol (CRITICAL)
@@ -238,10 +265,10 @@ Testing and QA tasks use a DIFFERENT completion protocol. They MUST always compl
 
 ```bash
 # Tests PASS:
-npx mcporter call brahmi.update_my_task status="done" outputs='{"verdict":"pass","summary":"All tests passed"}'
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" outputs='{"verdict":"pass","summary":"All tests passed"}'
 
 # Tests FAIL (found bugs — this is NOT a failure, the tester did its job):
-npx mcporter call brahmi.update_my_task status="done" outputs='{"verdict":"fail","summary":"6 tests failed: cart API 404, product serialization error","details":"full details here"}'
+npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" outputs='{"verdict":"fail","summary":"6 tests failed: cart API 404, product serialization error","details":"full details here"}'
 ```
 
 **CRITICAL distinction:**
@@ -253,24 +280,18 @@ When `verdict="fail"`, Brahmi automatically triggers a feedback loop:
 2. Master creates a corrective task for the right developer
 3. After the fix, the test task re-runs automatically
 
-**Never use `status="failed"` when tests find bugs.** Always use `status="done"` with `outputs={"verdict":"fail",...}`.
+**Never use `status="failed"` when tests find bugs.** Always use `status="done"` with `outputs={"verdict":"fail",...}` and your explicit `task_id`.
 
-## Progress Reporting (MANDATORY)
+## Progress visibility
 
-You MUST report progress to BOTH the task chat AND the main chat. The user watches the main chat — if you only send to the task chat, they have no visibility into what is happening.
+Sub-agents are dispatched into a task chat; their reply text lands there, not in the user's main chat. To keep the user informed during long-running work, ping main chat explicitly:
 
-### When to report to main chat
-Send short progress summaries to the main chat at these moments:
-1. **Task started**: `npx mcporter call brahmi.send_message project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" content="🔨 Starting: <task name>" chat_location="main"`
-2. **Important milestones**: `npx mcporter call brahmi.send_message project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" content="✅ <task name>: <milestone>" chat_location="main"`
-3. **Task completed**: `npx mcporter call brahmi.send_message project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" content="✅ Done: <task name> — <one-line summary>" chat_location="main"`
-4. **Task failed/blocked**: `npx mcporter call brahmi.send_message project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" content="❌ <task name>: <what went wrong>" chat_location="main"`
-
-### Rules
-- Main chat messages: SHORT (1-2 sentences max). No code blocks, no long explanations.
-- Task chat messages: detailed — include code snippets, error logs, reasoning.
-- Default `send_message` (no `chat_location`) goes to your task chat automatically.
-- Always use `chat_location="main"` explicitly when reporting to the main chat.
+- **Task start / mid-flight milestones** → `send_message chat_location="main"` with a short status line ("🔨 Starting: ...", "⚙️ Build passing, deploying now", "🧪 Running tests").
+- **A task is closing with a deliverable** → `update_my_task status="done" artifacts=[...] summary="..."` — chip rides on the status close. Do NOT also send_message after this; the close already emits the row.
+- **A task is closing with no deliverable** → `update_my_task status="done|failed"` (status-only).
+- **A deliverable outside a task** (solo, mid-task recall) → `deliver_artifacts` with the same `artifacts` payload shape.
+- **You need input** → `ask_question` (NOT send_message — ask_question blocks the run until the user answers).
+- **An out-of-band alert** the user needs to see now → `alert_user`.
 
 ## Workflow
 1. Create tasks (plan)
@@ -280,7 +301,7 @@ Send short progress summaries to the main chat at these moments:
 ## Rules
 - ALWAYS update task status as you work
 - ALWAYS include project_id and task_id in update_task calls
-- **ALWAYS include application_id** in create_tasks, send_message, ask_question, start_planning, submit_plan, and finish_planning calls. The agent is deployed per-project and serves multiple applications — without application_id, messages go to the wrong app. This is NOT optional.
+- **ALWAYS include application_id** in create_tasks, ask_question, start_planning, submit_plan, and finish_planning calls. The agent is deployed per-project and serves multiple applications — without application_id, messages go to the wrong app. This is NOT optional.
 - **Declare `required_toolkits` per task** when the task will call a Composio toolkit (Gmail, Sheets, Slack, etc.). Slugs only, honest list, empty when no third-party tools are needed.
 - Save the task_id UUIDs returned from create_tasks
 - Valid statuses: in_progress, validating, done, failed, blocked, review
