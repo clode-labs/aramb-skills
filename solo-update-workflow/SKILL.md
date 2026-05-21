@@ -27,32 +27,23 @@ snapshot of the old definition.
 ## MUST rules — read before anything else
 
 1. **Every node in `update_workflow` MUST carry `required_toolkits`.** Use `[]` (not omitted) when the node touches no third-party service. Omitting silently kills the Evaluate missing-connection warnings.
-2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `update_my_workflow_step` at the end of its run. See section "Closing instruction per node" below.
-   - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble shows "(no summary)" instead of the real hand-off.
+2. **Every node's `prompt` MUST end with a one-line output contract** — one line describing what the next step should expect to find in `outputs.summary` and `outputs.files`. See "Output contract per node" below.
+   - If you carry an old node forward and find a literal `npx mcporter call brahmi.update_my_workflow_step …` block at the bottom of its prompt, strip it and replace with the output-contract line.
 3. Call `update_workflow` exactly once. Success or failure — never retry.
 
-## Closing instruction per node — MANDATORY
+## Output contract per node
 
-Every node's `prompt` MUST end with this exact block, with `<summary>` and `<files>` substituted to match what the node will actually produce. Non-negotiable, baked into every prompt at authoring time.
+End each node `prompt` with one short line naming what the next step will find in this node's `outputs.summary` (≤500 chars, downstream-facing) and `outputs.files` (workspace-relative paths).
 
-Append this to every node's `prompt`:
+Format `summary` as readable markdown — short headings or bullets where useful; code-fence identifiers, file paths, IDs, and small JSON snippets. It renders directly in the FE timeline for humans AND is parsed as preamble by the next agent, so both audiences benefit from the same structure. Avoid wall-of-text paragraphs; lead with the key facts.
 
-```
-When done — record your output for the next step:
-  npx mcporter call brahmi.update_my_workflow_step status="done" outputs='{"summary":"<one-paragraph hand-off, under 500 chars>","files":["relative/path/to/output.json"]}'
+Examples:
 
-If you can't complete the step:
-  npx mcporter call brahmi.update_my_workflow_step status="failed" error="<concise reason + any partial progress>"
-```
+- `Outputs to next step: 'summary' describes the N events you fetched and the date window covered; 'files' includes .planning/calendar.json.`
+- `Outputs to next step: 'summary' is a one-paragraph hand-off naming the prospect cohort and qualifier; 'files' includes the leads CSV.`
+- `Outputs to next step: 'summary' confirms the message was sent and includes the Gmail message id; 'files' is empty.`
 
-Why both `summary` and `files`:
-- `summary` is a paragraph the next agent reads as preamble — the hand-off vocabulary that makes the chain coherent. Keep it under 500 chars.
-- `files` is a list of paths (relative to the workspace working directory) the next agent reads to dig deeper. Empty array `[]` is correct when the node only sends a message / posts to an external service and produces no files.
-
-Notes:
-- The brahmi MCP server resolves `step_id` from session metadata, so no `step_id` argument is needed.
-- Do NOT call `brahmi.update_my_task` or `brahmi.update_task` from a workflow-step prompt — only `update_my_workflow_step` works in this dispatch.
-- When carrying over node prompts from the existing definition, **re-verify the closing template is present**. If the existing version pre-dates this rule, append the template now.
+When carrying an old node forward, if its prompt ends in a literal `npx mcporter call brahmi.update_my_workflow_step …` block, strip the block and replace it with the contract line.
 
 ## Where the change spec comes from
 
@@ -195,12 +186,12 @@ you set a node override, name the node. The user's mental model of
 
 **Same authoring rules as `solo-create-workflow`:**
 - Concrete prompts with real business context baked in. No generic templates.
-- **Each node `prompt` ends with the closing-instruction template.** If you carry an old node forward unchanged, verify it still has the closing template; if not, append it.
+- **Each node `prompt` ends with a one-line output contract** (see "Output contract per node" above).
 - **Each node carries `required_toolkits`** — never omit; `[]` for orchestration / file-only nodes.
 - **Each node carries `settings`** — usually `{}`. Carry forward any existing per-node overrides from the `get_workflow` response, plus or minus what the user is changing.
 - **Carry forward `default_node_settings`** from the existing workflow, edited only where the user asked. If the existing workflow has an empty / missing block (older definitions), seed it with the same sensible defaults `solo-create-workflow` uses (`model=claude-sonnet-4-6`, `effort=medium`, `thinking=adaptive`, `max_turns=35`, `admin=false`, `budget_usd=25.0`, `approval_mode=auto`, `instructions=""`).
 - Sequential `unique_id` integers starting at 1 (numbering can be different from the existing version — uniqueness is what matters).
-- Dependencies via the top-level `edges` array, never on nodes.
+- Dependencies via the top-level `edges` array (each edge `{source, target}` referencing `unique_id`s), never on nodes.
 - Be stingy with env variables. Most workflows have zero, one, or two.
 - For history-derived deltas, generalise the new work — strip one-off specifics from any new node prompts you add.
 
@@ -212,7 +203,7 @@ Send a progress update: "Saving updated workflow…".
 
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
-- `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
+- `prompt` — concrete instruction with business context baked in **AND a one-line output contract** at the end describing what `outputs.summary` / `outputs.files` will contain.
 - `assigned_agent` — name of an existing agent
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits` — list of Composio slugs the node calls; `[]` for orchestration / file-only nodes; never omit.**
@@ -227,12 +218,11 @@ And on the call itself:
 ```
 Concrete instruction with the real business context baked in.
 
-When done — record your output for the next step:
-  npx mcporter call brahmi.update_my_workflow_step status="done" outputs='{"summary":"<hand-off paragraph under 500 chars>","files":["<relative/path>"]}'
-
-If you can't complete the step:
-  npx mcporter call brahmi.update_my_workflow_step status="failed" error="<concise reason>"
+Outputs to next step: 'summary' is a one-paragraph hand-off describing
+<what>; 'files' includes <relative paths or '[]'>.
 ```
+
+The instruction body (top paragraph) is per-node business context. The trailing `Outputs to next step:` line is the per-node output contract — identical structure across every node, only the description of `summary` / `files` content differs.
 
 `update_workflow` skeleton:
 
@@ -244,8 +234,8 @@ npx mcporter call brahmi.update_workflow \
   env_variables='{}' \
   default_node_settings='{"model":"claude-opus-4-7","effort":"medium","thinking":"adaptive","max_turns":35,"admin":false,"budget_usd":50.0,"approval_mode":"auto","instructions":""}' \
   nodes='[
-    {"unique_id": 1, "name": "First step",  "prompt": "<body + closing template>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": ["GMAIL"], "settings": {}},
-    {"unique_id": 2, "name": "Second step", "prompt": "<body + closing template>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": [],        "settings": {"approval_mode":"manual"}}
+    {"unique_id": 1, "name": "First step",  "prompt": "<body + output contract>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": ["GMAIL"], "settings": {}},
+    {"unique_id": 2, "name": "Second step", "prompt": "<body + output contract>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": [],        "settings": {"approval_mode":"manual"}}
   ]' \
   edges='[
     {"source": 1, "target": 2}
@@ -332,7 +322,7 @@ atomic and any rejection happens before the swap.
 
 - One shot: never call `update_workflow` twice. If the first call succeeded, you're done. If it errored, tell the user and stop.
 - Each node's `prompt` must carry the real business context baked in.
-- **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `update_my_workflow_step` at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)" for every step.
+- **Each node's `prompt` ends with a one-line output contract** describing what `outputs.summary` / `outputs.files` will contain (see "Output contract per node" above).
 - **Each node carries `required_toolkits`** — `[]` when the node touches no third-party service; never omit.
 - **Each node carries `settings`** — preserve existing per-node overrides from `get_workflow`; `{}` when the node has no overrides.
 - **Carry `default_node_settings`** forward unchanged from `get_workflow`, edited only where the user asked. Never silently drop the workflow defaults block.
