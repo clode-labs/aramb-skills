@@ -10,7 +10,7 @@ description: >
 # Schedule Workflow
 
 Translate a user's natural-language schedule request into a cron expression
-+ timezone, then call `set_workflow_schedule`. The workflow already has a
++ timezone, then call `aramb_workflows.set_schedule`. The workflow already has a
 schedule slot (one schedule per workflow) — this skill writes to it.
 
 You are typically replying to a chat message on the Workflow page. The user
@@ -21,7 +21,7 @@ asked something like:
 - "Stop the schedule" / "Pause it"
 
 The workflow_id is in the chat context (from the Workflow page). If you don't
-have it, call `get_workflow application_id="<application_id>"` first.
+have it, call `aramb_workflows.get application_id="<application_id>"` first.
 
 ## Workflow
 
@@ -34,13 +34,13 @@ Three branches:
 - **Set / update** ("run weekly", "every Monday at 9am", "schedule for 2pm UTC"):
   go to step 2.
 - **Read / confirm** ("what's the schedule?", "when does this run?"): call
-  `get_workflow_schedule workflow_id="<workflow_id>"` and report what you find.
+  `aramb_workflows.get_schedule workflow_id="<workflow_id>"` and report what you find.
   No write needed.
 
 ### 2. Clarify if ambiguous
 
 Some phrases do not have enough information to map to a cron expression. Ask
-the user **one** clarifying question via `brahmi.ask_question` and stop until
+the user **one** clarifying question via `aramb_chat.ask_question` and stop until
 they answer. Do NOT invent a default like "Sunday midnight UTC" silently.
 
 Phrases that need a clarifying question:
@@ -88,12 +88,12 @@ Default timezone: **UTC**. If the user named a timezone ("Pacific", "EST",
 `Europe/London`) and use that. **Tell the user explicitly which timezone you
 used** in your reply — never silently apply one.
 
-### 4. Call set_workflow_schedule
+### 4. Call aramb_workflows.set_schedule
 
 For an enable / update:
 
 ```bash
-npx mcporter call brahmi.set_workflow_schedule \
+npx mcporter call aramb_workflows.set_schedule \
   workflow_id="<workflow_id>" \
   cron_expression="0 9 * * 1" \
   cron_timezone="UTC" \
@@ -103,7 +103,7 @@ npx mcporter call brahmi.set_workflow_schedule \
 For a pause / disable:
 
 ```bash
-npx mcporter call brahmi.set_workflow_schedule \
+npx mcporter call aramb_workflows.set_schedule \
   workflow_id="<workflow_id>" \
   enabled=false
 ```

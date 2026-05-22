@@ -34,23 +34,23 @@ Never reuse filenames. Structure is freeform — let it emerge from the conversa
 
 ### 2. Start Planning
 
-Call `brahmi.start_planning` with `file_path=".planning/<descriptive-name>.md"` — this opens the plan file in VS Code for the user. Do NOT send any messages before this call.
+Call `aramb_chat.start_planning` with `file_path=".planning/<descriptive-name>.md"` — this opens the plan file in VS Code for the user. Do NOT send any messages before this call.
 
 ### 3. Interactive Q&A
 
-Ask ONE question at a time using `brahmi.ask_question`. Never inline numbered-list questions in your reply text — they store as plain text with no `options`, the frontend cannot render a picker, and the user reply comes back as unstructured free text.
+Ask ONE question at a time using `aramb_chat.ask_question`. Never inline numbered-list questions in your reply text — they store as plain text with no `options`, the frontend cannot render a picker, and the user reply comes back as unstructured free text.
 
 Pass choices as the `options` array — do NOT inline them as a numbered list in the `question` body. Brahmi stores the array structurally so the UI renders a real choice picker and the answer comes back as `selected_option`.
 
 ```bash
-npx mcporter call brahmi.ask_question \
+npx mcporter call aramb_chat.ask_question \
   project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
   question="Question 1/5 — What authentication approach should we use?" \
   options='["JWT tokens — stateless, good for APIs", "Session-based — simpler, server-side state", "OAuth 2.0 — delegate to Google/GitHub"]'
 ```
 
 Rules:
-- ALWAYS `brahmi.ask_question`. Never inline-numbered-list questions in your reply text.
+- ALWAYS `aramb_chat.ask_question`. Never inline-numbered-list questions in your reply text.
 - Include the progress marker in the `question` string (Question 1/5, 2/5, …) — count can change dynamically.
 - 2-4 options per question. Each option is a short label with a brief pro/con after an em-dash.
 - After each answer: update the plan file, then ask the next question.
@@ -66,14 +66,19 @@ If the user says "surprise me", "use defaults", "you decide", or similar at ANY 
 
 ### 4. Submit the Plan
 
-When all questions are answered, call `brahmi.submit_plan` with structured data:
+When all questions are answered, call `aramb_chat.submit_plan` with the
+**mode-agnostic** plan payload:
+
 - `summary`: one-line description
 - `approach`: technical approach
-- `agents`: `[{name, role}]`
-- `tasks`: `[{unique_id, name, description, assigned_agent, dependencies}]`
-  - `unique_id`: sequential integers starting at 1 (NEVER 0)
-  - `dependencies`: array of unique_ids. Testing MUST depend on build. Deploy MUST depend on tests.
 - `key_decisions`: `[{decision, rationale}]`
+
+The plan no longer carries `agents` or `tasks` arrays — those were dropped
+from the schema as part of the MCP toolkit split. Task creation is the
+post-approval step's responsibility (see Step 5 below): in team mode you
+follow up with `aramb_tasks.create`; in solo mode you just start executing.
+Keep the task list in your planning **file** (`.planning/<...>.md`) for
+your own reference, but don't try to pass it through `submit_plan`.
 
 **CRITICAL: After calling `submit_plan`, STOP. Do not send any more messages. Wait for the user's response.**
 
@@ -82,13 +87,15 @@ When all questions are answered, call `brahmi.submit_plan` with structured data:
 The user responds via chat message:
 
 - **Approved** (e.g., "Plan approved, proceed further!", "looks good", "go ahead"):
-  1. Call `brahmi.finish_planning`
-  2. Call `brahmi.create_tasks` with the same tasks from your plan
-  3. Proceed to execution
+  1. Call `aramb_chat.finish_planning`
+  2. **Team mode**: call `aramb_tasks.create` with the tasks you'd captured in your planning file.
+     **Solo mode**: skip step (2) — solo has no task surface; start executing directly.
+     If you're in a skill that runs in both modes and need to branch, call
+     `aramb_chat.get_mode application_id="<APPLICATION_ID>"` to confirm.
 
 - **Modification requested** (user sends feedback like "change X to Y"):
   1. Update the plan file with revisions
-  2. Call `brahmi.submit_plan` again with updated data
+  2. Call `aramb_chat.submit_plan` again with updated data
   3. STOP and wait again
 
 - **Rejected** (user says "no", "scrap this", "start over"):

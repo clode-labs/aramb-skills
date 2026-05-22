@@ -391,10 +391,10 @@ docker compose logs <service> --tail=30
 
 ## Step 8: Report
 
-Once ALL URLs are verified, surface the primary frontend URL as a URL-kind artifact on your `update_task` close call. The chip emit, preview-URL state registration, and task close all happen in ONE call.
+Once ALL URLs are verified, surface the primary frontend URL as a URL-kind artifact on your `aramb_tasks.update` close call. The chip emit, preview-URL state registration, and task close all happen in ONE call.
 
 ```
-npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
+npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
   summary="✅ App live (tunnel PID: $EXPOSE_PID):
 - frontend: $FRONTEND_URL
 - api: $API_URL (if applicable)
@@ -404,7 +404,7 @@ Env overrides injected: $DEPLOY_ENV_FILE" \
 
 Rules for preview URLs:
 - The rule fires whenever this skill produced any URL the user can reach (frontend, API, tunnel, public proxy).
-- A URL-kind artifact on `update_task.artifacts` is mandatory for the primary frontend URL. Brahmi auto-registers preview-URL state from it — no separate call.
+- A URL-kind artifact on `aramb_tasks.update.artifacts` is mandatory for the primary frontend URL. Brahmi auto-registers preview-URL state from it — no separate call.
 - Mentioning the URL only in chat prose is forbidden — the chip pipeline cannot reconstruct chips from prose after the fact.
 - For aramb-expose tunnels the `environment` field is `"deployed"` (the URL is a public proxy.clode.space hostname reachable outside the agent's container).
 - The chip is for the *primary* frontend URL only. Secondary backend / API URLs can stay in the `summary` text — one URL chip per chat row is plenty.

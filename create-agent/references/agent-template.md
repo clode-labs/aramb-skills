@@ -113,30 +113,30 @@ Structure:
 2. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
 3. Query Juno for project context: `npx mcporter call juno.get_session_context project_id="<PROJECT_ID>"`
 4. Check for relevant gotchas: `npx mcporter call juno.get_gotchas topic="<your-domain>"`
-5. Check for pending tasks via `brahmi.list_tasks`
+5. Check for pending tasks via `aramb_tasks.list`
 
 ## Task Protocol
 
 1. Receive task via brahmi (task arrives with description and context)
-2. Acknowledge: `npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="in_progress"`
-3. Ping the user's main chat with a start notice (your reply text lands in the task chat — `send_message chat_location="main"` is how main chat sees you started):
-   `npx mcporter call brahmi.send_message project_id="<PROJECT_ID>" application_id="<APP_ID>" content="🔨 Starting: <task>" chat_location="main"`
-4. Execute the work. Use additional `send_message` calls for important mid-flight milestones; keep them short.
-5. Close the task with the deliverable (chip + status + preview state, all in one call). Do NOT call `send_message` after this close — the close already emits the chip-bearing row.
+2. Acknowledge: `npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="in_progress"`
+3. Ping the user's main chat with a start notice (your reply text lands in the task chat — `aramb_chat.send_message chat_location="main"` is how main chat sees you started):
+   `npx mcporter call aramb_chat.send_message project_id="<PROJECT_ID>" application_id="<APP_ID>" content="🔨 Starting: <task>" chat_location="main"`
+4. Execute the work. Use additional `aramb_chat.send_message` calls for important mid-flight milestones; keep them short.
+5. Close the task with the deliverable (chip + status + preview state, all in one call). Do NOT call `aramb_chat.send_message` after this close — the close already emits the chip-bearing row.
    - With a file: `artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/<file>"}]'`
    - With a URL: `artifacts='[{"kind":"url","url":"<url>","title":"<label>"}]'`
    ```
-   npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
+   npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
      summary="✅ Done: <task> — <summary>" \
      artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/<file>"}]'
    ```
    For status-only close (no deliverable):
    ```
-   npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" outputs='{"summary":"<hand-off>"}'
+   npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" outputs='{"summary":"<hand-off>"}'
    ```
 
-On failure: `npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="failed" error="what went wrong"`
-On blockers: `npx mcporter call brahmi.update_task project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="blocked" outputs='{"summary":"waiting on X"}'`
+On failure: `npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="failed" error="what went wrong"`
+On blockers: `npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="blocked" outputs='{"summary":"waiting on X"}'`
 
 Always include actionable summaries. "Tests failed" is useless. "3/47 tests failed in auth module — see output below" is actionable.
 
@@ -148,7 +148,7 @@ Always include actionable summaries. "Tests failed" is useless. "3/47 tests fail
 
 ## Tools & Skills
 
-- **brahmi** — task management (update_task, deliver_artifacts, send_message, ask_question)
+- **brahmi** — task management (aramb_tasks.update, aramb_chat.deliver_artifacts, aramb_chat.send_message, aramb_chat.ask_question)
 - **juno** — context memory (store/retrieve patterns, gotchas, insights)
 - _(List role-specific skills here)_
 
