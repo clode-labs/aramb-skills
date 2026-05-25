@@ -10,6 +10,10 @@ description: >
 
 The `aramb_tasks.*` tools manage the task lifecycle. **You will only see these in team-mode chats** — in solo mode the toolkit is filtered out of `tools/list` and the agent runs without a task surface.
 
+## Not the same as Claude's built-in `TaskCreate`
+
+`aramb_tasks.*` (this toolkit) and Claude's built-in `TaskCreate` / `TaskUpdate` / `TaskList` are two different systems that happen to share the word "task" — do not conflate them. `aramb_tasks.*` lives on the **brahmi MCP server**: each call writes a DB row that survives the session, is visible to other agents and the UI, and is how work is *delegated and persisted*. Claude's `TaskCreate` lives in the **LLM runtime**: it's an in-session scratchpad, gone when the run ends, visible only to you, and never reaches brahmi. Tracking your own progress → `TaskCreate`. Dispatching or persisting a real work unit → `aramb_tasks.*`. Calling `TaskCreate` dispatches nothing; calling `aramb_tasks.create` does not populate your in-session tracker.
+
 ## CRITICAL: mcporter syntax rules
 - ALL arguments MUST use `key="value"` format (NOT positional args).
 - Status updates use `aramb_tasks.update` with an explicit `task_id`. There is `aramb_tasks.update_me` for the in-task self-update — pick the right one (see below).

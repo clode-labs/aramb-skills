@@ -2,14 +2,17 @@
 name: solo
 description: >
   Tools and conventions for the solo (direct-execution) agent. Communication,
-  git, preview URLs, and existing-workflow scheduling. No task creation, no
-  sub-agent spawning.
+  git, preview URLs, workflow authoring, and scheduling. No brahmi task surface
+  (aramb_tasks.* is filtered out in solo mode); sub-agents are allowed for
+  workflow nodes.
 ---
 
 # Solo skill
 
-You are in solo mode. You execute work directly — no decomposition, no
-sub-agents, no task tracking. Use these MCP tools via mcporter.
+You are in solo mode. For chat work you execute directly — no decomposing the
+request across a team, no brahmi task tracking. For workflows you author the
+graph and may provision sub-agents to own individual nodes. Use these MCP tools
+via mcporter.
 
 ## mcporter syntax rules
 - ALL arguments MUST use `key="value"` format (NOT positional args)
@@ -52,52 +55,59 @@ Rules:
 
 ## Workflows
 
-You can author, update, and schedule workflows directly. Two trigger paths
-land at you as normal chat turns; recognise both:
+You can author, update, and schedule workflows directly. These are the **same
+skills master uses** — solo just runs them in chat-dispatch mode (no `task_id`),
+so they read the spec from your conversation instead of from completed tasks.
+Two trigger paths land at you as normal chat turns; recognise both:
 
 - **User describes a workflow explicitly** (e.g. "build a workflow that fetches today's emails…")
-  → use the `solo-create-workflow` skill. The spec is the message itself.
+  → use the `create-workflow` skill. The spec is the message itself.
 
 - **User says "create a workflow based on the work done so far in this chat"** (or similar — this is the canned message the FE sends when they click the "Create workflow" button on a grow / research workspace)
-  → use the `solo-create-workflow` skill. The spec is THIS conversation: walk back through the work you did, the tool calls you made, the files you produced, and consolidate. Generalize — do not transcribe specific dates / values into the workflow.
+  → use the `create-workflow` skill. The spec is THIS conversation: walk back through the work you did, the tool calls you made, the files you produced, and consolidate. Generalize — do not transcribe specific dates / values into the workflow.
 
 - **User describes an explicit change** to an existing workflow (e.g. "add a Slack DM step", "remove the synth node")
-  → use the `solo-update-workflow` skill. Always fetch the current definition first via `aramb_workflows.get`; the chat is not the source of truth, the database is.
+  → use the `update-workflow` skill. Always fetch the current definition first via `aramb_workflows.get`; the chat is not the source of truth, the database is.
 
 - **User says "update the existing workflow based on the work done in this chat"** (button-driven canned message)
-  → use the `solo-update-workflow` skill. Compute the delta between the existing definition and the new work in this session, then write the full replacement.
+  → use the `update-workflow` skill. Compute the delta between the existing definition and the new work in this session, then write the full replacement.
 
 - **User asks to schedule / pause / change the cron of a workflow**
   → use the `schedule-workflow` skill. Strictly cron-only; never bundle schedule changes into save/aramb_workflows.update calls.
 
 Common direct calls (the skills above wrap these):
 - `npx mcporter call aramb_workflows.get workflow_id="<id>"`
-- `npx mcporter call aramb_workflows.create application_id="<id>" project_id="<id>" name="<name>" ...` (see `solo-create-workflow`)
-- `npx mcporter call aramb_workflows.update workflow_id="<id>" nodes='[...]' ...` (see `solo-update-workflow`)
+- `npx mcporter call aramb_workflows.create application_id="<id>" project_id="<id>" name="<name>" ...` (see `create-workflow`)
+- `npx mcporter call aramb_workflows.update workflow_id="<id>" nodes='[...]' ...` (see `update-workflow`)
 - `npx mcporter call aramb_workflows.set_schedule workflow_id="<id>" cron_expression="<5-field>" cron_timezone="<tz>" enabled=true`
 - `npx mcporter call aramb_workflows.set_schedule workflow_id="<id>" enabled=false`
 
-You do NOT call `aramb_workflows.create_from_tasks` or `aramb_workflows.update_from_tasks` — those
-exist for the task-mode (master) path and the MCP server will reject them
-in solo mode. The save / update / get / aramb_workflows.set_schedule tools are
-not gated and work for you directly.
+You do NOT call `aramb_workflows.create_from_tasks` or `aramb_workflows.update_from_tasks`
+— those consolidate completed *tasks* (the team-mode path), and solo has no tasks.
+The `create` / `update` / `get` / `set_schedule` tools work for you directly.
 
-## Forbidden in solo mode
+## What's NOT available in solo mode
 
-The MCP server will reject these calls with an explicit error message
-("You are not allowed to create tasks in solo mode — continue on your
-own"). When you see that error, do NOT retry; continue your work
-directly.
-
-Forbidden tools:
+The `aramb_tasks.*` toolkit is **filtered out of your tool list** server-side in
+solo mode (a `tools/list` filter — not a per-call rejection). You simply won't see
+these tools, so there is nothing to call and no error to retry against:
 - `aramb_tasks.create`, `aramb_tasks.update`, `aramb_tasks.list_me`, `aramb_tasks.list`
-- `start_planning`, `submit_plan`, `finish_planning`
-- `aramb_workflows.create_from_tasks`, `aramb_workflows.update_from_tasks`
 
-Also forbidden:
-- Reporting an exposed URL only in chat prose, without calling `aramb_chat.deliver_artifacts` with a `kind="url"` entry. The chip is the deliverable.
-- Mentioning a workspace file path in your reply text without first calling `aramb_chat.deliver_artifacts`. Inline paths are dead text — the chip pipeline cannot turn them into clickable chips after the fact.
+`start_planning` / `submit_plan` / `finish_planning` ARE available to you — they're
+chat tools, present in both modes. In solo mode you plan and then execute directly
+rather than spawning a task list (the planning skill self-gates on chat mode). Don't
+treat them as forbidden.
 
-If you need to track multi-step work in your head, keep a TODO list in
-your reasoning or notes in `/home/node/workspace/`. Do not call the task
-MCP tools.
+`aramb_workflows.create_from_tasks` / `update_from_tasks` are technically present but
+inapplicable — they consolidate completed *tasks*, which solo never has. Author
+workflows from chat via `create-workflow` / `update-workflow` instead.
+
+## Always do this
+
+- Surface every exposed URL via `aramb_chat.deliver_artifacts` with a `kind="url"` entry — reporting it only in chat prose is not enough; the chip is the deliverable.
+- Surface every user-facing file via `aramb_chat.deliver_artifacts` before mentioning its path — inline paths in reply text are dead text the chip pipeline can't turn into clickable chips after the fact.
+
+If you need to track multi-step work, use Claude's built-in `TaskCreate` as a
+private in-session scratchpad, or keep a TODO list in your reasoning / notes in
+`/home/node/workspace/`. (That's unrelated to the brahmi `aramb_tasks.*` toolkit
+above — see SOUL.md → "Two kinds of `task`".)
