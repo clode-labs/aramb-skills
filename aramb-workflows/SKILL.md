@@ -126,6 +126,23 @@ Rules for `update_my_step`:
 - Do NOT call `aramb_tasks.update` from within a workflow step session — it won't resolve your step context and the run will stall on the safety net.
 - `aramb_workflows.update_step step_id="<UUID>" status="..."` is the explicit-id form. Only use it if you need to update a DIFFERENT step from the one you're executing (rare — mostly for the master safety net).
 
+## Checker verdict on a workflow step (maker-checker gate)
+
+When a workflow node has the maker-checker gate enabled, Brahmi runs the node's maker, then dispatches an independent **checker review** against the same step before the step advances. The review is the step's own assigned agent re-run in a fresh, read-only session under a gatekeeper system prompt — there is no separate checker persona. If your dispatch tells you to validate a workflow step (you'll get a gatekeeper system prompt, not the maker's execution prompt), report your verdict via `update_my_step` with `status="done"` and a **verdict** payload — NOT the maker `{summary, files}` shape:
+
+```bash
+# Pass — work meets the criteria; the step completes and children promote:
+npx mcporter call aramb_workflows.update_my_step status="done" outputs='{"verdict":"pass","previous_gaps":[{"id":"gap_1","fixed":true,"fix_note":"..."}],"new_gaps":[],"summary":"All criteria met."}'
+
+# Fail — Brahmi re-runs the maker with these gaps (up to the round cap, then fails the step):
+npx mcporter call aramb_workflows.update_my_step status="done" outputs='{"verdict":"fail","previous_gaps":[{"id":"gap_1","fixed":false}],"new_gaps":[{"description":"POST /users returns 500 on valid input","severity":"critical"}],"summary":"1 criterion unmet."}'
+```
+
+Verdict rules (same as the task checker — see the `checker-prompt` skill):
+- `verdict="pass"` only when ALL criteria are met and no critical gap remains.
+- `verdict="fail"` re-runs the maker with the unfixed gaps injected into its prompt. `status="failed"` is reserved for "cannot validate at all" (missing working dir, etc.) — NOT for found bugs.
+- `previous_gaps` must report `fixed` for every gap id you were given; `new_gaps` omit `id` (Brahmi assigns stable ids).
+
 ## Rules
 
 - ALWAYS use the top-level `edges` array on `create` / `update`. NEVER emit per-node `dependencies` / `dependsOn`.

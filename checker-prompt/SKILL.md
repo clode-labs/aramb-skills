@@ -5,7 +5,7 @@ description: Craft a precise checker_prompt for external validation — specifie
 
 # Checker Prompt Skill
 
-Use this skill whenever you set `enable_checker: true` on a task. The `checker_prompt` is the instruction set passed to an independent checker agent. It has no knowledge of the task history — it only sees what you write here. Be precise.
+Use this skill whenever you set `enable_checker: true` on a task **or a workflow node** (the node's `checkerPrompt` setting). The `checker_prompt` is the instruction set for an independent checker review — the unit's own assigned agent re-run in a fresh, read-only session as a gatekeeper (no separate checker persona). It has no knowledge of the task/step history — it only sees what you write here. Be precise. The unit's acceptance criteria are always attached as well; the `checker_prompt`, when present, is the primary spec.
 
 ## Structure
 
