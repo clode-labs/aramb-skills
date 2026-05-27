@@ -128,14 +128,16 @@ Rules for `update_my_step`:
 
 ## Checker verdict on a workflow step (maker-checker gate)
 
-When a workflow node has the maker-checker gate enabled, Brahmi runs the node's maker, then dispatches an independent **checker review** against the same step before the step advances. The review is the step's own assigned agent re-run in a fresh, read-only session under a gatekeeper system prompt — there is no separate checker persona. If your dispatch tells you to validate a workflow step (you'll get a gatekeeper system prompt, not the maker's execution prompt), report your verdict via `update_my_step` with `status="done"` and a **verdict** payload — NOT the maker `{summary, files}` shape:
+When a workflow node has the maker-checker gate enabled, Brahmi runs the node's maker, then dispatches an independent **checker review** against the same step before the step advances. The review is the step's own assigned agent re-run in a fresh, read-only session under a gatekeeper system prompt — there is no separate checker persona. If your dispatch tells you to validate a workflow step (you'll get a gatekeeper system prompt, not the maker's execution prompt), report your verdict with `status="done"` and a **verdict** payload — NOT the maker `{summary, files}` shape.
+
+**Report via the explicit-id form `update_step step_id="<STEP_UUID>"` — NOT `update_my_step`.** A check runs in a fresh session that does not resolve a step context, so `update_my_step` fails with "no step context". Your dispatch gives you the exact command (with the real `step_id`) under "Report your verdict" — run that:
 
 ```bash
 # Pass — work meets the criteria; the step completes and children promote:
-npx mcporter call aramb_workflows.update_my_step status="done" outputs='{"verdict":"pass","previous_gaps":[{"id":"gap_1","fixed":true,"fix_note":"..."}],"new_gaps":[],"summary":"All criteria met."}'
+npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="done" outputs='{"verdict":"pass","previous_gaps":[{"id":"gap_1","fixed":true,"fix_note":"..."}],"new_gaps":[],"summary":"All criteria met."}'
 
 # Fail — Brahmi re-runs the maker with these gaps (up to the round cap, then fails the step):
-npx mcporter call aramb_workflows.update_my_step status="done" outputs='{"verdict":"fail","previous_gaps":[{"id":"gap_1","fixed":false}],"new_gaps":[{"description":"POST /users returns 500 on valid input","severity":"critical"}],"summary":"1 criterion unmet."}'
+npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="done" outputs='{"verdict":"fail","previous_gaps":[{"id":"gap_1","fixed":false}],"new_gaps":[{"description":"POST /users returns 500 on valid input","severity":"critical"}],"summary":"1 criterion unmet."}'
 ```
 
 Verdict rules (same as the task checker — see the `checker-prompt` skill):

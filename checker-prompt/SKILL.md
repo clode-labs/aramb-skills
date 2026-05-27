@@ -7,6 +7,16 @@ description: Craft a precise checker_prompt for external validation — specifie
 
 Use this skill whenever you set `enable_checker: true` on a task **or a workflow node** (the node's `checkerPrompt` setting). The `checker_prompt` is the instruction set for an independent checker review — the unit's own assigned agent re-run in a fresh, read-only session as a gatekeeper (no separate checker persona). It has no knowledge of the task/step history — it only sees what you write here. Be precise. The unit's acceptance criteria are always attached as well; the `checker_prompt`, when present, is the primary spec.
 
+## You write the validation guideline — not the reporting instructions
+
+The `checker_prompt` is **only** the guideline of what to verify (context + criteria, below). The gatekeeper's behavior — read-only auditing, the verdict shape, and how to emit it — is supplied by Brahmi's `checker_executor` system prompt, not by you. Do NOT bake verdict-reporting or tool-call instructions into the `checker_prompt`.
+
+For reference, the gatekeeper reports its verdict by **explicit id**, never with the session-scoped self-update tools:
+- Task → `aramb_tasks.update task_id="<TASK_UUID>" status="done" outputs='{"verdict":...}'`
+- Workflow step → `aramb_workflows.update_step step_id="<STEP_UUID>" status="done" outputs='{"verdict":...}'`
+
+`update_me` / `update_my_step` are **not** used by the checker — a fresh check session can't resolve a self-context and they fail with "no task/step context". The `outputs` verdict shape is `{verdict, previous_gaps, new_gaps, summary}` (see the `aramb-workflows` skill for the workflow-step example).
+
 ## Structure
 
 A `checker_prompt` has two parts:

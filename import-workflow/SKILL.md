@@ -16,7 +16,7 @@ template ships pre-resolved nodes and edges (placeholders already substituted
 by brahmi) and full agent specs (name, identity, soul, agentsDoc, default
 model/backend/thinking, required toolkits). Your job: create each agent via
 the `create-agent` skill, substantively polish the node prompts using the
-user's wizard answers, then call `save_workflow` exactly once.
+user's wizard answers, then call `aramb_workflows.create` exactly once.
 
 > **If asked to consolidate completed tasks into a new workflow instead, use
 > the `create-workflow` skill. If asked to edit an existing workflow, use
@@ -29,30 +29,30 @@ user's wizard answers, then call `save_workflow` exactly once.
    block.** If no such block is present in the extra-system-prompt, STOP — you
    should be using `create-workflow` or `update-workflow` instead. The block is
    the trigger; the user's prose alone does not authorise this path.
-2. **Do NOT call `list_tasks` and do NOT call `update_task`.** There is no
+2. **Do NOT call `aramb_tasks.list` and do NOT call `aramb_tasks.update`.** There is no
    task driving this skill. Brahmi's QueueConsumer dispatches the master agent
    directly with the template payload; tasks are not part of the
-   template-import flow. Calling `list_tasks` returns unrelated tasks and
-   misleads the import; calling `update_task` resolves no task because none
+   template-import flow. Calling `aramb_tasks.list` returns unrelated tasks and
+   misleads the import; calling `aramb_tasks.update` resolves no task because none
    was opened.
 3. **You MUST create every agent listed in `<agents>` via the `create-agent`
-   skill before calling `save_workflow`.** Brahmi no longer pre-provisions
+   skill before calling `aramb_workflows.create`.** Brahmi no longer pre-provisions
    them — the template ships agent specs in the dispatch, and you are the one
    who lands them in benji. If you skip this step the workflow will save with
    `assigned_agent` references that don't resolve, and every run will fail at
    dispatch with "agent not found". One `create-agent` invocation per spec,
    in the order the specs appear in the `<agents>` array.
-4. **`save_workflow` MUST be called exactly once.** Success or failure — never
+4. **`aramb_workflows.create` MUST be called exactly once.** Success or failure — never
    retry. The pre-resolved nodes/edges in the `<template-import>` block are
    the authoritative *structure*; your polish (step 3 below) may rewrite
    `name` / `prompt` / `description` text but must not change the graph.
-5. **Every node in the `save_workflow` call MUST carry `required_toolkits`**
+5. **Every node in the `aramb_workflows.create` call MUST carry `required_toolkits`**
    copied verbatim from the matching node in the `<template-import>` block.
    Use `[]` (not omitted) when a node touches no third-party service. Same
    failure mode as `create-workflow`: omitting kills the Evaluate
    missing-connection warnings and renders the Required-toolkits row empty in
    the FE node panel.
-6. **Strip stale closing blocks during polish.** If a template-shipped node prompt ends with a literal `npx mcporter call brahmi.update_my_workflow_step …` block, strip it during polish (step 3) and replace it with a one-line output contract describing what `outputs.summary` / `outputs.files` should contain for the next step. See "Output contract per node" below.
+6. **Strip stale closing blocks during polish.** If a template-shipped node prompt ends with a literal `npx mcporter call aramb_workflows.update_my_step …` block, strip it during polish (step 3) and replace it with a one-line output contract describing what `outputs.summary` / `outputs.files` should contain for the next step. See "Output contract per node" below.
 
 You are running as the **master agent**, not as a task. Brahmi dispatched the
 chat message with an extra-system-prompt block named `<template-import>` that
@@ -69,7 +69,7 @@ gives you everything you need:
   step 3 fixes that.
 
 **The workflow does NOT exist yet.** Brahmi creates it atomically when you
-call `save_workflow`. Don't ask for a workflow_id — you don't have one and
+call `aramb_workflows.create`. Don't ask for a workflow_id — you don't have one and
 don't need one.
 
 ## Output contract per node
@@ -83,7 +83,7 @@ Examples:
 - `Outputs to next step: 'summary' describes the qualified prospect cohort with fit/intent scoring; 'files' includes the leads CSV.`
 - `Outputs to next step: 'summary' confirms the email sequence was queued and lists the recipient ids; 'files' is empty.`
 
-If the template ships a node prompt with a literal `npx mcporter call brahmi.update_my_workflow_step …` block tacked onto the bottom, strip it during polish (step 3) and replace it with the contract line above.
+If the template ships a node prompt with a literal `npx mcporter call aramb_workflows.update_my_step …` block tacked onto the bottom, strip it during polish (step 3) and replace it with the contract line above.
 
 ## Workflow
 
@@ -121,14 +121,15 @@ Pass the template-provided text verbatim into IDENTITY.md / SOUL.md /
 AGENTS.md. Do NOT rewrite the personas — the template author wrote them
 intentionally, and the user's wizard answers (per the template-templates
 contract) influence the workflow prompts, not the agent personas. Skill
-handling inside `create-agent`: always include the mandatory `brahmi` and
-`juno` skills (the skill enforces this) — additionally, copy any skill
-implied by the agent's `requiredToolkits` (e.g. a `hubspot` toolkit
-implies the agent needs to know how to use the brahmi MCP — already
-covered by the default `brahmi` skill).
+handling inside `create-agent`: always include the mandatory `aramb-chat`,
+`aramb-tasks`, `aramb-workflows`, and `juno` skills (the skill enforces this) —
+additionally, copy any skill implied by the agent's `requiredToolkits` (e.g. a
+`hubspot` toolkit implies the agent needs to know how to use the aramb MCP
+toolkits — already covered by the default `aramb-chat` / `aramb-tasks` /
+`aramb-workflows` skills).
 
 Run agents in the order they appear in the `<agents>` array. If
-`create-agent` fails for any spec, STOP — do not proceed to `save_workflow`,
+`create-agent` fails for any spec, STOP — do not proceed to `aramb_workflows.create`,
 post the failure as the chat summary (see "Error handling"), and exit.
 
 ### 3. Polish the workflow (substantive — required when wizard answers are present)
@@ -156,7 +157,7 @@ What "substantive polish" looks like:
   executing agent do its job (e.g. infer the company is early-stage, infer
   the ICP is "indie-founder-style buyer", add one-line guidance).
 - **Strip any stale closing-call block** — if a template-shipped node prompt
-  ends with a literal `npx mcporter call brahmi.update_my_workflow_step …`
+  ends with a literal `npx mcporter call aramb_workflows.update_my_step …`
   block, remove it and put a one-line output contract in its place (see
   "Output contract per node" above).
 
@@ -175,13 +176,13 @@ applies.
 
 ### 4. Save the workflow
 
-Call `save_workflow` with `application_id` + `project_id` (both available
+Call `aramb_workflows.create` with `application_id` + `project_id` (both available
 from your dispatch context, same as every other master-side MCP call). Pass
 the polished workflow fields plus `template_slug` so brahmi stamps
 `DefinitionSource{Kind:"template", Reference:slug}` on the workflow row.
 
 ```bash
-npx mcporter call brahmi.save_workflow \
+npx mcporter call aramb_workflows.create \
   application_id="<application_id>" \
   project_id="<project_id>" \
   template_slug="<slug from the template-import block>" \
@@ -195,7 +196,7 @@ npx mcporter call brahmi.save_workflow \
   edges='<workflow.edges JSON, verbatim>'
 ```
 
-**Pre-flight checklist — verify before calling `save_workflow`.** For every
+**Pre-flight checklist — verify before calling `aramb_workflows.create`.** For every
 node in your `nodes` array, confirm:
 
 - `unique_id`, `assigned_agent`, `acceptance_criteria`, `settings` — all
@@ -203,7 +204,7 @@ node in your `nodes` array, confirm:
 - `name`, `prompt` — may carry your polish from step 3
 - `required_toolkits` — present on every node, copied verbatim from the
   template payload (use `[]`, never omit)
-- `prompt` — carries business context + a one-line output contract. If the template shipped a stale `npx mcporter call brahmi.update_my_workflow_step …` block at the bottom, polish should have stripped it (step 3).
+- `prompt` — carries business context + a one-line output contract. If the template shipped a stale `npx mcporter call aramb_workflows.update_my_step …` block at the bottom, polish should have stripped it (step 3).
 
 And on the call itself:
 
@@ -213,18 +214,18 @@ And on the call itself:
 - `env_variables` — `'{}'` (templates do not declare env variables in v1)
 - `edges` — verbatim from the template payload (each edge `{source, target}`).
 
-**Never retry `save_workflow`.** One shot — success or failure. If the call
+**Never retry `aramb_workflows.create`.** One shot — success or failure. If the call
 fails, surface the error in the chat summary (step 5) and stop.
 
 ### 5. Post a chat summary
 
-After `save_workflow` returns, post a short chat message naming the
+After `aramb_workflows.create` returns, post a short chat message naming the
 workflow and listing the agents you created. Use the `name` you sent to
-`save_workflow` and the agent `displayName` values from the `<agents>`
+`aramb_workflows.create` and the agent `displayName` values from the `<agents>`
 specs (fall back to title-cased `name` when `displayName` is empty).
 
 ```bash
-npx mcporter call brahmi.send_message \
+npx mcporter call aramb_chat.send_message \
   content="Created **GTM Team** workflow with 8 agents: Sales Manager, Lead Researcher, Email Writer, Call Prep, Demo Scheduler, Lead Scorer, CRM Sync, Analytics."
 ```
 
@@ -233,30 +234,30 @@ After posting, STOP. Do not send follow-up messages.
 ## Error handling
 
 - **`create-agent` fails for any spec** → post a single chat message naming
-  the failing agent and the reason, then STOP. Do NOT call `save_workflow`.
+  the failing agent and the reason, then STOP. Do NOT call `aramb_workflows.create`.
 
   ```bash
-  npx mcporter call brahmi.send_message \
+  npx mcporter call aramb_chat.send_message \
     content="Couldn't create agent **<name>**: <reason>. Template import aborted."
   ```
 
-- **`save_workflow` fails** → post a single chat message naming the failure,
+- **`aramb_workflows.create` fails** → post a single chat message naming the failure,
   then STOP. No retry. (At this point the agents were created — if the user
   retries the import the agent registry will report a conflict; that's
   acceptable for v1, but mention it in the chat summary so they know.)
 
   ```bash
-  npx mcporter call brahmi.send_message \
+  npx mcporter call aramb_chat.send_message \
     content="Created agents but couldn't create the workflow: <reason>. Re-importing the same template will fail until the existing agents are deleted."
   ```
 
 - **`<template-import>` block is malformed** (missing required fields,
   invalid JSON, no `slug`, no `<workflow>`, no `<agents>`) → post a single
   chat message flagging the bug, then STOP. No `create-agent` calls, no
-  `save_workflow` call.
+  `aramb_workflows.create` call.
 
   ```bash
-  npx mcporter call brahmi.send_message \
+  npx mcporter call aramb_chat.send_message \
     content="Template import payload was malformed — this is a bug, please file it."
   ```
 
@@ -266,9 +267,9 @@ After posting, STOP. Do not send follow-up messages.
 
 ## What this skill does NOT do
 
-- Does NOT call `list_tasks` (no tasks drive this dispatch)
-- Does NOT call `update_task` (no task was opened)
-- Does NOT call `update_workflow` (we're creating, not editing)
+- Does NOT call `aramb_tasks.list` (no tasks drive this dispatch)
+- Does NOT call `aramb_tasks.update` (no task was opened)
+- Does NOT call `aramb_workflows.update` (we're creating, not editing)
 - Does NOT invoke any other agent (the listed agents only start working
   when the user manually triggers a run of the new workflow)
 - Does NOT set a schedule (template imports do not carry scheduling
@@ -283,9 +284,9 @@ After posting, STOP. Do not send follow-up messages.
 - Trigger is the `<template-import>` block in the extra-system-prompt — never the user's prose
 - Create every agent from the `<agents>` array via `create-agent` before saving the workflow — verbatim persona content, no rewriting
 - Substantively polish node `name` / `prompt` text (and the workflow `name` / `description`) when `<wizard-answers>` is non-empty; structure (`assigned_agent`, `required_toolkits`, edges, settings) is immutable
-- Every node in `save_workflow` carries `required_toolkits` (use `[]` when empty, never omit)
+- Every node in `aramb_workflows.create` carries `required_toolkits` (use `[]` when empty, never omit)
 - Every node's `prompt` carries business context + a one-line output contract (see "Output contract per node")
-- `save_workflow` runs exactly once; never retry
+- `aramb_workflows.create` runs exactly once; never retry
 - Always pass `template_slug` so brahmi records the workflow's origin
 - Post exactly one chat summary at the end (success or error); then STOP
-- Never call `list_tasks`, `update_task`, or `update_workflow` from this skill
+- Never call `aramb_tasks.list`, `aramb_tasks.update`, or `aramb_workflows.update` from this skill
