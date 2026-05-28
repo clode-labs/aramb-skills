@@ -133,6 +133,27 @@ Every backend must read its CORS allowed origins from `ALLOWED_ORIGINS` env var.
 | Go (gin/echo) | `strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")` with localhost fallback |
 | Rails | `origins(*ENV.fetch("ALLOWED_ORIGINS", "http://localhost:3000").split(","))` |
 
+### Dev-server — accept `.proxy.clode.space` Host header
+
+Dev servers that ship with a host whitelist will reject the tunnel's Host
+header (`*.proxy.clode.space`) and return 403 / blank-page even when the
+process is reachable. The deployer can't fix this — it's a code-level config
+that must land at build time. Permissive servers (Express, FastAPI, Flask,
+Go stdlib) need nothing; the gated ones do.
+
+| Framework | Config |
+|-----------|--------|
+| Vite (React, Vue, Svelte) | `server.allowedHosts: ['.proxy.clode.space']` in `vite.config.*` (also set on `preview` if used). `'all'` is acceptable for local-dev. |
+| Next.js (dev mode) | `experimental.allowedDevOrigins: ['*.proxy.clode.space']` in `next.config.js` (Next ≥14). Production builds aren't affected. |
+| Webpack dev-server | `devServer.allowedHosts: 'all'` (or `['.proxy.clode.space']`). |
+| Django | Append `.proxy.clode.space` to `ALLOWED_HOSTS` (or `['*']` in dev). |
+| Rails | `config.hosts << ".proxy.clode.space"` in `config/environments/development.rb` (or `config.hosts.clear` in dev). |
+
+This rule applies whenever a dev server is exposed via aramb tunnel —
+which is every full-stack / frontend task in this environment. Set it at
+config-write time, not as a follow-up; the deployer escalates back via
+`needs_master_attention` if it's missing, costing a full round-trip.
+
 ### docker-compose.yml — env vars must be listed bare (no value)
 
 List the tunnel env vars without values in the `environment:` section. Docker compose will inherit them from the `--env-file` the local-deployer passes at runtime.
