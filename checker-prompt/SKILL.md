@@ -9,13 +9,16 @@ Use this skill whenever you set `enable_checker: true` on a task **or a workflow
 
 ## You write the validation guideline — not the reporting instructions
 
-The `checker_prompt` is **only** the guideline of what to verify (context + criteria, below). The gatekeeper's behavior — read-only auditing, the verdict shape, and how to emit it — is supplied by Brahmi's `checker_executor` system prompt, not by you. Do NOT bake verdict-reporting or tool-call instructions into the `checker_prompt`.
+The `checker_prompt` is **only** the guideline of what to verify (context + criteria, below). The gatekeeper's behavior — read-only auditing, how it decides, and how it commits the outcome — is supplied by Brahmi's `checker_executor` system prompt, not by you. Do NOT bake verdict-reporting or tool-call instructions into the `checker_prompt`.
 
-For reference, the gatekeeper reports its verdict by **explicit id**, never with the session-scoped self-update tools:
-- Task → `aramb_tasks.update task_id="<TASK_UUID>" status="done" outputs='{"verdict":...}'`
-- Workflow step → `aramb_workflows.update_step step_id="<STEP_UUID>" status="done" outputs='{"verdict":...}'`
+For reference (so you know what the gatekeeper does with what you write): **the STATUS the checker writes IS the verdict.** There is no `verdict` field in `outputs` — the status field carries the decision, and a DIRTY verdict's gaps travel in a top-level `feedback` arg. The checker uses the **explicit-id** form, never the session-scoped self-update tools (`update_me` / `update_my_step` fail with "no task/step context" in a fresh check session). It picks exactly one of four terminal calls:
 
-`update_me` / `update_my_step` are **not** used by the checker — a fresh check session can't resolve a self-context and they fail with "no task/step context". The `outputs` verdict shape is `{verdict, previous_gaps, new_gaps, summary}` (see the `aramb-workflows` skill for the workflow-step example).
+- **CLEAN** → `aramb_tasks.update task_id="<TASK_UUID>" status="done" outputs='{"audit":"clean","notes":"<summary>"}'`
+- **DIRTY, retry** (rounds remain) → task: `status="inbox"` · workflow step: `status="pending"`, with the gaps in `feedback='{"round":N,"previous_gaps":[{id,fixed,fix_note}],"new_gaps":[{description,severity}]}'`
+- **DIRTY, exhausted** (final round) → `status="failed" error="<MAX> rounds; integrity gaps remain: <list>"`
+- **CAN'T AUDIT** → task: `status="needs_master_attention"` · workflow step: `status="failed"` (steps have no master-escalation path), with `error="cannot audit: <reason>"`
+
+You don't write any of these — the `checker_executor` prompt does. Your job is the validation guideline below.
 
 ## Structure
 
