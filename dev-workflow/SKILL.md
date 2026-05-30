@@ -121,38 +121,76 @@ Example pattern (Vite):
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
 ```
 
-### Backend — CORS allowed origins must be env-driven
+### Backend — CORS allowed origins must be env-driven (with proxy wildcard)
 
-Every backend must read its CORS allowed origins from `ALLOWED_ORIGINS` env var. Never hardcode `localhost` or any origin.
+Every backend reads its CORS allowed origins from the `ALLOWED_ORIGINS` env var (comma-separated). The value is always supplied with `https://*.proxy.clode.space` included — any subdomain of `proxy.clode.space` must be accepted. Because most CORS middlewares treat the list as exact strings, match wildcards via regex in code.
 
-| Framework | Example |
-|-----------|---------|
-| Express (cors) | `origin: process.env.ALLOWED_ORIGINS?.split(",") ?? ["http://localhost:3000"]` |
-| FastAPI | `allow_origins=os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")` |
-| Django | `CORS_ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")` |
-| Go (gin/echo) | `strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")` with localhost fallback |
-| Rails | `origins(*ENV.fetch("ALLOWED_ORIGINS", "http://localhost:3000").split(","))` |
+```js
+// Express (cors)
+import cors from "cors";
+const patterns = (process.env.ALLOWED_ORIGINS || "http://localhost:3000,https://*.proxy.clode.space")
+  .split(",").map(s => new RegExp("^" + s.trim().replace(/\./g, "\\.").replace(/\*/g, ".*") + "$"));
+app.use(cors({ origin: (origin, cb) => cb(null, !origin || patterns.some(re => re.test(origin))) }));
+```
 
-### Dev-server — accept `.proxy.clode.space` Host header
+```python
+# FastAPI / Starlette
+import os, re
+from fastapi.middleware.cors import CORSMiddleware
+patterns = (os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://*.proxy.clode.space")).split(",")
+allow_origin_regex = "|".join("^" + p.strip().replace(".", r"\.").replace("*", ".*") + "$" for p in patterns)
+app.add_middleware(CORSMiddleware, allow_origin_regex=allow_origin_regex, allow_credentials=True,
+                   allow_methods=["*"], allow_headers=["*"])
 
-Dev servers that ship with a host whitelist will reject the tunnel's Host
-header (`*.proxy.clode.space`) and return 403 / blank-page even when the
-process is reachable. The deployer can't fix this — it's a code-level config
-that must land at build time. Permissive servers (Express, FastAPI, Flask,
-Go stdlib) need nothing; the gated ones do.
+# Django (django-cors-headers)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    "^" + p.strip().replace(".", r"\.").replace("*", ".*") + "$"
+    for p in os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,https://*.proxy.clode.space").split(",")
+]
+```
 
-| Framework | Config |
-|-----------|--------|
-| Vite (React, Vue, Svelte) | `server.allowedHosts: ['.proxy.clode.space']` in `vite.config.*` (also set on `preview` if used). `'all'` is acceptable for local-dev. |
-| Next.js (dev mode) | `experimental.allowedDevOrigins: ['*.proxy.clode.space']` in `next.config.js` (Next ≥14). Production builds aren't affected. |
-| Webpack dev-server | `devServer.allowedHosts: 'all'` (or `['.proxy.clode.space']`). |
-| Django | Append `.proxy.clode.space` to `ALLOWED_HOSTS` (or `['*']` in dev). |
-| Rails | `config.hosts << ".proxy.clode.space"` in `config/environments/development.rb` (or `config.hosts.clear` in dev). |
+```go
+// Go (gin + gin-contrib/cors)
+patterns := strings.Split(getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://*.proxy.clode.space"), ",")
+res := make([]*regexp.Regexp, 0, len(patterns))
+for _, p := range patterns {
+    res = append(res, regexp.MustCompile("^"+strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(p), ".", `\.`), "*", ".*")+"$"))
+}
+router.Use(cors.New(cors.Config{
+    AllowOriginFunc: func(origin string) bool { for _, r := range res { if r.MatchString(origin) { return true } }; return false },
+}))
+```
 
-This rule applies whenever a dev server is exposed via aramb tunnel —
-which is every full-stack / frontend task in this environment. Set it at
-config-write time, not as a follow-up; the deployer escalates back via
-`needs_master_attention` if it's missing, costing a full round-trip.
+The localhost entry covers local development; the `https://*.proxy.clode.space` entry covers every tunnel-exposed origin. Both must be present in the default.
+
+### Dev-server — accept `*.proxy.clode.space` host (env-driven)
+
+Dev servers with a host whitelist reject the tunnel's Host header and return 403 unless the wildcard is registered. The host list reads from the same `ALLOWED_ORIGINS` env var as the backend CORS list — the framework config extracts the hostnames at startup. Every config emits `.proxy.clode.space` as the baseline so the wildcard is honored even before the env var is populated.
+
+```js
+// vite.config.{js,ts}  (React, Vue, Svelte)
+import { defineConfig } from "vite";
+const hosts = (process.env.ALLOWED_ORIGINS || "http://localhost:3000,https://*.proxy.clode.space")
+  .split(",").map(s => { try { return new URL(s.trim()).hostname.replace(/^\*\./, "."); } catch { return s.trim(); } });
+export default defineConfig({
+  server:  { host: true, allowedHosts: hosts },
+  preview: { host: true, allowedHosts: hosts },
+});
+```
+
+```js
+// next.config.{js,mjs}  (Next.js ≥14, dev mode)
+const origins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000,https://*.proxy.clode.space").split(",").map(s => s.trim());
+export default { experimental: { allowedDevOrigins: origins.map(o => { try { return new URL(o).host; } catch { return o; } }) } };
+```
+
+| Other framework | Config (reads `ALLOWED_ORIGINS` the same way) |
+|---|---|
+| Webpack dev-server | `devServer.allowedHosts` ← hostnames extracted from `ALLOWED_ORIGINS` |
+| Django | `ALLOWED_HOSTS = [urlparse(o).hostname.lstrip("*.") or o for o in os.environ["ALLOWED_ORIGINS"].split(",")]` |
+| Rails | `ENV.fetch("ALLOWED_ORIGINS").split(",").each { |o| config.hosts << URI(o).host }` |
+
+This rule applies to every dev server exposed via the tunnel — every full-stack / frontend task in this environment. The config above lands at build time; the env var override at runtime expands or replaces the list without code changes.
 
 ### docker-compose.yml — env vars must be listed bare (no value)
 
@@ -173,12 +211,62 @@ services:
 ### .env.example — document with localhost defaults
 
 ```env
-# Tunnel wiring — local-deployer overrides these with public proxy URLs at runtime
+# Tunnel wiring — local-deployer overrides these with public proxy URLs at runtime.
+# ALLOWED_ORIGINS always includes the proxy wildcard so any subdomain of
+# proxy.clode.space can reach the service through the tunnel.
 VITE_API_URL=http://localhost:8080
-ALLOWED_ORIGINS=http://localhost:3000
+ALLOWED_ORIGINS=http://localhost:3000,https://*.proxy.clode.space
 ```
 
 **Rule:** If any service in the project makes cross-origin HTTP calls from a browser, these env vars are mandatory. No exceptions.
+
+---
+
+## Datasource Connections
+
+Every datasource (postgres, mysql, redis, mongodb, elasticsearch, kafka, rabbitmq, object stores) is wired into the service through a single env var named `<DATASOURCE>_HOST_URL` — `POSTGRES_HOST_URL`, `REDIS_HOST_URL`, `MONGO_HOST_URL`, etc.
+
+The value arrives in HTTP form: `http://<host>:<port>`. Drivers expect their own scheme (`postgres://`, `redis://`, …) or raw host + port, so the service **must** parse the URL at startup and pass `hostname` + `port` to the driver. This step is mandatory for every datasource — there is no opt-out.
+
+Centralize the parsing in one module per service (`src/db.js`, `app/db.py`, `internal/db/db.go`). All other code imports the configured client from there.
+
+```js
+// src/db.js
+import { Pool } from "pg";
+const u = new URL(process.env.POSTGRES_HOST_URL);
+export const db = new Pool({
+  host: u.hostname,
+  port: Number(u.port),
+  user: process.env.POSTGRES_USER,
+  password: process.env.POSTGRES_PASSWORD,
+  database: process.env.POSTGRES_DB,
+});
+```
+
+```python
+# app/db.py
+import os, psycopg2
+from urllib.parse import urlparse
+u = urlparse(os.environ["POSTGRES_HOST_URL"])
+db = psycopg2.connect(
+    host=u.hostname, port=u.port,
+    user=os.environ["POSTGRES_USER"],
+    password=os.environ["POSTGRES_PASSWORD"],
+    dbname=os.environ["POSTGRES_DB"],
+)
+```
+
+```go
+// internal/db/db.go
+u, _ := url.Parse(os.Getenv("POSTGRES_HOST_URL"))
+dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+    u.Hostname(), u.Port(),
+    os.Getenv("POSTGRES_USER"),
+    os.Getenv("POSTGRES_PASSWORD"),
+    os.Getenv("POSTGRES_DB"))
+```
+
+The same pattern applies to every datasource the service depends on — caches, search indexes, message queues, object stores.
 
 ---
 
@@ -241,11 +329,17 @@ The `docker-compose.yml` is how your work gets validated. It must be complete an
 
 **The `.env.example` file** must document every variable:
 ```env
-# Database
+# Datasources — host URL arrives in http(s):// form; code parses it
+# (see "Datasource Connections"). One <NAME>_HOST_URL per datasource.
+POSTGRES_HOST_URL=http://localhost:5432
 POSTGRES_USER=app
 POSTGRES_PASSWORD=changeme
 POSTGRES_DB=appdb
-DB_PORT=5432
+# REDIS_HOST_URL=http://localhost:6379
+# MONGO_HOST_URL=http://localhost:27017
+
+# CORS / dev-server host whitelist — proxy wildcard is always included.
+ALLOWED_ORIGINS=http://localhost:3000,https://*.proxy.clode.space
 
 # API
 API_PORT=3000
