@@ -78,13 +78,14 @@ npx mcporter call aramb_tasks.create project_id="<PROJECT_ID>" application_id="<
 For closing your OWN task, use `aramb_tasks.update_me`. Brahmi injects your task context from the dispatch session, so you don't pass `project_id` or `task_id`.
 
 ```bash
-# In-task close with a file deliverable (chip + status + done in one call)
+# In-task close — NO quality gate (enable_checker=false): you write done yourself
 npx mcporter call aramb_tasks.update_me status="done" \
   summary="Top 5 stories compiled." \
   artifacts='[{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/report.pdf"}]'
 
-# In-task close with a URL deliverable
-npx mcporter call aramb_tasks.update_me status="done" \
+# In-task close — WITH quality gate (enable_checker=true): close as validating,
+# NOT done. A checker audits your work and writes the terminal done/failed itself.
+npx mcporter call aramb_tasks.update_me status="validating" \
   summary="Frontend deployed." \
   artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend","environment":"deployed"}]'
 
@@ -104,6 +105,28 @@ Rules for the `artifacts` payload:
 - **File paths must be absolute** under `/home/node/workspace/<YOUR_WD>/`. Relative paths are rejected; paths outside your wd are rejected with a corrective error.
 - **URLs auto-register the preview state** — no separate `update_preview_url` call.
 - **`summary`** is markdown shown to the user when the task closes (status=done|failed only). 32KB cap.
+
+### Closing under the quality gate — `done` vs `validating`
+
+How you close depends on whether your task has a quality gate. Your dispatch
+prompt tells you: look for `enable_checker` (or the **## Quality gate** block).
+
+- **No gate (`enable_checker: false`)** → close with `status="done"` when the
+  work is complete. You are the terminal writer.
+- **Gate on (`enable_checker: true`, the default for team-mode tasks)** → close
+  with `status="validating"`, NOT `done`. You are *not* the one who writes
+  `done` — a checker audits your work in a fresh, read-only session and either
+  advances it to `done` itself or sends the task back to you as `inbox` with the
+  gaps to fix. Same `summary` / `artifacts` / `outputs` shape as a `done` close.
+
+**Do not write `done` when the gate is on.** Brahmi rejects the call with a
+corrective tool result telling you to use `validating`; read it and re-issue.
+The corrective result is the contract talking — treat it as a teach signal, not
+an error. The full discipline lives in the **TASK EXECUTOR** system prompt.
+
+`validating` → checker-pass → `done` (or `failed` if the checker exhausts its
+rounds) are the terminal end-states under the gate. You never write `done`
+yourself when a gate is active.
 
 ## update — close ANOTHER task or patch metadata
 

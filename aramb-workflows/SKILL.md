@@ -128,22 +128,29 @@ Rules for `update_my_step`:
 
 ## Checker verdict on a workflow step (maker-checker gate)
 
-When a workflow node has the maker-checker gate enabled, Brahmi runs the node's maker, then dispatches an independent **checker review** against the same step before the step advances. The review is the step's own assigned agent re-run in a fresh, read-only session under a gatekeeper system prompt — there is no separate checker persona. If your dispatch tells you to validate a workflow step (you'll get a gatekeeper system prompt, not the maker's execution prompt), report your verdict with `status="done"` and a **verdict** payload — NOT the maker `{summary, files}` shape.
+When a workflow node has the maker-checker gate enabled, Brahmi runs the node's maker, then dispatches an independent **checker review** against the same step before the step advances. The review is the step's own assigned agent re-run in a fresh, read-only session under a gatekeeper system prompt — there is no separate checker persona. If your dispatch tells you to validate a workflow step (you'll get a gatekeeper system prompt, not the maker's execution prompt), **the STATUS you write IS the verdict** — there is no `verdict` field in `outputs` anymore. A DIRTY verdict's gaps travel in a top-level `feedback` arg, not in `outputs`.
 
-**Report via the explicit-id form `update_step step_id="<STEP_UUID>"` — NOT `update_my_step`.** A check runs in a fresh session that does not resolve a step context, so `update_my_step` fails with "no step context". Your dispatch gives you the exact command (with the real `step_id`) under "Report your verdict" — run that:
+**Report via the explicit-id form `update_step step_id="<STEP_UUID>"` — NOT `update_my_step`.** A check runs in a fresh session that does not resolve a step context, so `update_my_step` fails with "no step context". Your dispatch gives you the exact command (with the real `step_id`) under "Report your verdict" — run that. Pick exactly ONE:
 
 ```bash
-# Pass — work meets the criteria; the step completes and children promote:
-npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="done" outputs='{"verdict":"pass","previous_gaps":[{"id":"gap_1","fixed":true,"fix_note":"..."}],"new_gaps":[],"summary":"All criteria met."}'
+# CLEAN — work has integrity; the step completes and children promote:
+npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="done" outputs='{"audit":"clean","notes":"All criteria met."}'
 
-# Fail — Brahmi re-runs the maker with these gaps (up to the round cap, then fails the step):
-npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="done" outputs='{"verdict":"fail","previous_gaps":[{"id":"gap_1","fixed":false}],"new_gaps":[{"description":"POST /users returns 500 on valid input","severity":"critical"}],"summary":"1 criterion unmet."}'
+# DIRTY, RETRY — gaps found and rounds remain; Brahmi re-runs the maker with these gaps:
+npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="pending" feedback='{"round":1,"previous_gaps":[{"id":"gap_1","fixed":false}],"new_gaps":[{"description":"POST /users returns 500 on valid input","severity":"critical"}]}'
+
+# DIRTY, EXHAUSTED — gaps found and this is the final round (or Brahmi rejects your retry as budget-exhausted):
+npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="failed" error="3 rounds; integrity gaps remain: <list>"
+
+# CAN'T AUDIT — environment broken (working dir or files missing). Steps have NO master-escalation path, so this closes failed:
+npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="failed" error="cannot audit: <reason>"
 ```
 
 Verdict rules (same as the task checker — see the `checker-prompt` skill):
-- `verdict="pass"` only when ALL criteria are met and no critical gap remains.
-- `verdict="fail"` re-runs the maker with the unfixed gaps injected into its prompt. `status="failed"` is reserved for "cannot validate at all" (missing working dir, etc.) — NOT for found bugs.
-- `previous_gaps` must report `fixed` for every gap id you were given; `new_gaps` omit `id` (Brahmi assigns stable ids).
+- `status="done"` only when the work has integrity and no critical gap remains.
+- `status="pending"` re-runs the maker with the unfixed gaps from `feedback` injected into its prompt (capped at the round count Brahmi shows you; past the cap, write `status="failed"`).
+- `status="failed"` is the DIRTY-exhausted verdict AND the can't-validate fallback (missing working dir, etc.). For a workflow step, can't-audit also closes `failed` — there is no `needs_master_attention` for steps.
+- In `feedback`, `previous_gaps` must report `fixed` for every gap id you were given; `new_gaps` omit `id` (Brahmi assigns stable ids).
 
 ## Rules
 
