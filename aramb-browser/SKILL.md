@@ -57,8 +57,22 @@ Only if `browser_list` had no match for your slug:
    ```bash
    npx mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb ttl_minutes=30
    ```
+2. **steel** (third-party BaaS, `browser_type=chrome` only) — pick when the user asks for it or when you specifically need Steel's residential proxy / managed captcha solving.
+   ```bash
+   npx mcporter call aramb-browser.browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30
+   ```
 
 Fails → stop and report. Don't autonomously try other providers; don't preemptively prompt about user-network.
+
+### Optional `browser_create` inputs
+
+- `session_context=<string>` — replay a previously captured browser-context string (cookies + per-origin storage) inline at create time, instead of running `browser_load_context` afterwards. Pass the opaque value returned by `browser_save_context` verbatim.
+- `use_proxy=true|false` — opt into the provider's residential proxy. Defaults to true; only steel acts on it today.
+- `auto_solve_captcha=true|false` — opt into automatic captcha solving. Defaults to true; only steel acts on it today.
+
+### Steel + captcha
+
+When a steel session is solving a captcha, the Aramb viewer UI shows a "solving captcha" status. Don't interact with the page, navigate, or recreate the browser while it's in that state — wait for the status to clear, then continue.
 
 Chain create + first navigate in one Bash call (shell `cwd` resets between mcporter calls; `&&` avoids drift):
 
