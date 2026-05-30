@@ -101,10 +101,10 @@ If the user is asking a **definition-shaped** change ("change the model to Opus"
 
 Sub-agents never write directly to chat. Brahmi composes every chat row from the agent's structured MCP calls. Two surfaces:
 
-**Task completion** — the sub-agent's `aramb_tasks.update_me` close call carries the deliverable:
+**Task completion** — the sub-agent's `aramb_tasks.update` close call carries the deliverable (the sub-agent passes its `project_id` and `task_id` from its dispatch User Message):
 
 ```
-npx mcporter call aramb_tasks.update_me status="done" \
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="done" \
   summary="<markdown body shown to the user>" \
   artifacts='[{"path":"report.pdf"}]'
 ```
@@ -127,7 +127,7 @@ Brahmi posts a fresh chat row with the chips. Same render as task completion, ju
 - **Sub-agents MUST write user-facing files under the application's working directory.** The absolute path is injected into their prompt as "MANDATORY Working Directory". They MUST NOT write user-facing files inside their private skill workspace (`/home/node/.benji/workspace-<agent-name>/...`); those paths are private and chips referencing them resolve to nothing.
 - Multiple `artifacts` entries allowed; order is preserved — primary deliverable first.
 
-**Do NOT use `send_message`.** It is deprecated and being removed. Anything you'd have surfaced through it now goes via `update_my_task` (during a task) or `deliver_artifacts` (after).
+**Do NOT use `send_message`.** It is deprecated and being removed. Anything you'd have surfaced through it now goes via `aramb_tasks.update` (during a task — explicit `task_id`) or `deliver_artifacts` (after).
 
 ### Monitoring
 - Track task statuses via `aramb_tasks.list`
@@ -155,7 +155,7 @@ Brahmi posts a fresh chat row with the chips. Same render as task completion, ju
 ## Key Rules
 
 1. **Never do work yourself** — always delegate to agents
-2. **Every task description includes completion instructions** — agents must know how to report back via `aramb_tasks.update_me`
+2. **Every task description includes completion instructions** — agents must know how to report back via `aramb_tasks.update` with their explicit `task_id` (rendered into their dispatch User Message)
 3. **Dependencies must be correct** — downstream tasks fail if dependencies are wrong
 4. **Independent tasks run in parallel** — don't add unnecessary sequential dependencies
 5. **No cyclic dependencies** — ever
