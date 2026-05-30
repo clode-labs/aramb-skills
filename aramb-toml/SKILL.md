@@ -37,14 +37,14 @@ Scan for:
 
 ## Step 2: Service Type Mapping
 
-| Detected Pattern | Service(s) | Notes |
+| Detected Pattern | Service(s) | Build service `targetType` |
 |---|---|---|
-| Backend framework (Express, FastAPI, Gin, Django, Rails, …) | git: `build` + `backend` · no-git: `backend` only | Build ID < runtime ID. |
-| Server-side frontend (Next.js, Nuxt, SvelteKit) | same as backend | Runs a Node server in-cluster. |
-| Static frontend (React/Vite, CRA, Angular, plain HTML) | `frontend` (both modes) | Image is filled by a local static build with `aramb build --static-outdir …` regardless of git remote — see the deployment skill. |
-| Aramb agent code | `build` + `aramb-agent` | |
-| Database (postgres, redis, mongodb) | direct `image` | No build service. |
-| Pre-built / third-party container | direct `image` | No build service. |
+| Backend framework (Express, FastAPI, Gin, Django, Rails, …) | git: `build` + `backend` · no-git: `backend` only | `"backend"` |
+| Server-side frontend (Next.js, Nuxt, SvelteKit) | same as backend | `"backend"` |
+| Static frontend (React/Vite, CRA, Angular, plain HTML) | git: `build` + `frontend` · no-git: `frontend` only | `"frontend"` (+ `staticOutDir`) |
+| Aramb agent code | `build` + `aramb-agent` | `"aramb-agent"` |
+| Database (postgres, redis, mongodb) | direct `image` | n/a (no build service) |
+| Pre-built / third-party container | direct `image` | n/a (no build service) |
 
 Supported service types: `aramb-agent`, `backend`, `build`, `frontend`, `mongodb`, `onboarding`, `postgres`, `redis`, `template`.
 
@@ -54,6 +54,11 @@ Supported service types: `aramb-agent`, `backend`, `build`, `frontend`, `mongodb
 - Start at 100, increment by 1. No gaps, no duplicates.
 - Build service ID is **less than** its runtime service ID.
 - Order services by dependency: lower IDs are dependencies of higher IDs.
+
+### Build services declare `targetType`
+Every `type="build"` service sets `targetType` to the runtime type that consumes its `outputs.IMAGE_URL` (`"backend"`, `"frontend"`, `"aramb-agent"`, or `"template"`). The build worker forwards this to `aramb build --type …`, taking the matching path deterministically (static OCI artifact for frontend; Docker/Railpack image for backend) regardless of any Dockerfile in the build path. The platform validates that the consuming runtime service's `type` matches the build's `targetType`.
+
+When `targetType="frontend"`, also set `staticOutDir` to the framework's build-output directory (`"./dist"` for Vite, `"./build"` for CRA, `"./out"` for Next static export, `"./dist/<app>"` for Angular).
 
 ### Backend `cmd` is never set
 The platform passes `cmd` as raw argv to Kubernetes with no shell wrapper, so `&&` chaining and shell interpolation break. Backend services rely on the Dockerfile `CMD` (use shell form there for startup chains: `CMD ["sh","-c","flask db upgrade && gunicorn -b 0.0.0.0:$PORT app:create_app()"]`).
@@ -143,6 +148,7 @@ repoUrl = "<repoUrl from caller>"
 buildPath = "./backend"
 targetBranches = ["main"]
 installationId = "123456789"
+targetType = "backend"
 
 [[services]]
 uniqueIdentifier = 102
@@ -176,15 +182,33 @@ value = "${100.secrets.POSTGRES_PASSWORD}"
 key = "JWT_SECRET"
 value = ""
 
-# === FRONTEND — static assets, built locally with --static-outdir ===
+# === FRONTEND — static assets (build + runtime) ===
+# targetType="frontend" + staticOutDir tell the build worker to
+# invoke `aramb build --type frontend --static-outdir <staticOutDir>`,
+# producing a static.tgz OCI artifact regardless of any Dockerfile in the
+# build path. Dockerfiles for local docker-compose previews stay intact.
 [[services]]
 uniqueIdentifier = 103
+name = "frontend-build"
+type = "build"
+description = "Build service that produces the frontend static OCI artifact"
+applicationId = "$APPLICATION_ID"
+[services.configuration.settings]
+repoUrl = "<repoUrl from caller>"
+buildPath = "./frontend"
+targetBranches = ["main"]
+installationId = "123456789"
+targetType = "frontend"
+staticOutDir = "./frontend/dist"
+
+[[services]]
+uniqueIdentifier = 104
 name = "frontend-web"
 type = "frontend"
 description = "Frontend web application serving the React/Vue/Angular UI"
 applicationId = "$APPLICATION_ID"
 [services.configuration.settings]
-image = ""  # filled by: aramb build ./frontend --static-outdir ./frontend/dist --push --service {slug}
+image = "${103.outputs.IMAGE_URL}"
 staticPath = "./frontend/dist"
 [[services.configuration.vars]]
 key = "API_URL"
@@ -197,12 +221,11 @@ value = "https://*.proxy.clode.space"
 ### No-Git Mode — delta from above
 
 Apply these changes to the git-mode template; everything else stays identical:
-- Drop the `backend-build` block (the `type="build"` service).
-- In the backend runtime block, replace `image = "${101.outputs.IMAGE_URL}"` with `image = ""` (filled by `aramb build ./backend --service {slug} --push`).
-- Renumber subsequent `uniqueIdentifier` values to stay sequential (backend becomes 101, frontend becomes 102, etc.).
-- Update the frontend's `API_URL` reference to the new backend ID (e.g. `${101.outputs.PUBLIC_URL}`).
-
-The frontend block is the same in both modes — static frontends always build locally.
+- Drop the `backend-build` and `frontend-build` blocks (all `type="build"` services).
+- In the backend runtime block, replace `image = "${101.outputs.IMAGE_URL}"` with `image = ""` (filled locally by `aramb build ./backend --type backend --service {slug} --push`).
+- In the frontend runtime block, replace `image = "${103.outputs.IMAGE_URL}"` with `image = ""` (filled locally by `aramb build ./frontend --type frontend --static-outdir ./frontend/dist --service {slug} --push`).
+- Renumber `uniqueIdentifier` to stay sequential without the build services (backend becomes 101, frontend becomes 102).
+- Update the frontend's `API_URL` reference to the new backend ID (`${101.outputs.PUBLIC_URL}`).
 
 ## Updating an Existing aramb.toml
 
@@ -224,6 +247,7 @@ The frontend block is the same in both modes — static frontends always build l
 8. Static frontends (`type="frontend"`) have `image = ""` and `staticPath` set; image is filled by a local `--static-outdir` build.
 9. Static frontends reference backends via `${backend-id.outputs.PUBLIC_URL}`; SSR frontends (`type="backend"`) and other backends reference in-cluster services via `${N.outputs.PRIVATE_URL}`.
 10. Every backend and every frontend service has an `ALLOWED_ORIGINS` var that includes `https://*.proxy.clode.space`.
-11. Git mode: every backend build service has `repoUrl`, `buildPath`, `targetBranches`, `installationId`. No-git mode: all own-codebase services have `image = ""`.
+11. Every `type="build"` service declares `targetType` matching its consuming runtime (`"backend"`, `"frontend"`, `"aramb-agent"`, or `"template"`). When `targetType="frontend"`, `staticOutDir` is also set.
+12. Git mode: every build service has `repoUrl`, `buildPath`, `targetBranches`, `installationId`. No-git mode: all own-codebase services have `image = ""`.
 
 **Error fallbacks**: no services detected → minimal template (one postgres + one backend); unknown framework → `type = "template"`; circular dependency → break the cycle; Docker Compose parse failure → fall back to codebase-only analysis.

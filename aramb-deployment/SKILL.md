@@ -11,9 +11,13 @@ The fixed flow is:
 
 ```
 generate TOML → fill secrets → services create --from-toml
-              → build --push for local-built services (all type="frontend"; in no-git mode also type="backend") → update TOML
+              → (no-git mode only) build --push for own-codebase services → update TOML with image URLs
               → deploy --from-toml --yes → poll deploy status → done
 ```
+
+Git mode: the build worker runs `aramb build` against the cloned repo using each build service's `targetType` + `staticOutDir` to pick the correct path (static OCI artifact for frontend, Docker image for backend). No local build step is needed.
+
+No-git mode: build locally with the same flags the build worker would have used, and write the resulting image URL back into the TOML.
 
 `services create --from-toml` resolves/creates services only — it does NOT push configuration.
 `deploy --from-toml --yes` pushes the merged configuration AND triggers the deployment in one step.
@@ -143,43 +147,17 @@ The skill writes `aramb.toml` with build + runtime service pairs for own-codebas
 
 ### Step 3: Create Services from TOML
 
-This resolves project/application/service references and creates any missing services. It does NOT push configuration — that happens in Step 5.
+This resolves project/application/service references and creates any missing services. It does NOT push configuration — that happens in Step 4.
 
 ```bash
 aramb services create --from-toml || { echo "ERROR: Service creation failed"; exit 1; }
 ```
 
-After this step the TOML has actual `slug` and `id` values written back for each service. Use those slugs in Step 4.
+After this step the TOML has actual `slug` and `id` values written back for each service.
 
 ---
 
-### Step 4: Build and Push Static Frontends Locally
-
-`type="frontend"` services build their static assets locally and push them as an OCI artifact. This runs even in git mode so the static build path is taken regardless of any Dockerfile in the frontend directory (Dockerfiles are kept for local docker-compose previews).
-
-For each `type="frontend"` service in aramb.toml, read its `slug` and `staticPath`, then build:
-
-```bash
-IMAGE_URL=$(aramb build {BUILD_PATH} --static-outdir {STATIC_PATH} --service {SERVICE_SLUG} --push \
-  | jq -r '.IMAGE_URL') || { echo "ERROR: Frontend build failed for {SERVICE_SLUG}"; exit 1; }
-```
-
-Where:
-- `{BUILD_PATH}` — the frontend source directory (`./frontend`, `./web`, `.`, etc.)
-- `{STATIC_PATH}` — the build output directory matching `staticPath` in the TOML (`./frontend/dist`, `./frontend/build`, etc.)
-- `{SERVICE_SLUG}` — the `slug` of the `type="frontend"` runtime service
-
-Replace its `image = ""` placeholder using the slug to scope the replacement:
-
-```bash
-sed -i "/slug = \"${SERVICE_SLUG}\"/,/\[\[/ s|image = \"\"|image = \"${IMAGE_URL}\"|" aramb.toml
-```
-
-Backend services (`type="backend"`, including SSR frontends like Next.js / Nuxt / SvelteKit) are built and deployed by the platform from `repoUrl` + `buildPath` — no local build step is needed for them in git mode.
-
----
-
-### Step 5: Deploy All Services from TOML
+### Step 4: Deploy All Services from TOML
 
 This merges and pushes the configuration AND triggers deployment in a single call.
 
@@ -189,7 +167,7 @@ aramb deploy --from-toml --yes || { echo "ERROR: Deploy failed"; exit 1; }
 
 ---
 
-### Step 6: Poll Deploy Status
+### Step 5: Poll Deploy Status
 
 **The only source of truth for "is the deployment done" is `aramb deploy status`.** Do NOT use `aramb logs`, `aramb services logs`, `aramb logs history`, `curl`, `wget`, `docker logs`, or any other tool to determine deployment health. They are not part of this flow.
 
@@ -280,21 +258,21 @@ You do not need to set, check, or probe `BUILDKIT_HOST`. Just run `aramb build`.
 
 The build invocation depends on the runtime service type. Iterate over every own-codebase service in aramb.toml (those with `image = ""`) and pick the matching command. Services that already have a non-empty image (postgres, redis, public-image services) are skipped.
 
-**For `type="backend"` (and SSR frontends typed as backend — Next.js, Nuxt, SvelteKit, plus any service with a Dockerfile):**
+**For `type="backend"` (and SSR frontends typed as backend — Next.js, Nuxt, SvelteKit):**
 
 ```bash
-IMAGE_URL=$(aramb build {BUILD_PATH} --service {SERVICE_SLUG} --push \
+IMAGE_URL=$(aramb build {BUILD_PATH} --type backend --service {SERVICE_SLUG} --push \
   | jq -r '.IMAGE_URL') || { echo "ERROR: Build failed for {SERVICE_SLUG}"; exit 1; }
 ```
 
 **For `type="frontend"` (static SPAs — React/Vite, CRA, Angular, plain HTML):**
 
 ```bash
-IMAGE_URL=$(aramb build {BUILD_PATH} --static-outdir {STATIC_PATH} --service {SERVICE_SLUG} --push \
+IMAGE_URL=$(aramb build {BUILD_PATH} --type frontend --static-outdir {STATIC_PATH} --service {SERVICE_SLUG} --push \
   | jq -r '.IMAGE_URL') || { echo "ERROR: Frontend build failed for {SERVICE_SLUG}"; exit 1; }
 ```
 
-`--static-outdir` instructs the CLI to take the static-build path: run the framework build, archive the output directory as a `static.tgz` OCI artifact (files under a `static/` prefix), and push it to the registry. This path is taken regardless of any Dockerfile present in the build path, so local docker-compose previews keep their Dockerfile untouched.
+`--type frontend --static-outdir` instructs the CLI to take the static-build path: run the framework build, archive the output directory as a `static.tgz` OCI artifact (files under a `static/` prefix), and push it to the registry. This path is taken regardless of any Dockerfile present in the build path, so local docker-compose previews keep their Dockerfile untouched. `--type backend` forces the Docker/Railpack path for backends, matching what the platform's build worker does for git-mode builds via the build service's `targetType`.
 
 Where:
 - `{BUILD_PATH}` — the local source directory for this service (`./backend`, `./frontend`, `./services/auth-service`, etc.)
@@ -334,7 +312,7 @@ aramb deploy --from-toml --yes || { echo "ERROR: Deploy failed"; exit 1; }
 
 ### Step 7: Poll Deploy Status
 
-Same as Path A Step 6 — use `aramb deploy status --loop` and `--output json`, nothing else.
+Same as Path A Step 5 — use `aramb deploy status --loop` and `--output json`, nothing else.
 
 Same output format as Path A. Set `"deploy_mode": "no-git"` and include a `"build"` object:
 
@@ -408,16 +386,15 @@ Backend: Express in ./backend | Frontend: React+Vite in ./frontend | DB: postgre
 Git remote: YES
 
 aramb.toml services (generated by aramb-toml skill):
-  postgres-db    (type=postgres, image=postgres:15)
-  backend-build  (type=build,    buildPath=./backend)
-  backend-api    (type=backend,  image=${101.outputs.IMAGE_URL})
-  frontend-web   (type=frontend, image="", staticPath="./frontend/dist",
-                  API_URL=${102.outputs.PUBLIC_URL})
+  postgres-db     (type=postgres, image=postgres:15)
+  backend-build   (type=build,    buildPath=./backend, targetType="backend")
+  backend-api     (type=backend,  image=${101.outputs.IMAGE_URL})
+  frontend-build  (type=build,    buildPath=./frontend, targetType="frontend", staticOutDir="./frontend/dist")
+  frontend-web    (type=frontend, image=${103.outputs.IMAGE_URL}, staticPath="./frontend/dist",
+                   API_URL=${102.outputs.PUBLIC_URL})
 
 → aramb services create --from-toml
-→ aramb build ./frontend --static-outdir ./frontend/dist --service frontend-web --push
-  → update image in TOML for frontend-web
-→ aramb deploy --from-toml --yes
+→ aramb deploy --from-toml --yes  (platform's build worker handles both builds)
 → poll aramb deploy status for each non-build service
 ```
 
@@ -433,8 +410,8 @@ aramb.toml services (generated by aramb-toml skill):
                  API_URL=${101.outputs.PUBLIC_URL})
 
 → aramb services create --from-toml
-→ aramb build ./api --service backend-api --push                            → update image in TOML
-→ aramb build ./web --static-outdir ./web/dist --service frontend-web --push → update image in TOML
+→ aramb build ./api --type backend  --service backend-api  --push                              → update image in TOML
+→ aramb build ./web --type frontend --static-outdir ./web/dist --service frontend-web --push   → update image in TOML
 → aramb deploy --from-toml --yes
 → poll aramb deploy status for each non-build service
 ```
@@ -442,28 +419,33 @@ aramb.toml services (generated by aramb-toml skill):
 ### Scenario 3: Frontend-Only
 
 ```
-Either git-connected or no-git (static frontends always build locally):
+Git-connected:
+  frontend-build  (type=build,    buildPath=., targetType="frontend", staticOutDir="./dist")
+  frontend-web    (type=frontend, image=${100.outputs.IMAGE_URL}, staticPath="./dist")
+→ aramb services create --from-toml
+→ aramb deploy --from-toml --yes  (platform's build worker runs the static build)
+→ poll deploy status
+
+No-git:
   frontend-web  (type=frontend, image="", staticPath="./dist")
 → aramb services create --from-toml
-→ aramb build . --static-outdir ./dist --service frontend-web --push
+→ aramb build . --type frontend --static-outdir ./dist --service frontend-web --push
   → update image in TOML
 → aramb deploy --from-toml --yes
 → poll deploy status
-
 ```
 
 ### Scenario 4: Pre-Built/Third-Party Backend
 
 ```
-Uses public API image + own static frontend codebase. Git remote: YES or NO
+Uses public API image + own static frontend codebase. Git remote: YES
 
-  public-api    (type=backend,  image="myorg/api:v2")  ← no build service
-  frontend-web  (type=frontend, image="", staticPath="./frontend/dist",
-                 API_URL=${101.outputs.PUBLIC_URL})
+  public-api      (type=backend,  image="myorg/api:v2")  ← no build service
+  frontend-build  (type=build,    buildPath=./frontend, targetType="frontend", staticOutDir="./frontend/dist")
+  frontend-web    (type=frontend, image=${102.outputs.IMAGE_URL}, staticPath="./frontend/dist",
+                   API_URL=${101.outputs.PUBLIC_URL})
 
 → aramb services create --from-toml
-→ aramb build ./frontend --static-outdir ./frontend/dist --service frontend-web --push
-  → update image in TOML
 → aramb deploy --from-toml --yes
 → poll deploy status
 ```
