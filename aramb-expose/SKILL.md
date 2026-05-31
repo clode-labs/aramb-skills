@@ -11,7 +11,7 @@ description: >
 
 ## MUST rules — read before anything else
 
-1. **If this skill exposes a URL the user can reach, surface it as a URL-kind artifact** — either on `aramb_tasks.update_me` (when closing a task) or on `aramb_chat.deliver_artifacts` (solo / mid-task recall). Brahmi auto-registers the preview-URL state from that single call — no separate `update_preview_url` step. Mentioning the URL in chat prose is not a substitute — the chip pipeline cannot reconstruct chips from prose after the fact.
+1. **If this skill exposes a URL the user can reach, surface it as a URL-kind artifact** — either on `aramb_tasks.update` (when closing a task) or on `aramb_chat.deliver_artifacts` (solo / mid-task recall). Brahmi auto-registers the preview-URL state from that single call — no separate `update_preview_url` step. Mentioning the URL in chat prose is not a substitute — the chip pipeline cannot reconstruct chips from prose after the fact.
    - **Failure mode:** Putting the URL only in prose leaves the user with dead text — no clickable chip, no preview state, no in-app iframe wiring.
 
 ## Overview
@@ -162,15 +162,21 @@ verify_url "$API_URL" "api"
 Surface the primary frontend URL as a URL-kind artifact on your task close (in-task) or on a `aramb_chat.deliver_artifacts` call (solo). Brahmi auto-registers the preview-URL state. Secondary backend / API URLs go in the inline reply text alongside.
 
 ```bash
-# In a task: chip + status close + preview state in ONE call
-npx mcporter call aramb_tasks.update_me status="done" \
+# In a task: chip + status close + preview state in ONE call.
+# Pull PROJECT_ID and TASK_ID from your dispatch User Message.
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="done" \
   summary="✅ Tunnels live (PID: $EXPOSE_PID):
 - frontend: $FRONTEND_URL
 - api: $API_URL" \
   artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]'
 
-# Solo / mid-task recall: same artifact shape via aramb_chat.deliver_artifacts
+# Solo / mid-task recall: same artifact shape via aramb_chat.deliver_artifacts.
+# project_id + application_id are REQUIRED — pull them from your User Message's
+# "## Current Context" block (the preview-URL side-effect lands on
+# application_id; a wrong/missing id silently mutates the wrong app).
 npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="$PROJECT_ID" \
+  application_id="$APPLICATION_ID" \
   artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]' \
   summary="✅ Tunnels live (PID: $EXPOSE_PID):
 - frontend: $FRONTEND_URL
@@ -179,7 +185,7 @@ npx mcporter call aramb_chat.deliver_artifacts \
 
 Rules for preview URLs:
 - The rule fires whenever this skill produced any URL the user can reach (frontend, API, tunnel, public proxy).
-- A URL-kind artifact on `aramb_tasks.update_me.artifacts` (in-task) or `aramb_chat.deliver_artifacts.artifacts` (solo) is mandatory for the primary frontend URL.
+- A URL-kind artifact on `aramb_tasks.update.artifacts` (in-task) or `aramb_chat.deliver_artifacts.artifacts` (solo) is mandatory for the primary frontend URL.
 - Mentioning the URL only in chat prose is forbidden — the chip pipeline cannot reconstruct chips from prose after the fact.
 - For aramb-expose tunnels the `environment` field is `"deployed"` (the URL is a public proxy.clode.space hostname reachable outside the agent's container).
 - The chip is for the *primary* frontend URL only. Secondary backend / API URLs can stay in the `summary` text — one chip per chat row is plenty.

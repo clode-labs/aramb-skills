@@ -26,8 +26,8 @@ dispatch. This skill is the *syntax cookbook* for those calls — the
 ## mcporter syntax rules
 
 - ALL arguments MUST use `key="value"` format (NOT positional args).
-- Status updates use `aramb_tasks.update` with an explicit `task_id`. There is `aramb_tasks.update_me` for the in-task self-update — pick the right one (see below).
-- Your dispatch prompt contains your task's UUID. Save it the first time you see it and pass it on every `aramb_tasks.update` call.
+- Status updates use `aramb_tasks.update` with an explicit `task_id`. There is no session-implicit variant — every update passes the task UUID explicitly.
+- Your dispatch prompt contains your task's UUID (the "## Current Context" block, `Task ID:` line). Save it the first time you see it and pass it on every `aramb_tasks.update` call.
 - Correct: `npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done"`
 - WRONG: `npx mcporter call aramb_tasks.update <project_id> <task_id> done` (positional args not supported)
 
@@ -73,31 +73,35 @@ npx mcporter call aramb_tasks.create project_id="<PROJECT_ID>" application_id="<
 ]'
 ```
 
-## update_me — close YOUR current task
+## update — close YOUR current task
 
-For closing your OWN task, use `aramb_tasks.update_me`. Brahmi injects your task context from the dispatch session, so you don't pass `project_id` or `task_id`.
+For closing your OWN task, use `aramb_tasks.update` with the `task_id` rendered into your dispatch prompt (the "## Current Context" block, `Task ID:` line). Copy it verbatim — if you pass any other UUID, brahmi rejects the call as `context_drift` and your work is unrecorded (the rejection is loud and final, not a probe-and-correct contract; re-dispatch is the only recovery).
 
 ```bash
+# Save your IDs from the User Message once and reuse them.
+PROJECT_ID="<your Project ID>"
+TASK_ID="<your Task ID>"
+
 # In-task close — NO quality gate (enable_checker=false): you write done yourself
-npx mcporter call aramb_tasks.update_me status="done" \
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="done" \
   summary="Top 5 stories compiled." \
   artifacts='[{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/report.pdf"}]'
 
 # In-task close — WITH quality gate (enable_checker=true): close as validating,
 # NOT done. A checker audits your work and writes the terminal done/failed itself.
-npx mcporter call aramb_tasks.update_me status="validating" \
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="validating" \
   summary="Frontend deployed." \
   artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend","environment":"deployed"}]'
 
 # Failed close — see TASK EXECUTOR for retryable=false vs default
-npx mcporter call aramb_tasks.update_me status="failed" error="API quota exhausted" retryable=false
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="failed" error="API quota exhausted" retryable=false
 
 # Escalation paths (full contract in TASK EXECUTOR)
-npx mcporter call aramb_tasks.update_me status="needs_master_attention" error="CORS bug only developer can fix"
-npx mcporter call aramb_tasks.update_me status="awaiting_user_input"     # call aramb_chat.ask_question first
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="needs_master_attention" error="CORS bug only developer can fix"
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="awaiting_user_input"     # call aramb_chat.ask_question first
 
 # Progress note without a status change (append description progress section)
-npx mcporter call aramb_tasks.update_me description="<full new description with ## Progress section>"
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" description="<full new description with ## Progress section>"
 ```
 
 Rules for the `artifacts` payload:
@@ -128,9 +132,9 @@ an error. The full discipline lives in the **TASK EXECUTOR** system prompt.
 rounds) are the terminal end-states under the gate. You never write `done`
 yourself when a gate is active.
 
-## update — close ANOTHER task or patch metadata
+## update — patch metadata on your task
 
-`aramb_tasks.update` takes an explicit `task_id`. Use for cross-task ops (master closing a sub-agent's task, master patching another agent's task metadata, etc.):
+`aramb_tasks.update` takes an explicit `task_id`. The runtime defense-in-depth rejects writes against any task_id other than the one your run was dispatched against (`context_drift`), so cross-task writes from sub-agents are off the table — master patches other agents' tasks through a different path (`aramb_tasks.create` for spawns; corrective callbacks via the unified dispatcher for re-engagement).
 
 ```bash
 npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="in_progress"
@@ -182,10 +186,10 @@ Testing tasks use `status="done"` with `outputs.verdict="pass"|"fail"`. **`statu
 
 ```bash
 # Tests pass
-npx mcporter call aramb_tasks.update_me status="done" outputs='{"verdict":"pass","summary":"All tests passed"}'
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="done" outputs='{"verdict":"pass","summary":"All tests passed"}'
 
 # Tests fail — found bugs, agent did its job
-npx mcporter call aramb_tasks.update_me status="done" outputs='{"verdict":"fail","summary":"6 tests failed","details":"full details here"}'
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="done" outputs='{"verdict":"fail","summary":"6 tests failed","details":"full details here"}'
 ```
 
 When `verdict="fail"`, brahmi triggers the feedback loop: master is called back, creates a corrective task for the right developer, and the test re-runs automatically.

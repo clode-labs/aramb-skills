@@ -57,7 +57,7 @@ on nodes, and (c) how you report progress and close out.
 
 1. **Every node in `aramb_workflows.create` MUST carry `required_toolkits`.** Copy the array from each source task's `required_toolkits` (task dispatch) or infer it from the action the node performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service.
    - **Failure mode:** Omitting `required_toolkits` means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. Empty array `[]` is correct when the node touches no third-party service — never omit the field.
-2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_my_step` at the end of its run. See "Closing instruction per node" below for the exact template.
+2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below for the exact template.
    - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble then shows "(no summary)" instead of the real hand-off — the chain works visually but with zero context flowing between steps. Outputs are load-bearing.
 3. **Call `aramb_workflows.create` exactly once.** Success or failure — never retry.
 4. **Close out cleanly.** Task dispatch: always close with `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave the task `in_progress`. Chat dispatch: confirm in your reply text (success or failure). There is no task to close in chat dispatch.
@@ -106,6 +106,8 @@ If under-specified (either path), ask **1–2** specific clarifying questions vi
 
 ```bash
 npx mcporter call aramb_chat.ask_question \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
   question="Which Gmail account should the workflow read from — the one connected to this app, or a different one?"
 ```
 
@@ -164,16 +166,24 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 
 ## Closing instruction per node — MANDATORY
 
-Every node's `prompt` MUST end with this exact block, with `<summary>` and `<files>` substituted to match what the node will actually produce. Treat it the way the task-description template treats `When done: npx mcporter call aramb_tasks.update_me` — non-negotiable, baked into every prompt at authoring time.
+Every node's `prompt` MUST end with this exact block, with `<summary>` and `<files>` substituted to match what the node will actually produce. Treat it the way the task-description template treats the closing `aramb_tasks.update` call — non-negotiable, baked into every prompt at authoring time.
 
 Append this to every node's `prompt`:
 
 ```
 When done — record your output for the next step:
-  npx mcporter call aramb_workflows.update_my_step status="done" outputs='{"summary":"<one-paragraph hand-off, under 500 chars>","files":["relative/path/to/output.json"]}'
+  npx mcporter call aramb_workflows.update_step \
+    project_id="<your Project ID from User Message>" \
+    step_id="<your Workflow Run Step ID from User Message>" \
+    status="done" \
+    outputs='{"summary":"<one-paragraph hand-off, under 500 chars>","files":["relative/path/to/output.json"]}'
 
 If you can't complete the step:
-  npx mcporter call aramb_workflows.update_my_step status="failed" error="<concise reason + any partial progress>"
+  npx mcporter call aramb_workflows.update_step \
+    project_id="<your Project ID from User Message>" \
+    step_id="<your Workflow Run Step ID from User Message>" \
+    status="failed" \
+    error="<concise reason + any partial progress>"
 ```
 
 Why both `summary` and `files`:
@@ -181,8 +191,8 @@ Why both `summary` and `files`:
 - `files` is a list of paths (relative to the workspace working directory) the next agent reads to dig deeper. Empty array `[]` is correct when the node only sends a message / posts to an external service and produces no files.
 
 Notes:
-- The brahmi MCP server resolves `step_id` from session metadata, so no `step_id` argument is needed.
-- Do NOT call `aramb_tasks.update_me` or `aramb_tasks.update` from a workflow-step prompt — those are for ad-hoc tasks and won't resolve workflow-step context. Only `aramb_workflows.update_my_step` works in this dispatch. (This is true regardless of which mode authored the workflow — at *run* time every node executes as a workflow step.)
+- The agent reads its `project_id` and `step_id` from the User Message under "## Current Context" (`Project ID:` and `Workflow Run Step ID:` lines) at dispatch time. Brahmi rejects cross-step writes (`context_drift`), so the agent MUST copy these UUIDs verbatim into the close call.
+- Do NOT instruct the agent to call `aramb_tasks.update` from a workflow-step prompt — that targets the tasks domain (different DB rows) and the run will stall on the safety net. Only `aramb_workflows.update_step` closes a workflow run step.
 
 ## Default node settings — workflow-level
 
@@ -282,10 +292,18 @@ Read events from the primary calendar for the current day. Save the
 result as JSON to .planning/calendar.json.
 
 When done — record your output for the next step:
-  npx mcporter call aramb_workflows.update_my_step status="done" outputs='{"summary":"Fetched N calendar events for today; saved JSON.","files":[".planning/calendar.json"]}'
+  npx mcporter call aramb_workflows.update_step \
+    project_id="<your Project ID from User Message>" \
+    step_id="<your Workflow Run Step ID from User Message>" \
+    status="done" \
+    outputs='{"summary":"Fetched N calendar events for today; saved JSON.","files":[".planning/calendar.json"]}'
 
 If you can't complete the step:
-  npx mcporter call aramb_workflows.update_my_step status="failed" error="<concise reason>"
+  npx mcporter call aramb_workflows.update_step \
+    project_id="<your Project ID from User Message>" \
+    step_id="<your Workflow Run Step ID from User Message>" \
+    status="failed" \
+    error="<concise reason>"
 ```
 
 The instruction body (top paragraph) is per-node business context. The `When done` / `If you can't complete` blocks are the closing template — identical structure across every node, only the `summary` / `files` content differs. Compose both halves, then JSON-encode the full string into the node's `prompt`.
@@ -399,7 +417,7 @@ Then bundle the schedule into your confirmation line ("Workflow created and sche
 ## Rules
 
 - Each node's `prompt` carries real business context baked in.
-- **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_my_step` at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
+- **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
 - **Always emit `default_node_settings`** with the full sensible-defaults block; never leave it empty.
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
 - **`assigned_agent`** — task dispatch: existing team persona. Chat dispatch: `"solo"` or a sub-agent you provisioned this run; never a team-mode persona that doesn't exist in the solo image.

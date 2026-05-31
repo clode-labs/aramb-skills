@@ -52,7 +52,7 @@ short hand-off that does no authoring.
 ## MUST rules — read before anything else
 
 1. **Every node in `aramb_workflows.update` MUST carry `required_toolkits`.** Copy the slugs from each source task's `required_toolkits` (task dispatch) or the matching node in `aramb_workflows.get` / the action it performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service. Omitting silently kills the Evaluate missing-connection warnings.
-2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_my_step` at the end of its run. See "Closing instruction per node" below.
+2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below.
    - **Failure mode:** Without it, the agent finishes its LLM session, brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble shows "(no summary)" instead of the real hand-off.
 3. **Call `aramb_workflows.update` exactly once.** Success or failure — never retry.
 4. **Close out cleanly.** Task dispatch: always `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave `in_progress`. Chat dispatch: confirm in your reply text. There is no task to close in chat dispatch.
@@ -226,10 +226,18 @@ Every node's `prompt` MUST end with this exact block, with `<summary>` and `<fil
 
 ```
 When done — record your output for the next step:
-  npx mcporter call aramb_workflows.update_my_step status="done" outputs='{"summary":"<one-paragraph hand-off, under 500 chars>","files":["relative/path/to/output.json"]}'
+  npx mcporter call aramb_workflows.update_step \
+    project_id="<your Project ID from User Message>" \
+    step_id="<your Workflow Run Step ID from User Message>" \
+    status="done" \
+    outputs='{"summary":"<one-paragraph hand-off, under 500 chars>","files":["relative/path/to/output.json"]}'
 
 If you can't complete the step:
-  npx mcporter call aramb_workflows.update_my_step status="failed" error="<concise reason + any partial progress>"
+  npx mcporter call aramb_workflows.update_step \
+    project_id="<your Project ID from User Message>" \
+    step_id="<your Workflow Run Step ID from User Message>" \
+    status="failed" \
+    error="<concise reason + any partial progress>"
 ```
 
 Why both `summary` and `files`:
@@ -237,9 +245,9 @@ Why both `summary` and `files`:
 - `files` is a list of paths (relative to the workspace working directory) the next agent reads to dig deeper. Empty array `[]` is correct when the node only sends a message / posts to an external service and produces no files.
 
 Notes:
-- The brahmi MCP server resolves `step_id` from session metadata, so no `step_id` argument is needed.
-- Do NOT call `aramb_tasks.update_me` or `aramb_tasks.update` from a workflow-step prompt — those are for ad-hoc tasks and won't resolve workflow-step context. Only `aramb_workflows.update_my_step` works at run time, regardless of which mode authored the workflow.
-- When carrying over node prompts from the existing definition, **re-verify the closing template is present.** If the existing version pre-dates this rule, append it now.
+- The agent reads `project_id` and `step_id` from the User Message under "## Current Context" (`Project ID:` and `Workflow Run Step ID:` lines). Brahmi rejects cross-step writes (`context_drift`), so the agent must copy these verbatim into the close call — never re-use a stale UUID.
+- Do NOT instruct the agent to call `aramb_tasks.update` from a workflow-step prompt — that targets the tasks domain (different DB rows) and the run will stall on the safety net. Only `aramb_workflows.update_step` closes a workflow run step.
+- When carrying over node prompts from the existing definition, **re-verify the closing template is present and uses `update_step` with explicit IDs.** If the existing version pre-dates this rule (still references `update_my_step`), rewrite it now.
 
 ### Step 5. Call aramb_workflows.update
 
@@ -269,10 +277,18 @@ Two common bugs that silently break downstream behaviour, as fatal as in create-
 Concrete instruction with the real business context baked in.
 
 When done — record your output for the next step:
-  npx mcporter call aramb_workflows.update_my_step status="done" outputs='{"summary":"<hand-off paragraph under 500 chars>","files":["<relative/path>"]}'
+  npx mcporter call aramb_workflows.update_step \
+    project_id="<your Project ID from User Message>" \
+    step_id="<your Workflow Run Step ID from User Message>" \
+    status="done" \
+    outputs='{"summary":"<hand-off paragraph under 500 chars>","files":["<relative/path>"]}'
 
 If you can't complete the step:
-  npx mcporter call aramb_workflows.update_my_step status="failed" error="<concise reason>"
+  npx mcporter call aramb_workflows.update_step \
+    project_id="<your Project ID from User Message>" \
+    step_id="<your Workflow Run Step ID from User Message>" \
+    status="failed" \
+    error="<concise reason>"
 ```
 
 `aramb_workflows.update` skeleton (Path C, solo, would carry `"solo"` or a sub-agent on freshly authored nodes; Path A carries team personas — otherwise identical):
@@ -384,7 +400,7 @@ definition is intact.
 
 - One shot: never call `aramb_workflows.update` twice. If the first call succeeded, you're done. If it errored, close as failed (Path A) or tell the user and stop (Path C).
 - Each node's `prompt` carries real business context baked in.
-- **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_my_step` at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
+- **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
 - **Each node carries `required_toolkits`** — `[]` when the node touches no third-party service; never omit.
 - **Each node carries `settings`** — preserve existing per-node overrides from `aramb_workflows.get`; `{}` when none.
 - **Carry `default_node_settings`** forward unchanged from `aramb_workflows.get`, edited only where the user asked. Never silently drop the workflow defaults block.

@@ -89,7 +89,7 @@ You can author, update, and schedule workflows directly. Read the relevant skill
 ## Local Deployment
 
 - Use the `local-deployment` skill for any local stack work. Read the SKILL.md before touching docker-compose. Tunnel exposure happens via `aramb expose`; the skill handles env-var injection without editing files.
-- Report the public preview URL via `aramb_chat.deliver_artifacts artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'`. Brahmi auto-registers preview state from that call — no separate `update_preview_url` step.
+- Report the public preview URL via `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'`. Both ids come from your User Message's "## Current Context" block — they're REQUIRED (the preview-URL side-effect lands on application_id, so a wrong/missing id silently mutates the wrong app). Brahmi auto-registers preview state from that call — no separate `update_preview_url` step.
 
 ## Boundaries
 

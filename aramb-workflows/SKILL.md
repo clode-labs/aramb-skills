@@ -13,7 +13,7 @@ The `aramb_workflows.*` tools cover workflow definition CRUD, schedule managemen
 ## CRITICAL: mcporter syntax rules
 - ALL arguments MUST use `key="value"` format.
 - Do NOT use `--output` — it is not supported by mcporter call.
-- Workflow run step updates use `update_my_step` (current step) or `update_step` (explicit `step_id`) — pick the right one.
+- Workflow run step updates use `update_step` with an explicit `step_id` (rendered into your dispatch User Message). There is no session-implicit variant.
 
 ## Workflow CRUD
 
@@ -107,30 +107,34 @@ Returns `cron_expression`, `cron_timezone`, `enabled`, `env_overrides`, `next_ru
 
 ## Update a workflow run step (workflow dispatch only)
 
-If you were dispatched as part of a workflow run (not an ad-hoc task), use `aramb_workflows.update_my_step` INSTEAD OF `aramb_tasks.update`. Brahmi injects your step context from the dispatch session, so you don't pass `project_id` or `step_id`. The downstream step reads your `outputs.summary` and `outputs.files` as its preamble — so both fields are mandatory on `status="done"`.
+If you were dispatched as part of a workflow run (not an ad-hoc task), use `aramb_workflows.update_step` with the `step_id` rendered into your dispatch prompt (the "## Current Context" block, `Workflow Run Step ID:` line). The downstream step reads your `outputs.summary` and `outputs.files` as its preamble — so both fields are mandatory on `status="done"`.
 
 ```bash
+# Save your IDs from the User Message once and reuse them.
+PROJECT_ID="<your Project ID>"
+STEP_ID="<your Workflow Run Step ID>"
+
 # Success — outputs REQUIRED on done:
-npx mcporter call aramb_workflows.update_my_step status="done" outputs='{"summary":"One-paragraph hand-off for the next agent (under 500 chars).","files":["relative/path/to/output.md","another/file.json"]}'
+npx mcporter call aramb_workflows.update_step project_id="$PROJECT_ID" step_id="$STEP_ID" status="done" outputs='{"summary":"One-paragraph hand-off for the next agent (under 500 chars).","files":["relative/path/to/output.md","another/file.json"]}'
 
 # Failure — error REQUIRED on failed:
-npx mcporter call aramb_workflows.update_my_step status="failed" error="What blocked the step and any partial progress"
+npx mcporter call aramb_workflows.update_step project_id="$PROJECT_ID" step_id="$STEP_ID" status="failed" error="What blocked the step and any partial progress"
 
 # In-progress (optional progress ping):
-npx mcporter call aramb_workflows.update_my_step status="in_progress"
+npx mcporter call aramb_workflows.update_step project_id="$PROJECT_ID" step_id="$STEP_ID" status="in_progress"
 ```
 
-Rules for `update_my_step`:
+Rules for `update_step`:
 - `outputs.summary` is one paragraph under 500 characters describing what the step produced, for the next agent. Focus on what's useful downstream, not how you did it.
 - `outputs.files` is an array of paths RELATIVE to the workspace working directory. Paths only, no contents. Use `"files":[]` if you produced no files.
-- Do NOT call `aramb_tasks.update` from within a workflow step session — it won't resolve your step context and the run will stall on the safety net.
-- `aramb_workflows.update_step step_id="<UUID>" status="..."` is the explicit-id form. Only use it if you need to update a DIFFERENT step from the one you're executing (rare — mostly for the master safety net).
+- Do NOT call `aramb_tasks.update` from within a workflow step session — it targets a different domain row (tasks, not workflow run steps) and the run will stall on the safety net.
+- The runtime rejects cross-step writes (`context_drift`): the `step_id` you pass MUST match the one your run was dispatched against. Copy it verbatim from your User Message — don't re-use a stale UUID.
 
 ## Checker verdict on a workflow step (maker-checker gate)
 
 When a workflow node has the maker-checker gate enabled, Brahmi runs the node's maker, then dispatches an independent **checker review** against the same step before the step advances. The review is the step's own assigned agent re-run in a fresh, read-only session under a gatekeeper system prompt — there is no separate checker persona. If your dispatch tells you to validate a workflow step (you'll get a gatekeeper system prompt, not the maker's execution prompt), **the STATUS you write IS the verdict** — there is no `verdict` field in `outputs` anymore. A DIRTY verdict's gaps travel in a top-level `feedback` arg, not in `outputs`.
 
-**Report via the explicit-id form `update_step step_id="<STEP_UUID>"` — NOT `update_my_step`.** A check runs in a fresh session that does not resolve a step context, so `update_my_step` fails with "no step context". Your dispatch gives you the exact command (with the real `step_id`) under "Report your verdict" — run that. Pick exactly ONE:
+**Report via `aramb_workflows.update_step` with the `step_id` from your dispatch User Message.** Your dispatch gives you the exact command (with the real `step_id`) under "Report your verdict" — run that. Pick exactly ONE:
 
 ```bash
 # CLEAN — work has integrity; the step completes and children promote:
@@ -155,5 +159,5 @@ Verdict rules (same as the task checker — see the `checker-prompt` skill):
 ## Rules
 
 - ALWAYS use the top-level `edges` array on `create` / `update`. NEVER emit per-node `dependencies` / `dependsOn`.
-- ALWAYS pick `update_my_step` over `update_step` when closing the step the current session is executing.
+- ALWAYS use `aramb_workflows.update_step` with the `step_id` rendered into your dispatch User Message — there is no session-implicit variant.
 - ALWAYS close a workflow step before ending the session — without it the run stalls.

@@ -19,7 +19,7 @@ via mcporter.
 - Do NOT use `--output` flag — not supported by `mcporter call`
 
 ## Communication
-- `npx mcporter call aramb_chat.ask_question question="<text>"` — gather user input
+- `npx mcporter call aramb_chat.ask_question project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" question="<text>"` — gather user input. Both ids come from your User Message's "## Current Context" block; brahmi rejects calls without them.
 - `npx mcporter call aramb_chat.alert_user message="<urgent text>"` — out-of-band attention
 - Plain text updates: just write them in your reply. Brahmi saves your final assistant text as the chat row automatically — no separate call needed.
 
@@ -28,13 +28,19 @@ via mcporter.
 For any user-facing deliverable (file you produced, URL you exposed), surface it via `aramb_chat.deliver_artifacts`. The chip IS the deliverable. Prose is commentary.
 
 ```bash
-# File — absolute path under your working directory
+# File — absolute path under your working directory. project_id + application_id
+# are REQUIRED (copy from "## Current Context" in your User Message); the
+# URL-kind preview-URL side-effect lands on application_id.
 npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
   artifacts='[{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/report.pdf"}]' \
   summary="<optional markdown blurb>"
 
 # URL — preview-URL state is recorded for you automatically
 npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
   artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend","environment":"local"}]'
 ```
 

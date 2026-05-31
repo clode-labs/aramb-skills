@@ -29,8 +29,8 @@ Rules:
 - `chat_location="main"` to reach the user's main chat (the typical sub-agent → main use case).
 - `chat_location="task"` (or omit) for the current task chat.
 - **NEVER** use `send_message` to ask questions — use `ask_question` instead.
-- **NEVER** call `send_message` right after closing a task with `aramb_tasks.update_me` (status=done|failed) that carried `artifacts` or `summary`. The close already emits the chip-bearing chat row.
-- For DELIVERABLES (files, URLs), use `aramb_tasks.update_me.artifacts` (in-task close) or `aramb_chat.deliver_artifacts` (outside a task) — NOT this tool.
+- **NEVER** call `send_message` right after closing a task with `aramb_tasks.update` (status=done|failed) that carried `artifacts` or `summary`. The close already emits the chip-bearing chat row.
+- For DELIVERABLES (files, URLs), use `aramb_tasks.update.artifacts` (in-task close) or `aramb_chat.deliver_artifacts` (outside a task) — NOT this tool.
 
 ## Ask the user a question (blocking)
 
@@ -58,15 +58,24 @@ Use when automated resolution has failed and human intervention is required.
 
 Every user-facing deliverable (file you wrote, URL you exposed) MUST be surfaced as a chip. Two surfaces, same `artifacts` payload shape:
 
-- **In a task (team mode)**: pass `artifacts` on your `aramb_tasks.update_me` close call. See the `aramb-tasks` skill for that path.
+- **In a task (team mode)**: pass `artifacts` on your `aramb_tasks.update` close call (with the explicit `task_id` from your User Message). See the `aramb-tasks` skill for that path.
 - **Outside a task (solo, mid-task recall, master direct response)**: call `aramb_chat.deliver_artifacts` with the same `artifacts` payload.
 
 ```bash
-# Solo / mid-task recall — file
-npx mcporter call aramb_chat.deliver_artifacts artifacts='[{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/report.pdf"}]'
+# Solo / mid-task recall — file. project_id + application_id are REQUIRED
+# (copy from your User Message's "## Current Context" block) — the URL-kind
+# preview-URL side-effect lands on application_id, so a wrong/missing id
+# silently mutates the wrong app. Brahmi rejects calls without it.
+npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
+  artifacts='[{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/report.pdf"}]'
 
 # Solo / mid-task recall — URL
-npx mcporter call aramb_chat.deliver_artifacts artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend"}]'
+npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
+  artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend"}]'
 ```
 
 Rules for the `artifacts` payload (same in both surfaces):
@@ -158,7 +167,7 @@ npx mcporter call aramb_chat.get_mode application_id="<APPLICATION_ID>"
 Sub-agents dispatched into a task chat have their reply text land there, not in the user's main chat. To keep the user informed during long-running work:
 
 - **Task start / mid-flight milestones** → `aramb_chat.send_message chat_location="main"` with a short status line ("🔨 Starting: ...", "⚙️ Build passing, deploying now", "🧪 Running tests").
-- **A task is closing with a deliverable** → `aramb_tasks.update_me status="done" artifacts=[...] summary="..."`. Do NOT also `send_message` after this.
+- **A task is closing with a deliverable** → `aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="done" artifacts=[...] summary="..."`. Do NOT also `send_message` after this.
 - **A deliverable outside a task** → `aramb_chat.deliver_artifacts` with the same `artifacts` payload shape.
 - **You need input** → `aramb_chat.ask_question` (NOT `send_message` — `ask_question` blocks the run until the user answers).
 - **An out-of-band alert** → `aramb_chat.alert_user`.
