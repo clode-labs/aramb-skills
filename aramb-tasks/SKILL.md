@@ -75,7 +75,7 @@ npx mcporter call aramb_tasks.create project_id="<PROJECT_ID>" application_id="<
 
 ## update — close YOUR current task
 
-For closing your OWN task, use `aramb_tasks.update` with the `task_id` rendered into your dispatch prompt (the "## Current Context" block, `Task ID:` line). The runtime rejects cross-task writes (`context_drift`), so the only `task_id` you can write against is your own anyway — but you still pass it on every call.
+For closing your OWN task, use `aramb_tasks.update` with the `task_id` rendered into your dispatch prompt (the "## Current Context" block, `Task ID:` line). Copy it verbatim — if you pass any other UUID, brahmi rejects the call as `context_drift` and your work is unrecorded (the rejection is loud and final, not a probe-and-correct contract; re-dispatch is the only recovery).
 
 ```bash
 # Save your IDs from the User Message once and reuse them.
