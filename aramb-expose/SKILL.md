@@ -170,8 +170,13 @@ npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID"
 - api: $API_URL" \
   artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]'
 
-# Solo / mid-task recall: same artifact shape via aramb_chat.deliver_artifacts
+# Solo / mid-task recall: same artifact shape via aramb_chat.deliver_artifacts.
+# project_id + application_id are REQUIRED — pull them from your User Message's
+# "## Current Context" block (the preview-URL side-effect lands on
+# application_id; a wrong/missing id silently mutates the wrong app).
 npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="$PROJECT_ID" \
+  application_id="$APPLICATION_ID" \
   artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]' \
   summary="✅ Tunnels live (PID: $EXPOSE_PID):
 - frontend: $FRONTEND_URL

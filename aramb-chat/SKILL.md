@@ -62,11 +62,20 @@ Every user-facing deliverable (file you wrote, URL you exposed) MUST be surfaced
 - **Outside a task (solo, mid-task recall, master direct response)**: call `aramb_chat.deliver_artifacts` with the same `artifacts` payload.
 
 ```bash
-# Solo / mid-task recall — file
-npx mcporter call aramb_chat.deliver_artifacts artifacts='[{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/report.pdf"}]'
+# Solo / mid-task recall — file. project_id + application_id are REQUIRED
+# (copy from your User Message's "## Current Context" block) — the URL-kind
+# preview-URL side-effect lands on application_id, so a wrong/missing id
+# silently mutates the wrong app. Brahmi rejects calls without it.
+npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
+  artifacts='[{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/report.pdf"}]'
 
 # Solo / mid-task recall — URL
-npx mcporter call aramb_chat.deliver_artifacts artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend"}]'
+npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
+  artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend"}]'
 ```
 
 Rules for the `artifacts` payload (same in both surfaces):

@@ -106,6 +106,8 @@ If under-specified (either path), ask **1–2** specific clarifying questions vi
 
 ```bash
 npx mcporter call aramb_chat.ask_question \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
   question="Which Gmail account should the workflow read from — the one connected to this app, or a different one?"
 ```
 

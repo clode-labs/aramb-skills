@@ -115,11 +115,13 @@ Brahmi auto-emits the rich completion message with chips alongside the lifecycle
 
 ```
 npx mcporter call aramb_chat.deliver_artifacts \
-  artifacts='[{"path":"report.pdf"}]' \
-  content="<optional markdown blurb>"
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
+  artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/report.pdf"}]' \
+  summary="<optional markdown blurb>"
 ```
 
-Brahmi posts a fresh chat row with the chips. Same render as task completion, just not tied to a status transition.
+Both ids come from your User Message's "## Current Context" block — REQUIRED (brahmi rejects calls without them; cross-app writes are rejected as `context_drift`). Brahmi posts a fresh chat row with the chips. Same render as task completion, just not tied to a status transition.
 
 **Path discipline:**
 - `summary` and `content` are markdown shown verbatim to the user. Keep them concise — links, key findings, headers — not full prose dumps when a chip will do.

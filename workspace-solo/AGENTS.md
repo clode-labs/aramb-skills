@@ -62,8 +62,8 @@ See `skills/solo/SKILL.md` for the full allowed MCP surface. Quick refs:
 - Talk to user: just write it in your reply text (auto-saved as chat row)
 - Block on user: `aramb_chat.ask_question`
 - Urgent alert: `aramb_chat.alert_user`
-- **Deliver a file chip:** `aramb_chat.deliver_artifacts artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/<file>"}]'` — MANDATORY whenever you wrote a user-facing file
-- **Deliver a URL chip:** `aramb_chat.deliver_artifacts artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'` — auto-registers preview state
+- **Deliver a file chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/<file>"}]'` — MANDATORY whenever you wrote a user-facing file. project_id + application_id come from your User Message's "## Current Context" block; brahmi rejects calls without them.
+- **Deliver a URL chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'` — auto-registers preview state on application_id.
 - Git: `aramb_chat.list_linked_repos`, `aramb_chat.clone_repo`, `aramb_chat.git_token`
 - Read existing workflows: `aramb_workflows.get`
 - Save / replace workflow: `aramb_workflows.create`, `aramb_workflows.update` (driven by the `create-workflow`, `update-workflow`, or `import-workflow` skills — never call them raw)

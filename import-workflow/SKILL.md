@@ -226,6 +226,8 @@ specs (fall back to title-cased `name` when `displayName` is empty).
 
 ```bash
 npx mcporter call aramb_chat.send_message \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
   content="Created **GTM Team** workflow with 8 agents: Sales Manager, Lead Researcher, Email Writer, Call Prep, Demo Scheduler, Lead Scorer, CRM Sync, Analytics."
 ```
 
@@ -238,6 +240,8 @@ After posting, STOP. Do not send follow-up messages.
 
   ```bash
   npx mcporter call aramb_chat.send_message \
+    project_id="<PROJECT_ID>" \
+    application_id="<APPLICATION_ID>" \
     content="Couldn't create agent **<name>**: <reason>. Template import aborted."
   ```
 
@@ -248,6 +252,8 @@ After posting, STOP. Do not send follow-up messages.
 
   ```bash
   npx mcporter call aramb_chat.send_message \
+    project_id="<PROJECT_ID>" \
+    application_id="<APPLICATION_ID>" \
     content="Created agents but couldn't create the workflow: <reason>. Re-importing the same template will fail until the existing agents are deleted."
   ```
 
@@ -258,6 +264,8 @@ After posting, STOP. Do not send follow-up messages.
 
   ```bash
   npx mcporter call aramb_chat.send_message \
+    project_id="<PROJECT_ID>" \
+    application_id="<APPLICATION_ID>" \
     content="Template import payload was malformed — this is a bug, please file it."
   ```
 
