@@ -109,47 +109,55 @@ If no client is connected yet, ask the user to start their local Aramb client an
 
 ## Named contexts — save & reuse logged-in state
 
-A **context** is a tarball of cookies + per-origin storage saved against your user, identified by name. Use it to log in once, then replay that state on future Aramb sessions without re-authenticating — a session-survival mechanism on top of TTL.
+A **context** is a tarball of cookies + per-origin storage saved against your user, identified by name. Replay it on future Aramb sessions to skip re-authentication. Only works against **Aramb-backed** browsers (`provider=aramb`); local browsers have no `session_id`.
 
-Save / load only work against **Aramb-backed** browsers (browsers that have a `session_id` — anything created via `browser_create` provider=aramb qualifies). Local browsers don't have a session_id and can't participate.
+### When to use — always ask the user first
+
+**Never save or load a context without explicit user approval.** Both directions require a prompt.
+
+**Before `browser_create`** (any task that needs a new browser): run `browser_context_list`. If saved contexts exist, show them and let the user pick or skip:
+
+> Starting a browser for `<app-slug>`. Saved contexts:
+> - `<name-1>`
+> - `<name-2>`
+>
+> Load one to reuse a logged-in session, or start fresh? Reply with a name, or "skip".
+
+User picks a name → pass `session_context=<value>` to `browser_create`, or call `browser_load_context` after create. User says "skip" / no contexts exist → vanilla `browser_create`. Never auto-load.
+
+**After a successful login** (you completed an auth flow, or the user confirmed they signed in via the viewer): ask before saving.
+
+> Logged in to `<site>`. Save this session as a context so the next run for `<app-slug>` skips the login? Suggested name: `<app-slug>-login`. (yes / no / different name)
+
+Only call `browser_context_create` + `browser_save_context` if the user confirms. If they decline, leave the state in memory — the live browser still works for this task; nothing persists.
+
+### Commands
 
 ```bash
-# List contexts you've saved
+# List
 npx mcporter call aramb-browser.browser_context_list
 
-# Save the current state of a live browser into a named slot
+# Reserve a slot (required before first save)
+npx mcporter call aramb-browser.browser_context_create context_name=<name>
+
+# Save current browser state into the slot
 npx mcporter call aramb-browser.browser_save_context browser=<app-slug> context_name=<name>
 
-# Apply a previously saved context onto a live browser
+# Apply a saved context onto a live browser
 npx mcporter call aramb-browser.browser_load_context browser=<app-slug> context_name=<name>
 
-# Delete a saved context (Redis record + S3 tarball)
+# Delete (Redis record + S3 tarball)
 npx mcporter call aramb-browser.browser_context_destroy context_name=<name>
 ```
 
-Typical flow — log in once, replay on every future session for the same app:
-
-```bash
-# First session: reserve the slot, do the login (manual via viewer or click+fill), then snapshot it
-npx mcporter call aramb-browser.browser_context_create context_name=<app-slug>-login
-npx mcporter call aramb-browser.browser_save_context browser=<app-slug> context_name=<app-slug>-login
-
-# Every subsequent session: skip login entirely
-npx mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb ttl_minutes=30
-npx mcporter call aramb-browser.browser_load_context browser=<app-slug> context_name=<app-slug>-login
-npx mcporter call aramb-browser.navigate_page browser=<app-slug> url=https://<site>/dashboard
-```
-
-Save and create are separate operations — `browser_save_context` only writes into an **existing** slot, it does not create one. Reserve with `browser_context_create` first.
-
-Naming: one context per app-slug per logical identity (e.g. `reddit-gather-a-login`). Reuse the same name across sessions — load it, work, leave it; save again only when the state has materially changed (logged in fresh, accepted new cookies, completed an onboarding step). Re-saves overwrite the stored tarball.
+Naming: one context per app-slug per logical identity (e.g. `reddit-gather-a-login`). Reuse the same name; re-save (after user approval) only when state has materially changed.
 
 Error behavior:
 
-- `browser_load_context` on a missing name → error pointing at `browser_save_context`. The context doesn't exist yet; capture state first against a logged-in browser.
-- `browser_save_context` on a missing name → error pointing at `browser_context_create`. Reserve the slot first, then save.
-- `browser_context_create` on an existing name (409) → error pointing at `browser_context_destroy`. Pick a new name or delete the old one.
-- `browser_context_destroy` on a missing name → error pointing at `browser_context_list`.
+- `browser_load_context` on a missing name → reserve + save first.
+- `browser_save_context` on a missing name → `browser_context_create` first.
+- `browser_context_create` on an existing name (409) → pick a new name or destroy the old one.
+- `browser_context_destroy` on a missing name → check `browser_context_list`.
 
 ## Rules (no exceptions)
 
@@ -159,6 +167,7 @@ Error behavior:
 - `browser=` AND `target=` on every page-level call.
 - One browser per app slug. Siblings reuse via `new_page`, not a second `browser_create`.
 - **Never call `browser_destroy`.** TTL cleans up.
+- **Never save or load a context without explicit user approval.** Before `browser_create`, run `browser_context_list` and prompt the user to pick or skip. After a successful login, prompt before `browser_save_context`.
 - `evaluate_script` uses `function=` (NOT `script=`). Body is a JS arrow function: `function="() => JSON.stringify(...)"`.
 - On CAPTCHA / bot wall / 403: **wait 30-60s** for the browser to clear it in the background, then re-check the page. If still blocked, stop and ask the user — describe what you saw, never auto-recommend a specific fix.
 - Snapshots are heavy. Use only before click or when stuck. Prefer `evaluate_script` for data extraction.
@@ -169,7 +178,9 @@ Error behavior:
 ```bash
 npx mcporter call aramb-browser.browser_list
 # slug present → new_page browser=<app-slug>, capture target, navigate
-# slug absent  → browser_create name=<app-slug> provider=aramb ttl_minutes=30 && navigate_page browser=<app-slug> url=...
+# slug absent  → browser_context_list, prompt user to load a saved context or skip,
+#                then browser_create name=<app-slug> provider=aramb ttl_minutes=30 [session_context=<value>]
+#                && navigate_page browser=<app-slug> url=...
 ```
 
 ### Scrape Reddit / social — browser, never `.json` curl
