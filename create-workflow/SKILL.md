@@ -1,10 +1,12 @@
 ---
 name: create-workflow
 description: >
-  Author a brand-new workflow definition (no workflow exists yet). Works in two
-  dispatch modes: (1) task dispatch — master consolidates an application's
-  completed tasks into a reusable workflow; (2) chat dispatch — solo authors from
-  the user's explicit description or from the work done so far in this conversation.
+  Author a brand-new workflow definition (no workflow exists yet). Two dispatch
+  channels: (1) task dispatch — the master consolidates an application's completed
+  tasks into a reusable workflow; (2) chat dispatch — author from the user's
+  explicit description or the work done so far in this conversation (the master in
+  team mode, or the solo agent in solo mode). Node personas follow the mode (team
+  personas vs solo), not the channel.
   Use when: asked to create a workflow from completed tasks, "build a workflow
   that…", "create a workflow based on the work done so far in this chat", or told
   to use the create-workflow skill. NOT for: editing an existing workflow (use
@@ -23,36 +25,44 @@ The response tells you the id brahmi assigned.
 > polishing a template-import draft, use `import-workflow`.** This skill only
 > handles first-time creation.
 
-## Which dispatch mode am I in? — read this first
+## Two things to figure out first — read this before anything else
 
-Look at your extra-system-prompt for a brahmi **task id** block.
+There are **two independent axes**. Do NOT conflate them — confusing them is what
+makes workflows come out wrong.
 
-- **Task dispatch (you are master / a team agent).** Brahmi dispatched you as a
-  system task with a "Your task id" block giving you `application_id`,
-  `project_id`, and `task_id`. Your spec source is the application's **completed
-  tasks** — fetch them via `aramb_tasks.list`. You report progress by appending
-  to the task description and close yourself out with `aramb_tasks.update`. Each
-  node carries a team persona as `assigned_agent` and a `source_task_id`.
-- **Chat dispatch (you are solo).** There is **no `task_id`** — you were invoked
-  as an ordinary chat turn. Your spec source is either the user's explicit
-  description or the work done so far in THIS conversation. You don't have
-  `aramb_tasks.*` at all (it's filtered out of your tool list), so you report
-  progress and close out by **replying in chat** (brahmi persists your final
-  assistant text as the chat row). Each node's `assigned_agent` is `"solo"`
-  unless you provisioned sub-agents for differentiated roles, and `source_task_id`
-  is omitted.
+### Axis 1 — Are you the MASTER (team) or the SOLO agent? → decides node personas
 
-The `task_id` that selects the mode is **brahmi's** task id from the dispatch
-block — NOT Claude's built-in `TaskCreate`. The two are unrelated; a built-in
-`TaskCreate` entry does not make this a task dispatch. If there is no brahmi
-"Your task id" block in your system prompt, you are in chat dispatch.
+Check your own tool list:
+- **You HAVE the `aramb_tasks.*` tools → you are the MASTER (team mode).** Workflow
+  nodes are assigned to your **team personas** — the same roster you assign tasks
+  to: `developer` (code / clone / implement), `backend-tester` /
+  `frontend-tester` / `integration-tester` / `checker` (verify / review),
+  `aramb-deployer` / `local-deployer` (deploys). Pick the persona that fits each
+  node's job. **NEVER assign `"solo"` in team mode.** Assign from your existing
+  team roster — for standard build / test / review / deploy work these personas
+  already cover it; don't spin up new agents.
+- **You do NOT have `aramb_tasks.*` → you are the SOLO agent (solo mode).** Every
+  node's `assigned_agent` is `"solo"`. There are no other personas available.
 
-Everything else — node schema, `required_toolkits`, the per-step `toolkit`
-field, the closing-instruction template, `default_node_settings`, the
-no-placeholders / no-`env_variables` rules, the one-shot `aramb_workflows.create`
-rule — is identical across both modes. The mode only changes (a) where the spec
-comes from, (b) `assigned_agent` / `source_task_id` on nodes, and (c) how you
-report progress and close out.
+### Axis 2 — Task dispatch or chat dispatch? → decides spec source + close-out
+
+- **Task dispatch:** brahmi gave you a "Your task id" block (`application_id`,
+  `project_id`, `task_id`). Spec source = the application's **completed tasks**
+  (`aramb_tasks.list`); each node carries a `source_task_id`. Close out via
+  `aramb_tasks.update`. (Only the master is ever task-dispatched.)
+- **Chat dispatch:** no `task_id` — an ordinary chat turn. Spec source = the
+  user's explicit description, or the work done so far in THIS conversation. Close
+  out by **replying in chat** (brahmi persists your final assistant text).
+
+**The axes cross.** The **master can be in chat dispatch** — you just chatted
+"build a workflow" to it. That is STILL team mode: nodes get **team personas**,
+never `"solo"`. (The brahmi `task_id` is NOT Claude's built-in `TaskCreate` —
+unrelated; a `TaskCreate` entry does not make this a task dispatch.)
+
+Everything else — node schema, `required_toolkits`, per-step `toolkit`, the
+closing-instruction template, `default_node_settings`, the no-placeholders /
+no-`env_variables` rules, and the one-shot `aramb_workflows.create` rule — is
+identical across every combination.
 
 ## MUST rules — read before anything else
 
@@ -66,6 +76,7 @@ report progress and close out.
    - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble then shows "(no summary)" instead of the real hand-off — the chain works visually but with zero context flowing between steps. Outputs are load-bearing.
 7. **Call `aramb_workflows.create` exactly once.** Success or failure — never retry.
 8. **Close out cleanly.** Task dispatch: always close with `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave the task `in_progress`. Chat dispatch: confirm in your reply text (success or failure). There is no task to close in chat dispatch.
+9. **Speak to the user in plain product language — never leak internals.** The person reading your chat is a customer, not an engineer. Do NOT mention MCP tool names (`aramb_workflows.create`, `aramb_triggers.create`), raw upstream errors (`toolkit-proxy 502`, `ConfigInvalid`), CLI names, internal toolkit/slug strings, or phrases like "the tool isn't in my surface." You DO have these tools — call them. If something genuinely fails, say it in human terms ("I couldn't set up the trigger — the GitHub connection looks unavailable") and stop. Internal mechanics stay in your reasoning, never in the reply.
 
 ## Run input — the only per-run channel
 
@@ -190,8 +201,8 @@ assistant text as the chat row — no MCP call needed):
 
 Study the spec (completed tasks, the explicit description, or the conversation
 work). Understand: what each step accomplishes, how steps depend on each other,
-which agent does each (task dispatch — keep the original assignment unless a
-better fit; chat dispatch — `"solo"` by default, or a sub-agent you provision),
+which agent does each (team mode — a team persona by role, defaulting to the
+source task's persona in task dispatch; solo mode — every node `"solo"`),
 and what inputs/outputs flow between steps.
 
 For chat dispatch this is also the **merge / generalize / split** pass: combine
@@ -206,9 +217,10 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **Merge or split** steps where it makes the workflow cleaner. Not every source task becomes a node.
 - **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what actually worked but keep the concrete subject matter.
 - **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape.
-- **`assigned_agent` per node:**
-  - *Task dispatch:* keep the source task's agent unless a different existing agent fits the generalized version better.
-  - *Chat dispatch:* default to `"solo"`. If the workflow has differentiated step roles (triage → implement → verify → publish, research → draft → review), provision sub-agents with `create-agent` — one per distinct role — and stamp the matching sub-agent name on each node. Only collapse to a single `"solo"` graph when every step is the same kind of work. Never stamp a team-mode persona (`developer`, `aramb-deployer`, `local-deployer`, …) that doesn't actually exist in your image — either it's `"solo"` or a sub-agent you created in this run.
+- **`assigned_agent` per node** — set by **Axis 1 (team vs solo)**, NOT by the dispatch channel:
+  - *Team mode (you are the master):* assign the **team persona that fits the node's job** — `developer` for code / clone / implement, `backend-tester` / `frontend-tester` / `integration-tester` / `checker` for verify or review, `aramb-deployer` / `local-deployer` for deploys. In task dispatch, default to the source task's persona and only override when a different one clearly fits the generalized node better. **Never `"solo"` in team mode**; assign from your existing roster rather than spinning up new agents for standard roles.
+  - *Solo mode (you are the solo agent):* every node's `assigned_agent` is `"solo"`. Do not invent personas or spin up sub-agents for a solo workflow.
+- **Do NOT pick a different model per node.** Model/effort/thinking come from the single workflow-wide `default_node_settings`; per-node `settings` stays `{}` (inherit). Never stamp `model` on individual nodes — no per-step Haiku/Opus/Sonnet juggling.
 - **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase and **grounded via `aramb_toolkits.list_toolkits`** (see "Ground the slugs"), not guessed from prose. Brahmi snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
 - **Carry a singular `toolkit` per node that has any toolkits — MANDATORY when `required_toolkits` is non-empty.** It is the node's *primary* toolkit (the one a trigger would bind to). Invariant: `toolkit ∈ required_toolkits`. Single-toolkit node → `toolkit` equals the one slug. Multi-toolkit node → pick the slug the node's job is "about" (the action it exists to perform, not an incidental read). Omit `toolkit` (or `null`) only when `required_toolkits` is `[]`. Brahmi rejects a `toolkit` that isn't in `required_toolkits`.
 - **Write prompts against `<run_input>`, never placeholders.** Each node's `prompt` describes what to do with the context it receives — for step 1 that context is the `<run_input>` block (see "Run input — the only per-run channel"); for later steps it's the parent's `outputs.summary`. No `{{env.KEY}}` / `{{input.KEY}}` anywhere. Step 1's prompt must explicitly tell the agent to distill the relevant input into its `outputs.summary` for downstream steps.
@@ -351,144 +363,48 @@ So: constant recipe values → bake into the prompt. Per-run values → read fro
 
 ## 4.5 Pick a trigger before saving — MANDATORY
 
-Every workflow MUST record how it fires. `aramb_workflows.create` now requires a
-`trigger_choice` field (`toolkit_event` | `cron` | `manual`); a call without it
-is rejected. You decide the choice by running this picker with the user — do NOT
-default silently. `manual` is a real, first-class choice (one-shot utilities the
-user runs from the UI), but it is only valid when the user was *offered* the
-options and *picked* manual. Never skip the picker and pass `manual` to satisfy
-the gate.
+`aramb_workflows.create` requires a `trigger_choice` (`toolkit_event` | `cron` |
+`manual`); it is rejected without one. Decide it **with the user** — never default
+silently, and never pass `manual` just to clear the gate.
 
-**1. Read the entry node's `toolkit`.** The entry node is the one with no
-incoming edge (lowest `unique_id` on a tie). Its singular `toolkit` is what an
-event trigger would bind against.
-
-**2. If the entry node has a `toolkit`, enumerate event candidates:**
-
-```bash
-npx mcporter call aramb_toolkits.list_triggers toolkit="<ENTRY_TOOLKIT>"
-```
-
-Each result has a `slug`, name, and description. If the entry node has no
-`toolkit` (a pure-LLM / file-only workflow), skip this step and offer only
-`{ cron, manual }`.
-
-**3. Pre-rank by intent.** Scan the spec (the user's request / consolidated task
-descriptions) for event-shape phrases and match them against the trigger
-names/descriptions, case-insensitively. A small synonym guide:
-- "when an issue is created / new issue / issue opened" → a `*_NEW_ISSUE`-style trigger
-- "when a PR is opened / new pull request" → a `*_PULL_REQUEST`-style trigger
-- "when an email arrives / new email" → a `*_NEW_*MESSAGE` / `*_NEW_EMAIL`-style trigger
-- "when a row is added / new row" → a sheet `*_NEW_ROW`-style trigger
-- "a message is posted / new message / DM" → a chat `*_NEW_MESSAGE`-style trigger
-- "every day / weekly / at 9am / a cron expression" → **cron**, not an event
-
-**4. Ask the user via `aramb_chat.ask_question`.** Convention (no structured
-`recommended` field exists): **the first option is the recommendation**, and you
-say so in the question prose. Build options as `{label, description}` objects —
-the recommended event trigger(s) first, then a synthetic "On a schedule", then
-"Manual run only":
-
-```bash
-npx mcporter call aramb_chat.ask_question \
-  project_id="<PROJECT_ID>" \
-  application_id="<APPLICATION_ID>" \
-  question="How should this workflow fire? Pick one — the first is recommended based on what you described." \
-  options='[
-    {"label":"[recommended] When a GitHub issue is created","description":"GITHUB_NEW_ISSUE — fires once per new issue in the configured repo"},
-    {"label":"When an issue is assigned to me","description":"GITHUB_ISSUE_ASSIGNED — fires when an issue is assigned to you"},
-    {"label":"On a schedule (e.g. daily at 9am)","description":"A wall-clock cron cadence"},
-    {"label":"Manual run only","description":"No automatic firing — you run it from the Workflows tab"}
-  ]'
-```
-
-If the user closes the chat without answering, do NOT silently default — re-ask
-on the next turn until they answer.
-
-**5. Record the choice** for the create call:
-- event trigger → `trigger_choice="toolkit_event"` (remember the chosen catalog `slug`)
-- schedule → `trigger_choice="cron"` (remember the cadence phrase)
-- manual → `trigger_choice="manual"`
-
-**6. After `aramb_workflows.create` succeeds, wire the actual trigger
-(toolkit_event / cron only).** The create call records the *choice*; the trigger
-row / cron slot is written right after, in this same turn (the workflow_id has to
-exist first):
-- `toolkit_event` → invoke `configure-trigger` with the resolved `workflow_id` +
-  the chosen `slug` (its "invoked-from-create" sub-mode skips re-disambiguation
-  and goes straight to `check_connection` + `aramb_triggers.create`).
-- `cron` → call `aramb_workflows.set_schedule` yourself with the cadence (see
-  `schedule-workflow` for cron-format help).
-- `manual` → nothing to wire.
-
-Report the combined result ("Workflow created and set to fire when a GitHub issue
-is created" / "…and scheduled for 9am IST daily" / "…run it from the Workflows
-tab"). For `toolkit_event`, do NOT claim it's firing until `configure-trigger`
-confirms the row is `active` (creation is async upstream).
+1. **Ground the options.** Read the entry node's `toolkit` (the node with no
+   incoming edge). If it has one, list real event candidates:
+   `npx mcporter call aramb_toolkits.list_triggers toolkit="<TOOLKIT>"`. No
+   toolkit (pure-LLM workflow) → offer only cron + manual.
+2. **Ask exactly one question** via `aramb_chat.ask_question` with structured
+   `options` — NOT a free-text wall of "decisions I need." Lead with the event
+   trigger that best fits the user's intent (first option = your recommendation),
+   then "On a schedule", then "Manual run only". Keep labels plain-English; put
+   raw catalog slugs in the `description`, never in the label. If the user
+   doesn't answer, re-ask next turn — don't default.
+3. **Record the pick:** event → `trigger_choice="toolkit_event"` (keep the catalog
+   `slug`); schedule → `"cron"` (keep the cadence); manual → `"manual"`.
+4. **After `aramb_workflows.create` succeeds, wire it in the same turn:**
+   - `toolkit_event` → hand to the `configure-trigger` skill with the `workflow_id`
+     + `slug`. It reads the trigger's `config_schema` and passes `trigger_config`
+     (e.g. GitHub triggers need `{owner, repo}`). Don't tell the user it's firing
+     until it reports `active` (registration is async upstream).
+   - `cron` → `aramb_workflows.set_schedule` with the cadence.
+   - `manual` → nothing to wire.
 
 ## Browser-login pre-check — required before save
 
-A node that drives a logged-in website through `aramb-browser` only works at run
-time if the user has already logged in once and saved that login as a browser
-context. A triggered workflow that hits a not-logged-in site fails silently in
-run history. So before you save, gate on the login existing.
+If a node uses `aramb-browser` to act on a logged-in site, that login must already
+exist or the workflow fails silently at run time. **Hard gate — no "save anyway."**
 
-**This is a hard gate. There is no "save anyway" path.** If a required login is
-missing, you surface the login instructions and STOP — you do NOT call
-`aramb_workflows.create`. Do not offer a bypass via `aramb_chat.ask_question`.
-
-**1. Detect browser-login nodes.** For every node you designed, check both:
-- `required_toolkits` includes `aramb-browser`, AND
-- the node's `prompt` names a site that's known to require a login. Initial
-  known-login surfaces (match case-insensitively; this list MAY grow as you meet
-  new ones):
-  `linkedin.com`, `github.com`, `twitter.com` / `x.com`, `gmail.com`,
-  `mail.google.com`, `reddit.com`, `notion.so`, `slack.com`, `discord.com`,
-  `instagram.com`.
-
-A node that uses `aramb-browser` only for a public, no-login surface (a docs
-site, a public search, a static page) does NOT trip this gate — skip it.
-
-**2. Infer the expected context name.** Convention: `<site-slug>-login`
-(`linkedin.com` → `linkedin-login`, `github.com` → `github-login`,
-`x.com`/`twitter.com` → `twitter-login`, `mail.google.com`/`gmail.com` →
-`gmail-login`). One login per site for v1. (If a workflow genuinely needs two
-identities on the same site, that's a known limitation — ask the user which
-identity and use `<site>-<identity>-login`; not the common case.)
-
-**3. List the user's saved contexts** (contexts are user-scoped and shared
-across apps, so an earlier login may already exist):
-
-```bash
-npx mcporter call aramb-browser.browser_context_list
-```
-
-**4. Branch per detected `<site>-login`:**
-
-- **Slot present** → continue to save. Mention it in your confirmation: "I'll
-  use your existing `<site>` login." (Note: we can't verify the cookies are
-  still valid at author time — only that you logged in at some point. A stale
-  login surfaces as a run-time auth failure, which `aramb-browser` re-prompts
-  separately. That's expected and out of scope here.)
-- **Slot missing** → do NOT save. Send a chat message via `aramb_chat.send_message`
-  (chat dispatch: write it in your reply text) explaining: (a) this workflow needs
-  a `<site>` login, (b) they log in once in a *separate* `aramb-browser` chat
-  session, (c) the exact commands — citing the canonical aramb-browser flow, do
-  NOT reinvent it:
-
-  ```bash
-  # In a new chat that loads the aramb-browser skill:
-  npx mcporter call aramb-browser.browser_context_create context_name=<site>-login
-  # log in via the viewer (manual), then snapshot the logged-in state:
-  npx mcporter call aramb-browser.browser_save_context browser=<site> context_name=<site>-login
-  ```
-
-  Then tell them to re-run create-workflow here to resume. STOP — the save does
-  not happen until every detected `<site>-login` slot exists.
-
-If you detected multiple login sites, every one must have its slot before you
-proceed. List all the missing ones in a single message so the user logs in once
-per site, not one round-trip per save attempt.
+1. For each node whose `required_toolkits` includes `aramb-browser` AND whose
+   prompt names a known-login site (`linkedin.com`, `github.com`,
+   `twitter.com`/`x.com`, `gmail.com`/`mail.google.com`, `reddit.com`, `notion.so`,
+   `slack.com`, `discord.com`, `instagram.com`), the expected context is
+   `<site>-login` (e.g. `linkedin-login`). Public/no-login surfaces don't trip this.
+2. Check what exists: `npx mcporter call aramb-browser.browser_context_list`.
+3. **Present** → proceed; tell the user plainly you'll reuse their `<site>` login.
+   **Missing** → do NOT call `aramb_workflows.create`. Tell the user, in plain
+   language, that the workflow needs them to log in to `<site>` once in a separate
+   browser chat — cite the aramb-browser flow (`browser_context_create
+   context_name=<site>-login` → log in → `browser_save_context ...
+   context_name=<site>-login`) — then STOP until the slot exists. List all missing
+   sites in one message.
 
 ## 5. Save the workflow
 
@@ -506,7 +422,7 @@ atomically in a single transaction.
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
 - `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
-- `assigned_agent` — task dispatch: an existing team persona. Chat dispatch: `"solo"` or a sub-agent you provisioned this run. Never `null`, empty, or a non-existent persona.
+- `assigned_agent` — team mode (master): a real team persona by role (`developer` / `*-tester` / `checker` / `*-deployer`), never `"solo"`. Solo mode: every node `"solo"`. Never `null`, empty, or an invented persona.
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits`** — grounded via `aramb_toolkits.list_toolkits`; copied from the source task (task dispatch) or inferred-then-grounded (chat dispatch). `[]` for orchestration / file-only nodes; never omit.
 - **`toolkit`** — the node's primary toolkit slug; MUST be a member of `required_toolkits`. Omit (or `null`) only when `required_toolkits` is `[]`.
@@ -555,7 +471,7 @@ If you can't complete the step:
 
 The instruction body (top paragraph) is per-node business context. The `When done` / `If you can't complete` blocks are the closing template — identical structure across every node, only the `summary` / `files` content differs. Compose both halves, then JSON-encode the full string into the node's `prompt`.
 
-**`aramb_workflows.create` skeleton — task dispatch** (each node carries `source_task_id`):
+**`aramb_workflows.create` skeleton — team mode** (task dispatch; each node carries a real team persona + `source_task_id`):
 
 ```bash
 npx mcporter call aramb_workflows.create \
@@ -576,8 +492,8 @@ npx mcporter call aramb_workflows.create \
   ]'
 ```
 
-**Chat dispatch** is identical except every node's `assigned_agent` is `"solo"`
-(or a sub-agent you provisioned) and `source_task_id` is omitted:
+**Solo mode** is identical except every node's `assigned_agent` is `"solo"`
+and `source_task_id` is omitted:
 
 ```bash
   nodes='[
@@ -673,7 +589,7 @@ could change, then stop — don't retry.
 - **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
 - **Always emit `default_node_settings`** with the full sensible-defaults block; never leave it empty.
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
-- **`assigned_agent`** — task dispatch: existing team persona. Chat dispatch: `"solo"` or a sub-agent you provisioned this run; never a team-mode persona that doesn't exist in the solo image.
+- **`assigned_agent`** — team mode (master): a real team persona by role (`developer` / `backend-tester` / `frontend-tester` / `integration-tester` / `checker` / `aramb-deployer` / `local-deployer`), **never `"solo"`**. Solo mode: every node `"solo"`. Don't invent personas for a solo workflow.
 - **`source_task_id`** — task dispatch: copy the literal `task_id` UUID from `aramb_tasks.list` (omit only for invented glue nodes). Chat dispatch: omit (or `null`) — solo has no source tasks.
 - **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls, grounded via `aramb_toolkits.list_toolkits`; `[]` when it touches no third-party service; never omit.
 - **`toolkit` per node** is the primary slug for trigger-binding; it MUST be a member of `required_toolkits`; omit (or `null`) only when `required_toolkits` is `[]`.

@@ -59,6 +59,7 @@ short hand-off that does no authoring.
    - **Failure mode:** Without it, the agent finishes its LLM session, brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble shows "(no summary)" instead of the real hand-off.
 6. **Call `aramb_workflows.update` exactly once.** Success or failure — never retry.
 7. **Close out cleanly.** Task dispatch: always `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave `in_progress`. Chat dispatch: confirm in your reply text. There is no task to close in chat dispatch.
+8. **Speak to the user in plain product language — never leak internals.** No MCP tool names (`aramb_workflows.update`), raw upstream errors (`toolkit-proxy 502`), CLI names, or "the tool isn't in my surface." You have these tools — call them. Report real failures in human terms and stop.
 
 ## Run input & slug grounding — v2 contract
 
@@ -345,7 +346,7 @@ Update progress: "Saving updated workflow".
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
 - `prompt` — concrete instruction with business context baked in, **no `{{env.…}}` / `{{input.…}}` placeholders**, **AND ending with the closing-instruction template**. The entry node reads `<run_input>` and distills it into its summary.
-- `assigned_agent` — Path A: existing team persona. Path C: carried verbatim from `aramb_workflows.get`, or `"solo"` / a provisioned sub-agent on freshly authored nodes.
+- `assigned_agent` — Path A (team): an existing team persona by role (`developer` / `*-tester` / `checker` / `*-deployer`), never `"solo"`. Path C (solo): carry the existing node's persona verbatim from `aramb_workflows.get`; use `"solo"` only on freshly authored nodes with no prior counterpart. Never `create-agent` (sub-agents are pre-provisioned).
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits`** — copied from the source task / existing node, grounded via `aramb_toolkits.list_toolkits`; `[]` for orchestration / file-only nodes; never omit.
 - **`toolkit`** — the primary slug; a member of `required_toolkits`; omit (or `null`) when `required_toolkits` is `[]`.
