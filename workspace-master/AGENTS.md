@@ -92,8 +92,8 @@ A **schedule** is a clock; an **event trigger** is a thing that happens in a
 connected service. When the user wants the workflow to fire on an event ("fire
 this when a new GitHub issue is created", "run it on every push", "trigger when I
 get a Slack DM", "stop firing on new issues"), route to the `configure-trigger`
-skill — NOT `schedule-workflow`. It reads the trigger catalog with `aramb_tools.*`
-and persists a `composio_event` row with `aramb_triggers.*`.
+skill — NOT `schedule-workflow`. It reads the trigger catalog with `aramb_toolkits.*`
+and persists a `toolkit_event` row with `aramb_triggers.*`.
 
 1. Look up the workflow first (`aramb_workflows.get application_id="<APPLICATION_ID>"`).
 2. Load and run the `configure-trigger` skill with the user's exact phrasing.

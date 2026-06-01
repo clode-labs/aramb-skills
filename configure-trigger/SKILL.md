@@ -13,9 +13,9 @@ description: >
 
 # Configure Trigger
 
-Turn "fire this workflow when <event> happens" into a `composio_event` trigger
+Turn "fire this workflow when <event> happens" into a `toolkit_event` trigger
 row on a workflow, by calling the `aramb_triggers.*` write tools. You read the
-catalog with `aramb_tools.*` (read-only) and persist with `aramb_triggers.*`
+catalog with `aramb_toolkits.*` (read-only) and persist with `aramb_triggers.*`
 (write). The two namespaces are split for security and discoverability — look up
 with one, mutate with the other.
 
@@ -34,7 +34,7 @@ Before doing anything, classify the user's intent:
 - **Event trigger** → this skill. Signals: a *thing that happens* in a service —
   "when a new GitHub issue is created", "on every push", "whenever a row is added
   to the sheet", "when I receive a Slack message". These map to a
-  `composio_event` row in `workflow_triggers`.
+  `toolkit_event` row in `workflow_triggers`.
 
 If the request is ambiguous or asks for **both** ("run it daily AND when a new
 issue arrives"), do NOT silently configure one and drop the other. Handle the
@@ -70,7 +70,7 @@ on new issues", "turn off the trigger"), skip to step 6.
 ### 2. Narrow to the toolkit
 
 ```bash
-npx mcporter call aramb_tools.list_toolkits
+npx mcporter call aramb_toolkits.list_toolkits
 ```
 
 Match the service to a real toolkit slug (uppercase, e.g. `GITHUB`, `SLACK`,
@@ -80,7 +80,7 @@ a toolkit for the service the user named, tell them it isn't available and stop.
 ### 3. Read the trigger catalog for that toolkit
 
 ```bash
-npx mcporter call aramb_tools.list_triggers toolkit="GITHUB"
+npx mcporter call aramb_toolkits.list_triggers toolkit="GITHUB"
 ```
 
 This returns the trigger types for the toolkit — each with a `slug` (e.g.
@@ -91,7 +91,7 @@ For the chosen slug, read its detail to learn what config it needs (some trigger
 require parameters like owner/repo or a channel id) and what payload it delivers:
 
 ```bash
-npx mcporter call aramb_tools.get_trigger toolkit="GITHUB" slug="GITHUB_NEW_ISSUE"
+npx mcporter call aramb_toolkits.get_trigger toolkit="GITHUB" slug="GITHUB_NEW_ISSUE"
 ```
 
 ### 4. Disambiguate if needed
@@ -118,7 +118,7 @@ The toolkit must have a connected account for this application — the trigger b
 to it. Confirm:
 
 ```bash
-npx mcporter call aramb_tools.check_connection toolkit="GITHUB"
+npx mcporter call aramb_toolkits.check_connection toolkit="GITHUB"
 ```
 
 If it reports no connected account, tell the user they need to connect <toolkit>
@@ -139,13 +139,13 @@ npx mcporter call aramb_triggers.create \
   enabled=true
 ```
 
-(`kind` defaults to `composio_event` and `provider` to `composio` — you don't pass
+(`kind` defaults to `toolkit_event` and `provider` to `composio` — you don't pass
 them. If `check_connection` returned a specific account and the app has more than
 one, pass `connected_account_id` too.)
 
 ### 6. Confirm activation BEFORE reporting success — async lifecycle
 
-**Creating a `composio_event` trigger is asynchronous upstream.** The row is born
+**Creating a `toolkit_event` trigger is asynchronous upstream.** The row is born
 `pending_create`; brahmi then registers the trigger instance with the provider and
 only then flips it to `active`. **Do NOT tell the user "done" while the status is
 `pending_create`** — the registration may still fail.
@@ -211,9 +211,9 @@ Then stop.
 
 - **Route first.** Cron / wall-clock cadence → `schedule-workflow`, not this skill.
   Event → this skill. Never silently configure both for a mixed request.
-- **Ground every slug in the catalog.** Toolkit slugs via `aramb_tools.list_toolkits`,
-  trigger slugs via `aramb_tools.list_triggers`. Never invent a slug from prose.
-- **Read before write.** `aramb_tools.*` is read-only lookup; `aramb_triggers.*` is
+- **Ground every slug in the catalog.** Toolkit slugs via `aramb_toolkits.list_toolkits`,
+  trigger slugs via `aramb_toolkits.list_triggers`. Never invent a slug from prose.
+- **Read before write.** `aramb_toolkits.*` is read-only lookup; `aramb_triggers.*` is
   the write surface. Look up the trigger and its config needs before creating.
 - **Ask, don't guess.** Ambiguous event or a missing required config value → one
   `aramb_chat.ask_question`, then stop until answered.

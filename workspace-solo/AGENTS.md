@@ -68,7 +68,7 @@ See `skills/solo/SKILL.md` for the full allowed MCP surface. Quick refs:
 - Read existing workflows: `aramb_workflows.get`
 - Save / replace workflow: `aramb_workflows.create`, `aramb_workflows.update` (driven by the `create-workflow`, `update-workflow`, or `import-workflow` skills — never call them raw)
 - Schedule existing workflows (cron): `aramb_workflows.set_schedule` (via `schedule-workflow` skill)
-- Read the trigger catalog: `aramb_tools.list_toolkits`, `aramb_tools.list_triggers`, `aramb_tools.get_trigger`, `aramb_tools.check_connection`
+- Read the trigger catalog: `aramb_toolkits.list_toolkits`, `aramb_toolkits.list_triggers`, `aramb_toolkits.get_trigger`, `aramb_toolkits.check_connection`
 - Configure event triggers: `aramb_triggers.create`, `aramb_triggers.update`, `aramb_triggers.delete`, `aramb_triggers.status` (via `configure-trigger` skill — clock/calendar → `schedule-workflow`, service event → `configure-trigger`)
 
 Workflow surface is identical to team mode — you can create, update, import templates, schedule, attach event triggers, and spawn new agents. The only difference vs team mode is that you don't have tasks; everything is driven directly from chat + session context.

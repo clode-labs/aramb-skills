@@ -82,7 +82,7 @@ Two trigger paths land at you as normal chat turns; recognise both:
   → use the `schedule-workflow` skill. Strictly cron-only; never bundle schedule changes into save/aramb_workflows.update calls.
 
 - **User asks to fire a workflow on a service event** (e.g. "fire this when a new GitHub issue is created", "trigger on every push", "stop firing on new issues")
-  → use the `configure-trigger` skill. Event triggers are NOT cron — they read the trigger catalog (`aramb_tools.*`) and persist a `composio_event` row (`aramb_triggers.*`). Disambiguation: clock/calendar → `schedule-workflow`; thing-that-happens → `configure-trigger`.
+  → use the `configure-trigger` skill. Event triggers are NOT cron — they read the trigger catalog (`aramb_toolkits.*`) and persist a `toolkit_event` row (`aramb_triggers.*`). Disambiguation: clock/calendar → `schedule-workflow`; thing-that-happens → `configure-trigger`.
 
 Common direct calls (the skills above wrap these):
 - `npx mcporter call aramb_workflows.get workflow_id="<id>"`

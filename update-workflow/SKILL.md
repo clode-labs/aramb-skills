@@ -51,7 +51,7 @@ short hand-off that does no authoring.
 
 ## MUST rules — read before anything else
 
-1. **Every node in `aramb_workflows.update` MUST carry `required_toolkits`.** Copy the slugs from each source task's `required_toolkits` (task dispatch) or the matching node in `aramb_workflows.get` / the action it performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service. Omitting silently kills the Evaluate missing-connection warnings. Ground slugs via `aramb_tools.list_toolkits` — don't trust a slug you can't see in the catalog.
+1. **Every node in `aramb_workflows.update` MUST carry `required_toolkits`.** Copy the slugs from each source task's `required_toolkits` (task dispatch) or the matching node in `aramb_workflows.get` / the action it performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service. Omitting silently kills the Evaluate missing-connection warnings. Ground slugs via `aramb_toolkits.list_toolkits` — don't trust a slug you can't see in the catalog.
 2. **Every node that touches a third-party service MUST carry a singular `toolkit`** — its primary toolkit slug, used for trigger-binding. Invariant brahmi enforces: **`toolkit ∈ required_toolkits`.** Omit (or `null`) only when `required_toolkits` is `[]`. If the existing node had no `toolkit` (pre-v2 definition), add it now.
 3. **No placeholder syntax in any node `prompt`.** No `{{env.KEY}}`, no `{{input.KEY}}`. There is no substitution layer; brahmi **rejects** any prompt matching `{{ env.… }}`. If a node you carry forward from `aramb_workflows.get` still contains legacy `{{env.…}}` placeholders, **rewrite that prompt now** to read its per-run values from `<run_input>` (see "Run input & slug grounding — v2 contract" below).
 4. **Do NOT declare `env_variables`.** Omit the field from the `aramb_workflows.update` call (leaving it out keeps nothing — there's no runtime path). If the existing definition declared `env_variables`, drop them: the schema rejects a non-empty map and the values were never read.
@@ -78,13 +78,13 @@ These rules apply to every node you author or carry forward — same contract as
 - **Empty input fails late, gracefully.** A step that gets an empty `<run_input>`
   should report "I don't have anything to work on" — no pre-flight gate.
 - **Ground slugs before drafting.** Confirm toolkit slugs with
-  `aramb_tools.list_toolkits` (and trigger slugs with
-  `aramb_tools.list_triggers("<TOOLKIT>")` when relevant). Slugs are uppercase,
+  `aramb_toolkits.list_toolkits` (and trigger slugs with
+  `aramb_toolkits.list_triggers("<TOOLKIT>")` when relevant). Slugs are uppercase,
   verbatim from the catalog — never inferred from prose.
 
   ```bash
-  npx mcporter call aramb_tools.list_toolkits
-  npx mcporter call aramb_tools.list_triggers toolkit="GITHUB"
+  npx mcporter call aramb_toolkits.list_toolkits
+  npx mcporter call aramb_toolkits.list_triggers toolkit="GITHUB"
   ```
 
 - **Migrating a legacy definition.** If `aramb_workflows.get` returns nodes with
@@ -247,7 +247,7 @@ request, or the user's explicit change / chat work):
 - Existing nodes obsolete now (user said remove, or new work supersedes them)? Drop them.
 - Reworded step / changed logic? Update that node's `prompt`.
 - Agent assignments changed? Update `assigned_agent` per node (see below).
-- Toolkits changed? Update `required_toolkits` and the singular `toolkit` per node (grounded via `aramb_tools.list_toolkits`).
+- Toolkits changed? Update `required_toolkits` and the singular `toolkit` per node (grounded via `aramb_toolkits.list_toolkits`).
 - Legacy `{{env.…}}` placeholders or declared `env_variables` carried over from the old definition? Clear them — rewrite the prompts to read from `<run_input>` and drop the `env_variables` map.
 
 **Lean on the existing definition.** Resist rewriting from scratch. If 80% of the
@@ -262,7 +262,7 @@ existing version; the change spec tells you *which* 20% to actually touch.
 - Concrete prompts with real business context baked in. No generic templates. No `{{env.…}}` / `{{input.…}}` placeholders — per-run values arrive in `<run_input>` (step 1 only).
 - **Each node `prompt` ends with the closing-instruction template** (below). If you carry an old node forward unchanged, verify it still has the template; if it pre-dates this rule, append it now.
 - **The entry (first) node's prompt distills `<run_input>` into its `outputs.summary`** — if your delta changes which node runs first, make sure the new entry node funnels the input forward.
-- **Each node carries `required_toolkits`** — never omit; `[]` for orchestration / file-only nodes. Ground slugs via `aramb_tools.list_toolkits`.
+- **Each node carries `required_toolkits`** — never omit; `[]` for orchestration / file-only nodes. Ground slugs via `aramb_toolkits.list_toolkits`.
 - **Each node that uses toolkits carries a singular `toolkit`** — its primary slug, a member of `required_toolkits`; omit (or `null`) when `required_toolkits` is `[]`.
 - **Each node carries `settings`** — usually `{}`. Carry forward existing per-node overrides from `aramb_workflows.get`, plus or minus what the user is changing. Don't drop overrides the user didn't mention.
 - **Carry forward `default_node_settings`** from the existing workflow, edited only where the user asked. If the existing block is empty / missing (older definitions), seed the same sensible defaults create-workflow uses (`model=claude-sonnet-4-6`, `effort=medium`, `thinking=adaptive`, `max_turns=35`, `admin=false`, `budget_usd=25.0`, `approval_mode=auto`, `instructions=""`).
@@ -310,7 +310,7 @@ Update progress: "Saving updated workflow".
 - `prompt` — concrete instruction with business context baked in, **no `{{env.…}}` / `{{input.…}}` placeholders**, **AND ending with the closing-instruction template**. The entry node reads `<run_input>` and distills it into its summary.
 - `assigned_agent` — Path A: existing team persona. Path C: carried verbatim from `aramb_workflows.get`, or `"solo"` / a provisioned sub-agent on freshly authored nodes.
 - `acceptance_criteria` — how to know the step succeeded
-- **`required_toolkits`** — copied from the source task / existing node, grounded via `aramb_tools.list_toolkits`; `[]` for orchestration / file-only nodes; never omit.
+- **`required_toolkits`** — copied from the source task / existing node, grounded via `aramb_toolkits.list_toolkits`; `[]` for orchestration / file-only nodes; never omit.
 - **`toolkit`** — the primary slug; a member of `required_toolkits`; omit (or `null`) when `required_toolkits` is `[]`.
 - **`settings`** — JSONB; preserve existing per-node overrides from `aramb_workflows.get`, edit only where the user asked; `{}` when the node has no overrides.
 
@@ -454,7 +454,7 @@ definition is intact.
 - One shot: never call `aramb_workflows.update` twice. If the first call succeeded, you're done. If it errored, close as failed (Path A) or tell the user and stop (Path C).
 - Each node's `prompt` carries real business context baked in.
 - **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
-- **Each node carries `required_toolkits`** — `[]` when the node touches no third-party service; never omit. Ground slugs via `aramb_tools.list_toolkits`.
+- **Each node carries `required_toolkits`** — `[]` when the node touches no third-party service; never omit. Ground slugs via `aramb_toolkits.list_toolkits`.
 - **Each toolkit-using node carries a singular `toolkit`** — its primary slug, a member of `required_toolkits`; omit (or `null`) when `required_toolkits` is `[]`.
 - **No placeholder syntax in prompts** — no `{{env.KEY}}`, no `{{input.KEY}}`; brahmi rejects prompts containing `{{ env.… }}`. Per-run values arrive in `<run_input>` (step 1 only); rewrite any legacy placeholders carried over from the old definition.
 - **Do NOT declare `env_variables`** — omit the field; drop any the old definition carried. The schema rejects a non-empty map; the column has no runtime path in v2.

@@ -59,7 +59,7 @@ report progress and close out.
 1. **Every node in `aramb_workflows.create` MUST carry `required_toolkits`.** Copy the array from each source task's `required_toolkits` (task dispatch) or infer it from the action the node performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service.
    - **Failure mode:** Omitting `required_toolkits` means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. Empty array `[]` is correct when the node touches no third-party service — never omit the field.
 2. **Every node that touches a third-party service MUST carry a singular `toolkit`** — its *primary* toolkit slug, used for trigger-binding. The invariant brahmi enforces: **`toolkit` MUST be a member of that node's `required_toolkits`.** A Gmail-fetch node is `toolkit:"GMAIL", required_toolkits:["GMAIL"]`; a node that reads Drive then writes Sheets is `toolkit:"GOOGLESHEETS", required_toolkits:["GOOGLEDRIVE","GOOGLESHEETS"]` (pick the one the trigger would bind to — usually the action the workflow is "about"). Omit `toolkit` (or pass `null`) only when `required_toolkits` is `[]`. The brahmi MCP schema rejects a `toolkit` that isn't in `required_toolkits`.
-3. **Ground every toolkit + trigger slug in the real catalog — never hallucinate.** Before drafting, call `aramb_tools.list_toolkits` to confirm the exact uppercase slugs (and, when the workflow will be event-triggered, `aramb_tools.list_triggers("<TOOLKIT>")` for trigger slugs). Do NOT infer slugs from prose. See "Ground the slugs" below.
+3. **Ground every toolkit + trigger slug in the real catalog — never hallucinate.** Before drafting, call `aramb_toolkits.list_toolkits` to confirm the exact uppercase slugs (and, when the workflow will be event-triggered, `aramb_toolkits.list_triggers("<TOOLKIT>")` for trigger slugs). Do NOT infer slugs from prose. See "Ground the slugs" below.
 4. **No placeholder syntax in any node `prompt`.** No `{{env.KEY}}`, no `{{input.KEY}}`, no template substitution of any kind. There is no substitution layer — a literal `{{env.FOO}}` reaches the agent as the literal string `{{env.FOO}}`. The brahmi MCP schema **rejects** any prompt matching `{{ env.… }}`. Write what the agent should do with the context that arrives in `<run_input>` instead (see "Run input — the only per-run channel" below).
 5. **Do NOT declare `env_variables`.** Omit the field from the `aramb_workflows.create` call entirely. The column has no runtime path in v2 — declaring entries reads as "I wired up your API_KEY" when nothing consumes it. The brahmi MCP schema rejects a non-empty `env_variables` map. Secrets/credentials are connected through the Composio account, not declared on the workflow.
 6. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below for the exact template.
@@ -94,22 +94,22 @@ This shapes how you write prompts:
   issue URL / instruction"* rather than guess. Don't add pre-flight gates; the
   agent surfaces the failure in the run history. Write step-1 prompts that say so.
 
-## Ground the slugs — call aramb_tools before drafting
+## Ground the slugs — call aramb_toolkits before drafting
 
 The slugs you stamp on `toolkit` / `required_toolkits` (and any trigger you wire)
 MUST be real catalog values. Don't infer them from prose. Look them up:
 
 ```bash
 # Confirm toolkit slugs (uppercase, exactly as the catalog reports them)
-npx mcporter call aramb_tools.list_toolkits
+npx mcporter call aramb_toolkits.list_toolkits
 
 # When the workflow is meant to fire on an event, read the trigger catalog for
 # that toolkit so you ground the trigger slug too (the configure-trigger skill
 # does the actual wiring — you just confirm the slug exists):
-npx mcporter call aramb_tools.list_triggers toolkit="GITHUB"
+npx mcporter call aramb_toolkits.list_triggers toolkit="GITHUB"
 ```
 
-`aramb_tools.*` returns toolkit + trigger slugs already normalized to uppercase —
+`aramb_toolkits.*` returns toolkit + trigger slugs already normalized to uppercase —
 use them verbatim. A `toolkit` or `required_toolkits` entry that isn't a real
 catalog slug fails pre-flight (no connected account) and the run never starts.
 
@@ -209,7 +209,7 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **`assigned_agent` per node:**
   - *Task dispatch:* keep the source task's agent unless a different existing agent fits the generalized version better.
   - *Chat dispatch:* default to `"solo"`. If the workflow has differentiated step roles (triage → implement → verify → publish, research → draft → review), provision sub-agents with `create-agent` — one per distinct role — and stamp the matching sub-agent name on each node. Only collapse to a single `"solo"` graph when every step is the same kind of work. Never stamp a team-mode persona (`developer`, `aramb-deployer`, `local-deployer`, …) that doesn't actually exist in your image — either it's `"solo"` or a sub-agent you created in this run.
-- **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase and **grounded via `aramb_tools.list_toolkits`** (see "Ground the slugs"), not guessed from prose. Brahmi snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
+- **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase and **grounded via `aramb_toolkits.list_toolkits`** (see "Ground the slugs"), not guessed from prose. Brahmi snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
 - **Carry a singular `toolkit` per node that has any toolkits — MANDATORY when `required_toolkits` is non-empty.** It is the node's *primary* toolkit (the one a trigger would bind to). Invariant: `toolkit ∈ required_toolkits`. Single-toolkit node → `toolkit` equals the one slug. Multi-toolkit node → pick the slug the node's job is "about" (the action it exists to perform, not an incidental read). Omit `toolkit` (or `null`) only when `required_toolkits` is `[]`. Brahmi rejects a `toolkit` that isn't in `required_toolkits`.
 - **Write prompts against `<run_input>`, never placeholders.** Each node's `prompt` describes what to do with the context it receives — for step 1 that context is the `<run_input>` block (see "Run input — the only per-run channel"); for later steps it's the parent's `outputs.summary`. No `{{env.KEY}}` / `{{input.KEY}}` anywhere. Step 1's prompt must explicitly tell the agent to distill the relevant input into its `outputs.summary` for downstream steps.
 - **Set `default_node_settings` on the workflow.** Always emit a sensible defaults block — see "Default node settings — workflow-level". Don't leave it empty: the FE renders the settings tray off these values.
@@ -246,6 +246,49 @@ Why both `summary` and `files`:
 Notes:
 - The agent reads its `project_id` and `step_id` from the User Message under "## Current Context" (`Project ID:` and `Workflow Run Step ID:` lines) at dispatch time. Brahmi rejects cross-step writes (`context_drift`), so the agent MUST copy these UUIDs verbatim into the close call.
 - Do NOT instruct the agent to call `aramb_tasks.update` from a workflow-step prompt — that targets the tasks domain (different DB rows) and the run will stall on the safety net. Only `aramb_workflows.update_step` closes a workflow run step.
+
+## Git operations — route through aramb_chat first, Composio as fallback
+
+**When to emit this block:** any node whose described work involves git-protocol
+operations — clone, fetch, checkout, push, branch, commit, or anything that
+needs a working tree of the repo on disk. Issue / PR / comment / label-style
+operations don't need this block; they are pure GitHub API and run through the
+Composio toolkit directly.
+
+**Why it matters:** the toolkit (`required_toolkits: ["GITHUB"]`) gates API
+operations, not git-protocol operations. A `git clone` is not a GitHub API
+endpoint; Composio cannot perform it. The container shell has no git
+credentials (no `gh` CLI, no credential helper, no PAT). Without explicit
+routing the executing agent's reflex is to try raw `bash git clone`, which
+will always fail on private repos.
+
+**Append this block verbatim** to the END of any node prompt that involves git
+ops (after the closing-instruction template):
+
+```
+### Tool routing for git operations on this step
+1. PRIMARY — call `aramb_chat.list_linked_repos` first to confirm the repo
+   is linked to this application. If linked, call `aramb_chat.clone_repo`
+   (Gitana issues a short-lived clone token). This is the only path that
+   yields a real working tree.
+2. FALLBACK — only if step 1 returns "not linked" or errors out: use the
+   Composio GitHub toolkit for whatever the work allows — read file contents
+   via `GITHUB_GET_REPO_CONTENT`, open PRs via the pull-requests action, etc.
+   This path is API-only; you will not have a working tree.
+3. NEVER use raw `git clone`, `gh`, or any shell git command. There are no
+   credentials available to the container shell. Bash attempts will fail
+   with "could not read Username" or "gh: command not found" and waste a
+   turn each.
+4. If neither path can complete the work (repo unlinked AND Composio cannot
+   express the operation), close the step via `aramb_workflows.update_step`
+   with `status="blocked"` and a clear message asking the user to either
+   link the repo (Project Settings → Repos) or expand the Composio scope.
+   Don't keep retrying.
+```
+
+Do NOT emit this block on nodes that only do API operations (read issue,
+comment on PR, list assignees). It is noise on those nodes and the executing
+agent will spend turns reasoning about a fallback chain that doesn't apply.
 
 ## Default node settings — workflow-level
 
@@ -321,7 +364,7 @@ atomically in a single transaction.
 - `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
 - `assigned_agent` — task dispatch: an existing team persona. Chat dispatch: `"solo"` or a sub-agent you provisioned this run. Never `null`, empty, or a non-existent persona.
 - `acceptance_criteria` — how to know the step succeeded
-- **`required_toolkits`** — grounded via `aramb_tools.list_toolkits`; copied from the source task (task dispatch) or inferred-then-grounded (chat dispatch). `[]` for orchestration / file-only nodes; never omit.
+- **`required_toolkits`** — grounded via `aramb_toolkits.list_toolkits`; copied from the source task (task dispatch) or inferred-then-grounded (chat dispatch). `[]` for orchestration / file-only nodes; never omit.
 - **`toolkit`** — the node's primary toolkit slug; MUST be a member of `required_toolkits`. Omit (or `null`) only when `required_toolkits` is `[]`.
 - **`prompt`** — no `{{env.…}}` / `{{input.…}}` placeholders anywhere; step 1's prompt instructs the agent to read `<run_input>` and distill the relevant bits into its `outputs.summary`.
 - **`source_task_id`** — **task dispatch only:** the `task_id` of the originating user task from `aramb_tasks.list`. Required whenever the node consolidates from one user task; omit only for glue / orchestration nodes you invented. Powers the FE "show me the task that produced this node" link and cost reconciliation. **Chat dispatch:** omit the field entirely (or pass `null`) — solo has no source tasks. Brahmi accepts both.
@@ -425,7 +468,7 @@ npx mcporter call aramb_tasks.update \
 - **Wall-clock schedule** ("a daily standup workflow that runs at 9am") → cron →
   `schedule-workflow`. Add a `schedule_hint`.
 - **Event trigger** ("…and fire it whenever a new GitHub issue is created") →
-  `composio_event` → `configure-trigger`. Add a `trigger_hint`.
+  `toolkit_event` → `configure-trigger`. Add a `trigger_hint`.
 
 ```bash
 outputs='{"workflow_id":"<id>","node_count":<n>,"summary":"...","schedule_hint":"User also asked for a schedule: \"daily at 9am IST\". Run schedule-workflow next with workflow_id=<id> and the user phrase verbatim."}'
@@ -472,7 +515,7 @@ Then bundle the schedule into your confirmation line ("Workflow created and sche
 
 **If instead the user asked for an event trigger** ("…and fire it whenever a new
 GitHub issue is created"), that's not a cron schedule — use the `configure-trigger`
-skill (in your loadout) to wire the `composio_event` trigger after the create
+skill (in your loadout) to wire the `toolkit_event` trigger after the create
 succeeds, then bundle the result into your confirmation. Don't try to express an
 event condition as a cron schedule.
 
@@ -484,7 +527,7 @@ event condition as a cron schedule.
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
 - **`assigned_agent`** — task dispatch: existing team persona. Chat dispatch: `"solo"` or a sub-agent you provisioned this run; never a team-mode persona that doesn't exist in the solo image.
 - **`source_task_id`** — task dispatch: copy the literal `task_id` UUID from `aramb_tasks.list` (omit only for invented glue nodes). Chat dispatch: omit (or `null`) — solo has no source tasks.
-- **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls, grounded via `aramb_tools.list_toolkits`; `[]` when it touches no third-party service; never omit.
+- **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls, grounded via `aramb_toolkits.list_toolkits`; `[]` when it touches no third-party service; never omit.
 - **`toolkit` per node** is the primary slug for trigger-binding; it MUST be a member of `required_toolkits`; omit (or `null`) only when `required_toolkits` is `[]`.
 - **No placeholder syntax in prompts** — no `{{env.KEY}}`, no `{{input.KEY}}`. There is no substitution layer; brahmi rejects prompts containing `{{ env.… }}`. Per-run values arrive in `<run_input>` (step 1 only); the agent reads them there.
 - **Do NOT declare `env_variables`** — omit the field. The column has no runtime path in v2 and the schema rejects a non-empty map. Constant recipe values bake into prompts; secrets come from the Composio connection.
