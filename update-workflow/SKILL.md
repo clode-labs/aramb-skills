@@ -257,9 +257,9 @@ request, or the user's explicit change / chat work):
 graph is unchanged, keep 80% unchanged. The user already saw and accepted the
 existing version; the change spec tells you *which* 20% to actually touch.
 
-**`assigned_agent` handling — decided by the WORK, not the mode (same model as create-workflow):**
-- *Existing nodes you keep (both paths):* **read the existing `assigned_agent` verbatim from `aramb_workflows.get` and carry it forward.** Workflows imported from templates can be multi-persona (`developer`, `aramb-deployer`, a bespoke agent name, …) even in a solo chat — do NOT blindly stamp `"solo"` across the graph.
-- *Freshly authored nodes:* assign by the node's work, exactly as create-workflow does. Specialized work → **provision a bespoke agent via `create-agent`** and stamp its name (BOTH solo and team — solo is NOT barred from provisioning). Standard work → a roster persona in team mode, or `"solo"` in solo mode. If a new step clearly belongs to an existing persona already in the graph, reuse that persona's name instead of inventing one.
+**`assigned_agent` handling — one dedicated agent per node by its role, decided IDENTICALLY in solo and team (same model as create-workflow; mode never enters the decision):**
+- *Existing nodes you keep (both paths):* **read the existing `assigned_agent` verbatim from `aramb_workflows.get` and carry it forward.** Workflows can be multi-persona (`developer`, `aramb-deployer`, a bespoke agent name, …) even in a solo chat — do NOT blindly stamp `"solo"` across the graph.
+- *Freshly authored nodes:* exactly as create-workflow does. For each node, reuse a fitting existing agent (a persona already in the graph, a roster persona, or one you created in this update), otherwise **provision a bespoke agent via `create-agent`** named for its role, to the template-grade bar. This is the same in solo and team. Bare `"solo"` only for a trivial glue node.
 
 **Same authoring rules as create-workflow:**
 - Concrete prompts with real business context baked in. No generic templates. No `{{env.…}}` / `{{input.…}}` placeholders — per-run values arrive in `<run_input>` (step 1 only).
@@ -348,7 +348,7 @@ Update progress: "Saving updated workflow".
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
 - `prompt` — concrete instruction with business context baked in, **no `{{env.…}}` / `{{input.…}}` placeholders**, **AND ending with the closing-instruction template**. The entry node reads `<run_input>` and distills it into its summary.
-- `assigned_agent` — kept nodes: carry the existing persona verbatim from `aramb_workflows.get` (both paths). Freshly authored nodes: decided by the work — a bespoke agent (provisioned via `create-agent`, either mode) for specialized work; a roster persona (team) or `"solo"` (solo) for standard work. Never `null` or empty.
+- `assigned_agent` — kept nodes: carry the existing persona verbatim from `aramb_workflows.get` (both paths). Freshly authored nodes: one dedicated agent per node by its role, decided identically in solo and team — reuse a fitting existing agent (roster persona / persona already in the graph), else **provision a bespoke agent via `create-agent`** named for its role. Bare `"solo"` only for a trivial glue node. Never `null` or empty.
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits`** — copied from the source task / existing node, grounded via `aramb_toolkits.list_toolkits`; `[]` for orchestration / file-only nodes; never omit.
 - **`toolkit`** — the primary slug; a member of `required_toolkits`; omit (or `null`) when `required_toolkits` is `[]`.
@@ -503,7 +503,7 @@ definition is intact.
 - **Carry `default_node_settings`** forward unchanged from `aramb_workflows.get`, edited only where the user asked. Never silently drop the workflow defaults block.
 - **Reject pure firing-condition change requests** — cron → route to `schedule-workflow`; event trigger → route to `configure-trigger`. Path A: close failed with a `rejection_reason` naming the skill. Path C: use that skill directly. Only call `aramb_workflows.update` for definition changes.
 - **Apply setting changes at the right level**: workflow-wide phrases ("all steps" / "the workflow" / "everywhere") → `default_node_settings`. Single-step phrases ("the synth step" / "this step") → that one node's `settings` override.
-- **Preserve per-node `assigned_agent` verbatim from `aramb_workflows.get`** — multi-persona workflows (template imports) keep their personas through updates. For freshly authored nodes, assign by the work: a bespoke agent via `create-agent` (either mode) for specialized work, a roster persona (team) or `"solo"` (solo) for standard work.
+- **Preserve per-node `assigned_agent` verbatim from `aramb_workflows.get`** — multi-persona workflows keep their personas through updates. For freshly authored nodes, give each its own dedicated agent by role (identically in solo and team): reuse a fitting existing agent, else provision a bespoke one via `create-agent`. Bare `"solo"` only for a trivial glue node.
 - **For history-derived chat deltas, generalize the new work** — strip one-off dates / values from any new node prompts before adding them.
 - `unique_id` values are sequential integers starting at 1.
 - Dependencies live ONLY in the top-level `edges` array. Never on nodes.
