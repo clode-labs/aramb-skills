@@ -52,7 +52,23 @@ user's wizard answers, then call `aramb_workflows.create` exactly once.
    failure mode as `create-workflow`: omitting kills the Evaluate
    missing-connection warnings and renders the Required-toolkits row empty in
    the FE node panel.
-6. **Strip stale closing blocks during polish.** If a template-shipped node prompt ends with a literal `npx mcporter call aramb_workflows.update_my_step …` block, strip it during polish (step 3) and replace it with a one-line output contract describing what `outputs.summary` / `outputs.files` should contain for the next step. See "Output contract per node" below.
+6. **Every node that has any `required_toolkits` MUST carry a singular `toolkit`.**
+   If the template node already includes `toolkit`, copy it verbatim. If it does
+   not (older templates), derive it: the single slug when `required_toolkits` has
+   one entry, or the primary action toolkit when it has several. Invariant brahmi
+   enforces: **`toolkit ∈ required_toolkits`.** Omit (or `null`) only when
+   `required_toolkits` is `[]`. This is the one structural field you may *add* —
+   it's the trigger-binding primary, not a graph change.
+7. **No placeholder syntax in any node `prompt`.** Templates ship with placeholders
+   already substituted by brahmi, so the prose you receive should be literal. Do
+   NOT introduce `{{env.KEY}}` / `{{input.KEY}}` during polish, and if a node still
+   contains a literal `{{env.…}}` (a template bug), rewrite it to read its per-run
+   value from `<run_input>` instead. The brahmi MCP schema rejects prompts matching
+   `{{ env.… }}`.
+8. **Do NOT declare `env_variables`.** Omit the field from the `aramb_workflows.create`
+   call entirely — templates do not declare env variables in v2, and the schema
+   rejects a non-empty map.
+9. **Strip stale closing blocks during polish.** If a template-shipped node prompt ends with a literal `npx mcporter call aramb_workflows.update_my_step …` block, strip it during polish (step 3) and replace it with a one-line output contract describing what `outputs.summary` / `outputs.files` should contain for the next step. See "Output contract per node" below.
 
 You are running as the **master agent**, not as a task. Brahmi dispatched the
 chat message with an extra-system-prompt block named `<template-import>` that
@@ -160,6 +176,11 @@ What "substantive polish" looks like:
   ends with a literal `npx mcporter call aramb_workflows.update_my_step …`
   block, remove it and put a one-line output contract in its place (see
   "Output contract per node" above).
+- **Never introduce placeholder syntax** — `{{env.KEY}}` / `{{input.KEY}}` are
+  banned (brahmi rejects them). If a resolved prompt still has a literal
+  `{{env.…}}` (a template bug), rewrite it to read its per-run value from
+  `<run_input>`. Per-run context reaches the first node via `<run_input>`; you do
+  not parameterize it.
 
 What you MUST NOT change:
 
@@ -169,6 +190,10 @@ What you MUST NOT change:
 - The set of nodes (no adds, no removes)
 - Any edges (no adds, no removes, no reroutes)
 - `default_node_settings`, `budget_usd`, `stateful`
+
+The **one** field you may add (not change): a singular `toolkit` per node, when the
+template node omits it — see MUST rule 6. It must be a member of that node's
+`required_toolkits`.
 
 When `<wizard-answers>` is empty (`{}`), polish is optional: only rewrite if
 the resolved text is obviously broken. The stale-closing-block strip still
@@ -191,8 +216,7 @@ npx mcporter call aramb_workflows.create \
   default_node_settings='<workflow.default_node_settings JSON, verbatim>' \
   budget_usd=<workflow.budget_usd> \
   stateful=<workflow.stateful> \
-  env_variables='{}' \
-  nodes='<polished nodes JSON — name/prompt rewritten per step 3, rest verbatim>' \
+  nodes='<polished nodes JSON — name/prompt rewritten per step 3, toolkit added where missing, rest verbatim>' \
   edges='<workflow.edges JSON, verbatim>'
 ```
 
@@ -204,14 +228,18 @@ node in your `nodes` array, confirm:
 - `name`, `prompt` — may carry your polish from step 3
 - `required_toolkits` — present on every node, copied verbatim from the
   template payload (use `[]`, never omit)
-- `prompt` — carries business context + a one-line output contract. If the template shipped a stale `npx mcporter call aramb_workflows.update_my_step …` block at the bottom, polish should have stripped it (step 3).
+- `toolkit` — present on every node with non-empty `required_toolkits`, a member
+  of it; copied verbatim if the template had it, otherwise derived (MUST rule 6)
+- `prompt` — carries business context + a one-line output contract, **no
+  `{{env.…}}` / `{{input.…}}` placeholders**. If the template shipped a stale `npx mcporter call aramb_workflows.update_my_step …` block at the bottom, polish should have stripped it (step 3).
 
 And on the call itself:
 
 - `template_slug` — the slug from the `<template-import>` block, so the
   workflow row records its origin
 - `default_node_settings` — verbatim from the template payload
-- `env_variables` — `'{}'` (templates do not declare env variables in v1)
+- `env_variables` — omit the field entirely (templates do not declare env
+  variables in v2; the schema rejects a non-empty map)
 - `edges` — verbatim from the template payload (each edge `{source, target}`).
 
 **Never retry `aramb_workflows.create`.** One shot — success or failure. If the call
@@ -293,6 +321,9 @@ After posting, STOP. Do not send follow-up messages.
 - Create every agent from the `<agents>` array via `create-agent` before saving the workflow — verbatim persona content, no rewriting
 - Substantively polish node `name` / `prompt` text (and the workflow `name` / `description`) when `<wizard-answers>` is non-empty; structure (`assigned_agent`, `required_toolkits`, edges, settings) is immutable
 - Every node in `aramb_workflows.create` carries `required_toolkits` (use `[]` when empty, never omit)
+- Every toolkit-using node carries a singular `toolkit` (a member of `required_toolkits`) — copy from the template verbatim, or derive it when the template omits it; omit when `required_toolkits` is `[]`. The only structural field you may add.
+- No placeholder syntax (`{{env.KEY}}` / `{{input.KEY}}`) in any prompt — brahmi rejects it; per-run context reaches the first node via `<run_input>`
+- Do NOT declare `env_variables` — omit the field (the schema rejects a non-empty map)
 - Every node's `prompt` carries business context + a one-line output contract (see "Output contract per node")
 - `aramb_workflows.create` runs exactly once; never retry
 - Always pass `template_slug` so brahmi records the workflow's origin

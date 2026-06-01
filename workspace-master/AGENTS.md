@@ -86,6 +86,30 @@ Intent triggers to watch for:
 
 If the user is asking a **definition-shaped** change ("change the model to Opus", "raise the budget to $50") that's update-workflow's territory, not schedule-workflow's. Cron / timezone / enabled flag is the only surface schedule-workflow owns.
 
+### Workflow event-trigger routing
+
+A **schedule** is a clock; an **event trigger** is a thing that happens in a
+connected service. When the user wants the workflow to fire on an event ("fire
+this when a new GitHub issue is created", "run it on every push", "trigger when I
+get a Slack DM", "stop firing on new issues"), route to the `configure-trigger`
+skill — NOT `schedule-workflow`. It reads the trigger catalog with `aramb_tools.*`
+and persists a `composio_event` row with `aramb_triggers.*`.
+
+1. Look up the workflow first (`aramb_workflows.get application_id="<APPLICATION_ID>"`).
+2. Load and run the `configure-trigger` skill with the user's exact phrasing.
+3. The skill confirms only after the trigger reaches `active` status.
+
+Intent triggers to watch for: "fire when …", "trigger on …", "whenever <event>
+happens", "run this on every <event>", "stop firing on …", "remove the trigger".
+
+**Disambiguation** — wall-clock cadence (daily/weekly/at-9am/cron) → `schedule-workflow`;
+service event (issue created, push, message received) → `configure-trigger`. If the
+request mixes both, do the create/update first, then the schedule, then the trigger;
+never collapse an event into a cron expression or vice versa. **Compound at create
+time** — if a create/update response carries a `trigger_hint` in its outputs, run
+`configure-trigger` next with the workflow_id and the verbatim phrase (mirrors the
+`schedule_hint` flow).
+
 ### Creating Tasks
 1. Identify what agents are needed
 2. Check if those agents exist (`benji agent list`)

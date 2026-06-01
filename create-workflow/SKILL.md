@@ -47,20 +47,71 @@ block — NOT Claude's built-in `TaskCreate`. The two are unrelated; a built-in
 `TaskCreate` entry does not make this a task dispatch. If there is no brahmi
 "Your task id" block in your system prompt, you are in chat dispatch.
 
-Everything else — node schema, `required_toolkits`, the closing-instruction
-template, `default_node_settings`, env-variable hygiene, the one-shot
-`aramb_workflows.create` rule — is identical across both modes. The mode only
-changes (a) where the spec comes from, (b) `assigned_agent` / `source_task_id`
-on nodes, and (c) how you report progress and close out.
+Everything else — node schema, `required_toolkits`, the per-step `toolkit`
+field, the closing-instruction template, `default_node_settings`, the
+no-placeholders / no-`env_variables` rules, the one-shot `aramb_workflows.create`
+rule — is identical across both modes. The mode only changes (a) where the spec
+comes from, (b) `assigned_agent` / `source_task_id` on nodes, and (c) how you
+report progress and close out.
 
 ## MUST rules — read before anything else
 
 1. **Every node in `aramb_workflows.create` MUST carry `required_toolkits`.** Copy the array from each source task's `required_toolkits` (task dispatch) or infer it from the action the node performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service.
    - **Failure mode:** Omitting `required_toolkits` means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. Empty array `[]` is correct when the node touches no third-party service — never omit the field.
-2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below for the exact template.
+2. **Every node that touches a third-party service MUST carry a singular `toolkit`** — its *primary* toolkit slug, used for trigger-binding. The invariant brahmi enforces: **`toolkit` MUST be a member of that node's `required_toolkits`.** A Gmail-fetch node is `toolkit:"GMAIL", required_toolkits:["GMAIL"]`; a node that reads Drive then writes Sheets is `toolkit:"GOOGLESHEETS", required_toolkits:["GOOGLEDRIVE","GOOGLESHEETS"]` (pick the one the trigger would bind to — usually the action the workflow is "about"). Omit `toolkit` (or pass `null`) only when `required_toolkits` is `[]`. The brahmi MCP schema rejects a `toolkit` that isn't in `required_toolkits`.
+3. **Ground every toolkit + trigger slug in the real catalog — never hallucinate.** Before drafting, call `aramb_tools.list_toolkits` to confirm the exact uppercase slugs (and, when the workflow will be event-triggered, `aramb_tools.list_triggers("<TOOLKIT>")` for trigger slugs). Do NOT infer slugs from prose. See "Ground the slugs" below.
+4. **No placeholder syntax in any node `prompt`.** No `{{env.KEY}}`, no `{{input.KEY}}`, no template substitution of any kind. There is no substitution layer — a literal `{{env.FOO}}` reaches the agent as the literal string `{{env.FOO}}`. The brahmi MCP schema **rejects** any prompt matching `{{ env.… }}`. Write what the agent should do with the context that arrives in `<run_input>` instead (see "Run input — the only per-run channel" below).
+5. **Do NOT declare `env_variables`.** Omit the field from the `aramb_workflows.create` call entirely. The column has no runtime path in v2 — declaring entries reads as "I wired up your API_KEY" when nothing consumes it. The brahmi MCP schema rejects a non-empty `env_variables` map. Secrets/credentials are connected through the Composio account, not declared on the workflow.
+6. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below for the exact template.
    - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble then shows "(no summary)" instead of the real hand-off — the chain works visually but with zero context flowing between steps. Outputs are load-bearing.
-3. **Call `aramb_workflows.create` exactly once.** Success or failure — never retry.
-4. **Close out cleanly.** Task dispatch: always close with `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave the task `in_progress`. Chat dispatch: confirm in your reply text (success or failure). There is no task to close in chat dispatch.
+7. **Call `aramb_workflows.create` exactly once.** Success or failure — never retry.
+8. **Close out cleanly.** Task dispatch: always close with `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave the task `in_progress`. Chat dispatch: confirm in your reply text (success or failure). There is no task to close in chat dispatch.
+
+## Run input — the only per-run channel
+
+A workflow run receives ALL of its per-run context in a single `<run_input>`
+block that brahmi renders into the **first step's** prompt at dispatch. It holds
+either the user's free-form instruction (manual run) or the trigger payload JSON
+(trigger run) — same slot either way. There are no declared input variables, no
+typed form, no substitution. The agent reads `<run_input>` and figures out what
+to do.
+
+This shapes how you write prompts:
+
+- **Don't parameterize inputs with placeholders.** Where you'd once have written
+  `Fix the issue at {{env.ISSUE_URL}}`, now write: *"The user's instruction or the
+  trigger payload arrives in `<run_input>`. Extract the issue URL, repo, and any
+  details from it, then open a PR that fixes the issue."* Trust the agent to parse
+  JSON or free text.
+- **Step 1 is the funnel.** `<run_input>` renders on the FIRST step only.
+  Downstream steps see only their parent's `outputs.summary` + `outputs.files`.
+  So **step 1's prompt MUST instruct the agent to distill the relevant input into
+  its `outputs.summary`** — e.g. *"Pull the issue number, title, and repo out of
+  `<run_input>` and state them in your summary so later steps can act on them."*
+  If step 1 doesn't propagate it, step N never sees it.
+- **Fail late, gracefully.** If `<run_input>` is empty (a manual run with no text),
+  the step should fail with a clear *"I don't have anything to work on — give me an
+  issue URL / instruction"* rather than guess. Don't add pre-flight gates; the
+  agent surfaces the failure in the run history. Write step-1 prompts that say so.
+
+## Ground the slugs — call aramb_tools before drafting
+
+The slugs you stamp on `toolkit` / `required_toolkits` (and any trigger you wire)
+MUST be real catalog values. Don't infer them from prose. Look them up:
+
+```bash
+# Confirm toolkit slugs (uppercase, exactly as the catalog reports them)
+npx mcporter call aramb_tools.list_toolkits
+
+# When the workflow is meant to fire on an event, read the trigger catalog for
+# that toolkit so you ground the trigger slug too (the configure-trigger skill
+# does the actual wiring — you just confirm the slug exists):
+npx mcporter call aramb_tools.list_triggers toolkit="GITHUB"
+```
+
+`aramb_tools.*` returns toolkit + trigger slugs already normalized to uppercase —
+use them verbatim. A `toolkit` or `required_toolkits` entry that isn't a real
+catalog slug fails pre-flight (no connected account) and the run never starts.
 
 ## 1. Get the spec
 
@@ -158,7 +209,9 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **`assigned_agent` per node:**
   - *Task dispatch:* keep the source task's agent unless a different existing agent fits the generalized version better.
   - *Chat dispatch:* default to `"solo"`. If the workflow has differentiated step roles (triage → implement → verify → publish, research → draft → review), provision sub-agents with `create-agent` — one per distinct role — and stamp the matching sub-agent name on each node. Only collapse to a single `"solo"` graph when every step is the same kind of work. Never stamp a team-mode persona (`developer`, `aramb-deployer`, `local-deployer`, …) that doesn't actually exist in your image — either it's `"solo"` or a sub-agent you created in this run.
-- **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase, exactly as Composio reports them. Brahmi snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
+- **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase and **grounded via `aramb_tools.list_toolkits`** (see "Ground the slugs"), not guessed from prose. Brahmi snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
+- **Carry a singular `toolkit` per node that has any toolkits — MANDATORY when `required_toolkits` is non-empty.** It is the node's *primary* toolkit (the one a trigger would bind to). Invariant: `toolkit ∈ required_toolkits`. Single-toolkit node → `toolkit` equals the one slug. Multi-toolkit node → pick the slug the node's job is "about" (the action it exists to perform, not an incidental read). Omit `toolkit` (or `null`) only when `required_toolkits` is `[]`. Brahmi rejects a `toolkit` that isn't in `required_toolkits`.
+- **Write prompts against `<run_input>`, never placeholders.** Each node's `prompt` describes what to do with the context it receives — for step 1 that context is the `<run_input>` block (see "Run input — the only per-run channel"); for later steps it's the parent's `outputs.summary`. No `{{env.KEY}}` / `{{input.KEY}}` anywhere. Step 1's prompt must explicitly tell the agent to distill the relevant input into its `outputs.summary` for downstream steps.
 - **Set `default_node_settings` on the workflow.** Always emit a sensible defaults block — see "Default node settings — workflow-level". Don't leave it empty: the FE renders the settings tray off these values.
 - **Per-node `settings` typically stays empty (`{}`)** — defaults inherit from the workflow. Exception: if a node does something destructive or externally visible (posts to Linear, sends email, writes to a customer DB, deletes files), set that one node's `settings.approval_mode = "manual"`. Use sparingly — over-gating turns every run into a clickfest.
 - **Per-node attachments** only when the user explicitly mentioned files in chat. Never invent attachments — empty `input_attachments` is the default.
@@ -231,31 +284,27 @@ Per-node `settings` overrides only fire when the user asked for variation. Commo
 
 Otherwise leave each node's `settings: {}`.
 
-## 4. Identify environment variables
+## 4. Bake context into prompts — do NOT declare env_variables
 
-**Be stingy with env variables.** The workflow is a *learned recipe*, not a
-generic template. Bake business context, topic, tone, target audience, etc.
-directly into the relevant node's prompt. Do NOT re-parameterize every specific
-thing you see; that defeats the purpose.
+The workflow is a *learned recipe*. Bake business context, topic, tone, target
+audience, identity, endpoints — every concrete value the recipe needs — directly
+into the relevant node's prompt. There is no `env_variables` channel in v2:
 
-The test: "would we ever want to rerun this exact workflow with a different value
-here?" If no, keep it in the prompt.
+- **Omit `env_variables` from the `aramb_workflows.create` call entirely.** The
+  column has no runtime path — nothing reads it. Declaring entries misleads the
+  user ("I added your API_KEY" — but nothing consumes it). The brahmi MCP schema
+  rejects a non-empty `env_variables` map.
+- **Secrets / credentials are NOT declared here.** Third-party auth (API keys,
+  OAuth tokens) is supplied through the Composio connected account for the
+  node's `toolkit` — that's what `required_toolkits` + the pre-flight connection
+  check are for. The workflow definition never carries a secret.
+- **Per-run inputs are NOT declared here either.** Anything that varies per run
+  (the issue to fix, the recipient, the date window) arrives in `<run_input>` at
+  run time — the agent reads it from there. See "Run input — the only per-run
+  channel". Do NOT invent placeholders for these.
 
-Valid env variables (workflow-level, not per-node):
-- **Secrets** — API keys, tokens, passwords
-- **Identity** — email, username, account handle, login
-- **URLs / endpoints** — server URL, webhook target, API base URL
-- **Other runtime values that truly cannot be known at workflow-authoring time**
-
-Not env variables (these belong in the prompt):
-- Business description, company/product name, pitch
-- Topic, domain, subject matter, space
-- Tone, voice, persona, style; target audience, segment
-- Any content the user discussed with you in chat — that IS the recipe
-
-Most workflows have **zero, one, or two env variables**. Empty is fine: pass
-`env_variables='{}'`. When you do use them:
-`{ "VAR_NAME": { "default": "value", "description": "what this is" } }`
+So: constant recipe values → bake into the prompt. Per-run values → read from
+`<run_input>`. Secrets → Composio connection. Nothing goes in `env_variables`.
 
 ## 5. Save the workflow
 
@@ -272,24 +321,33 @@ atomically in a single transaction.
 - `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
 - `assigned_agent` — task dispatch: an existing team persona. Chat dispatch: `"solo"` or a sub-agent you provisioned this run. Never `null`, empty, or a non-existent persona.
 - `acceptance_criteria` — how to know the step succeeded
-- **`required_toolkits`** — copied from the source task (task dispatch) or inferred from the action (chat dispatch). `[]` for orchestration / file-only nodes; never omit.
+- **`required_toolkits`** — grounded via `aramb_tools.list_toolkits`; copied from the source task (task dispatch) or inferred-then-grounded (chat dispatch). `[]` for orchestration / file-only nodes; never omit.
+- **`toolkit`** — the node's primary toolkit slug; MUST be a member of `required_toolkits`. Omit (or `null`) only when `required_toolkits` is `[]`.
+- **`prompt`** — no `{{env.…}}` / `{{input.…}}` placeholders anywhere; step 1's prompt instructs the agent to read `<run_input>` and distill the relevant bits into its `outputs.summary`.
 - **`source_task_id`** — **task dispatch only:** the `task_id` of the originating user task from `aramb_tasks.list`. Required whenever the node consolidates from one user task; omit only for glue / orchestration nodes you invented. Powers the FE "show me the task that produced this node" link and cost reconciliation. **Chat dispatch:** omit the field entirely (or pass `null`) — solo has no source tasks. Brahmi accepts both.
 - **`settings`** — JSONB; usually `{}`. Set keys only when this node deviates from the workflow defaults.
 
 And on the call itself:
 
 - **`default_node_settings`** — the workflow-wide defaults block. Emit it; don't leave it empty.
+- **No `env_variables`** — omit the field entirely (the schema rejects a non-empty map).
 
 Bugs that silently break downstream behaviour — fix the payload before calling:
 1. Missing `required_toolkits` — kills Evaluate's missing-connection warnings.
-2. Missing `source_task_id` (task dispatch) — once saved, the link to the originating user task is gone for good.
-3. Missing closing instruction in `prompt` — `outputs` stays NULL, downstream sees "(no summary)" preamble.
+2. `toolkit` not in `required_toolkits` (or missing on a toolkit-using node) — brahmi rejects the call.
+3. A `{{env.KEY}}` / `{{input.KEY}}` placeholder in any prompt — brahmi rejects the call.
+4. Missing `source_task_id` (task dispatch) — once saved, the link to the originating user task is gone for good.
+5. Missing closing instruction in `prompt` — `outputs` stays NULL, downstream sees "(no summary)" preamble.
 
-**Each node's `prompt` should look like this (markdown, multi-line) before you JSON-encode it:**
+**Each node's `prompt` should look like this (markdown, multi-line) before you JSON-encode it.** This is step 1, so it reads `<run_input>` and distills it for downstream:
 
 ```
-Read events from the primary calendar for the current day. Save the
-result as JSON to .planning/calendar.json.
+Read `<run_input>` — it carries the user's instruction (or a trigger payload)
+for this run. Extract the target day / calendar from it (default to the primary
+calendar and today if it's empty; if there's nothing usable, stop and report
+"I don't have anything to work on"). Fetch that day's events and save them as
+JSON to .planning/calendar.json. In your summary, state the day and event count
+so the next step doesn't have to re-read the input.
 
 When done — record your output for the next step:
   npx mcporter call aramb_workflows.update_step \
@@ -316,12 +374,11 @@ npx mcporter call aramb_workflows.create \
   project_id="<project_id>" \
   name="Descriptive Workflow Name" \
   description="What this workflow does in 1-2 sentences" \
-  env_variables='{}' \
   default_node_settings='{"model":"claude-sonnet-4-6","effort":"medium","thinking":"adaptive","max_turns":35,"admin":false,"budget_usd":25.0,"approval_mode":"auto","instructions":""}' \
   nodes='[
-    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<body + closing template>", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "source_task_id": "<task_id from aramb_tasks.list>", "settings": {}},
-    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>", "assigned_agent": "developer", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "source_task_id": "<task_id from aramb_tasks.list>", "settings": {}},
-    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>", "assigned_agent": "developer", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "source_task_id": "<task_id from aramb_tasks.list>", "settings": {"approval_mode":"manual"}}
+    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<reads <run_input> + closing template>", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "toolkit": "GOOGLECALENDAR", "source_task_id": "<task_id from aramb_tasks.list>", "settings": {}},
+    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>",            "assigned_agent": "developer", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "source_task_id": "<task_id from aramb_tasks.list>", "settings": {}},
+    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>",            "assigned_agent": "developer", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "toolkit": "GMAIL", "source_task_id": "<task_id from aramb_tasks.list>", "settings": {"approval_mode":"manual"}}
   ]' \
   edges='[
     {"source": 1, "target": 2},
@@ -334,22 +391,15 @@ npx mcporter call aramb_workflows.create \
 
 ```bash
   nodes='[
-    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<body + closing template>", "assigned_agent": "solo", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "settings": {}},
-    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>", "assigned_agent": "solo", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "settings": {}},
-    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>", "assigned_agent": "solo", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "settings": {"approval_mode":"manual"}}
+    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<reads <run_input> + closing template>", "assigned_agent": "solo", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "toolkit": "GOOGLECALENDAR", "settings": {}},
+    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>",            "assigned_agent": "solo", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "settings": {}},
+    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>",            "assigned_agent": "solo", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "toolkit": "GMAIL", "settings": {"approval_mode":"manual"}}
   ]'
 ```
 
 In both examples, node 3 carries `settings.approval_mode = "manual"` because it sends an external-facing message — exactly the per-node manual-approval heuristic. Nodes 1 and 2 keep `settings: {}` and inherit the workflow defaults.
 
 Node objects carry ONLY the node fields. Dependencies live in the separate top-level `edges` array — each edge is `{source: <unique_id>, target: <unique_id>}`, "target depends on source." A cycle fails the save. For a linear 3-step workflow: `[{"source":1,"target":2},{"source":2,"target":3}]`. Fan-out where 1 feeds both 2 and 3: `[{"source":1,"target":2},{"source":1,"target":3}]`. Single node: omit `edges` (or pass `'[]'`).
-
-With env variables:
-
-```bash
-env_variables='{"LINKEDIN_ACCESS_TOKEN": {"default": "", "description": "OAuth token for posting to LinkedIn"}}'
-# ...with "{{env.LINKEDIN_ACCESS_TOKEN}}" in the relevant node's prompt.
-```
 
 The response includes `workflow_id` and `node_count`. If `node_count` matches the number of nodes you sent, the save succeeded.
 
@@ -368,16 +418,22 @@ npx mcporter call aramb_tasks.update \
   outputs='{"workflow_id":"<workflow_id from aramb_workflows.create response>","node_count":<number>,"summary":"Consolidated N tasks into M nodes across L levels."}'
 ```
 
-**Compound-schedule handoff.** If the user's original create message *also*
-contained a scheduling phrase ("a daily standup workflow that runs at 9am"), this
-skill does NOT set the schedule itself in task dispatch — add a `schedule_hint`
-to your `outputs` so master can dispatch `schedule-workflow` next:
+**Compound-schedule / trigger handoff.** If the user's original create message
+*also* asked for a firing condition, this skill does NOT wire it in task dispatch
+— it hands off so the right skill runs next. Distinguish by the kind of condition:
+
+- **Wall-clock schedule** ("a daily standup workflow that runs at 9am") → cron →
+  `schedule-workflow`. Add a `schedule_hint`.
+- **Event trigger** ("…and fire it whenever a new GitHub issue is created") →
+  `composio_event` → `configure-trigger`. Add a `trigger_hint`.
 
 ```bash
 outputs='{"workflow_id":"<id>","node_count":<n>,"summary":"...","schedule_hint":"User also asked for a schedule: \"daily at 9am IST\". Run schedule-workflow next with workflow_id=<id> and the user phrase verbatim."}'
+# or, for an event condition:
+outputs='{"workflow_id":"<id>","node_count":<n>,"summary":"...","trigger_hint":"User also asked to fire on \"a new GitHub issue\". Run configure-trigger next with workflow_id=<id> and the user phrase verbatim."}'
 ```
 
-Omit `schedule_hint` if there was no scheduling intent.
+Omit both hints if there was no firing-condition intent.
 
 On failure (aramb_tasks.list error, aramb_workflows.create error, cycle detected, …):
 
@@ -414,6 +470,12 @@ npx mcporter call aramb_workflows.set_schedule \
 
 Then bundle the schedule into your confirmation line ("Workflow created and scheduled for 8am IST every weekday."). On `aramb_workflows.create` error, tell the user the concise reason and what they could change, then stop — don't retry.
 
+**If instead the user asked for an event trigger** ("…and fire it whenever a new
+GitHub issue is created"), that's not a cron schedule — use the `configure-trigger`
+skill (in your loadout) to wire the `composio_event` trigger after the create
+succeeds, then bundle the result into your confirmation. Don't try to express an
+event condition as a cron schedule.
+
 ## Rules
 
 - Each node's `prompt` carries real business context baked in.
@@ -422,9 +484,12 @@ Then bundle the schedule into your confirmation line ("Workflow created and sche
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
 - **`assigned_agent`** — task dispatch: existing team persona. Chat dispatch: `"solo"` or a sub-agent you provisioned this run; never a team-mode persona that doesn't exist in the solo image.
 - **`source_task_id`** — task dispatch: copy the literal `task_id` UUID from `aramb_tasks.list` (omit only for invented glue nodes). Chat dispatch: omit (or `null`) — solo has no source tasks.
-- **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls; `[]` when it touches no third-party service; never omit.
+- **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls, grounded via `aramb_tools.list_toolkits`; `[]` when it touches no third-party service; never omit.
+- **`toolkit` per node** is the primary slug for trigger-binding; it MUST be a member of `required_toolkits`; omit (or `null`) only when `required_toolkits` is `[]`.
+- **No placeholder syntax in prompts** — no `{{env.KEY}}`, no `{{input.KEY}}`. There is no substitution layer; brahmi rejects prompts containing `{{ env.… }}`. Per-run values arrive in `<run_input>` (step 1 only); the agent reads them there.
+- **Do NOT declare `env_variables`** — omit the field. The column has no runtime path in v2 and the schema rejects a non-empty map. Constant recipe values bake into prompts; secrets come from the Composio connection.
+- **Step 1's prompt must distill `<run_input>` into its `outputs.summary`** — downstream steps see only the parent's summary, never `<run_input>`.
 - **For history-derived chat dispatch, generalize** — strip one-off dates / values; the recipe should run again with fresh inputs.
-- Only use `{{env.VARIABLE_NAME}}` for secrets, identity, or URLs — empty `env_variables` is the common case.
 - `unique_id` values are sequential integers starting at 1 (never 0).
 - Dependencies are expressed ONLY via the top-level `edges` array; never put `dependencies` / `depends_on` / `dependsOn` on node objects.
 - `edges` must be a DAG — no cycles. Single-node workflow: pass `'[]'` or omit.

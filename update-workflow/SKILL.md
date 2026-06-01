@@ -51,11 +51,47 @@ short hand-off that does no authoring.
 
 ## MUST rules — read before anything else
 
-1. **Every node in `aramb_workflows.update` MUST carry `required_toolkits`.** Copy the slugs from each source task's `required_toolkits` (task dispatch) or the matching node in `aramb_workflows.get` / the action it performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service. Omitting silently kills the Evaluate missing-connection warnings.
-2. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below.
+1. **Every node in `aramb_workflows.update` MUST carry `required_toolkits`.** Copy the slugs from each source task's `required_toolkits` (task dispatch) or the matching node in `aramb_workflows.get` / the action it performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service. Omitting silently kills the Evaluate missing-connection warnings. Ground slugs via `aramb_tools.list_toolkits` — don't trust a slug you can't see in the catalog.
+2. **Every node that touches a third-party service MUST carry a singular `toolkit`** — its primary toolkit slug, used for trigger-binding. Invariant brahmi enforces: **`toolkit ∈ required_toolkits`.** Omit (or `null`) only when `required_toolkits` is `[]`. If the existing node had no `toolkit` (pre-v2 definition), add it now.
+3. **No placeholder syntax in any node `prompt`.** No `{{env.KEY}}`, no `{{input.KEY}}`. There is no substitution layer; brahmi **rejects** any prompt matching `{{ env.… }}`. If a node you carry forward from `aramb_workflows.get` still contains legacy `{{env.…}}` placeholders, **rewrite that prompt now** to read its per-run values from `<run_input>` (see "Run input & slug grounding — v2 contract" below).
+4. **Do NOT declare `env_variables`.** Omit the field from the `aramb_workflows.update` call (leaving it out keeps nothing — there's no runtime path). If the existing definition declared `env_variables`, drop them: the schema rejects a non-empty map and the values were never read.
+5. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below.
    - **Failure mode:** Without it, the agent finishes its LLM session, brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble shows "(no summary)" instead of the real hand-off.
-3. **Call `aramb_workflows.update` exactly once.** Success or failure — never retry.
-4. **Close out cleanly.** Task dispatch: always `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave `in_progress`. Chat dispatch: confirm in your reply text. There is no task to close in chat dispatch.
+6. **Call `aramb_workflows.update` exactly once.** Success or failure — never retry.
+7. **Close out cleanly.** Task dispatch: always `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave `in_progress`. Chat dispatch: confirm in your reply text. There is no task to close in chat dispatch.
+
+## Run input & slug grounding — v2 contract
+
+These rules apply to every node you author or carry forward — same contract as
+`create-workflow`:
+
+- **Per-run context arrives in `<run_input>`, not declared variables.** brahmi
+  renders the user's instruction (manual run) or the trigger payload JSON (trigger
+  run) into the **first step's** prompt as a `<run_input>` block. There are no
+  input variables, no typed form, no `{{env.KEY}}` substitution. Write node prompts
+  that tell the agent to read what it needs from the context it's given.
+- **`<run_input>` is first-step-only.** Downstream steps see only their parent's
+  `outputs.summary` + `outputs.files`. So step 1's prompt MUST instruct the agent
+  to distill the relevant input into its summary for propagation. If you're adding
+  a new entry node or changing which node is first, make sure that node funnels the
+  input forward.
+- **Empty input fails late, gracefully.** A step that gets an empty `<run_input>`
+  should report "I don't have anything to work on" — no pre-flight gate.
+- **Ground slugs before drafting.** Confirm toolkit slugs with
+  `aramb_tools.list_toolkits` (and trigger slugs with
+  `aramb_tools.list_triggers("<TOOLKIT>")` when relevant). Slugs are uppercase,
+  verbatim from the catalog — never inferred from prose.
+
+  ```bash
+  npx mcporter call aramb_tools.list_toolkits
+  npx mcporter call aramb_tools.list_triggers toolkit="GITHUB"
+  ```
+
+- **Migrating a legacy definition.** If `aramb_workflows.get` returns nodes with
+  `{{env.…}}` placeholders or a non-empty `env_variables` map, treat that as debt
+  to clear in this update: rewrite the placeholder prompts to read from
+  `<run_input>`, drop `env_variables`, and add the per-node `toolkit` field. The
+  update will be rejected otherwise.
 
 ## Path B — master, chat dispatch (no task_id): dispatch and exit
 
@@ -131,14 +167,24 @@ regeneration mode (FE-button or "refresh the workflow" intent).
 - *Explicit change* ("add a Slack DM step", "remove the email triage", "change the synth step to also include the calendar"): use the user's message as the change spec verbatim. Skip ahead to step 4.
 - *History-derived* (canned button message: "update the existing workflow based on the work done in this chat", or any phrasing pointing at the conversation as evidence): treat your conversation since the workflow was last saved as the evidence. Walk back and produce, in your reasoning: (a) new ordered steps you ran, (b) data hand-offs between them, (c) toolkits actually called, (d) one-off specifics vs the recurring shape. **Generalize, don't transcribe** — strip one-off dates / values; the workflow is a recipe.
 
-### Step 3. Reject schedule-shaped change requests
+### Step 3. Reject firing-condition change requests (schedule or trigger)
 
-If the change request is **solely** about cron / timing ("change the schedule to
-weekly", "stop the cron", "move it to UTC", "run it every Monday at 9am instead of
-Tuesday", "pause the schedule"), DO NOT call `aramb_workflows.update`. The cron
-fields live in a different storage column and have a dedicated skill
-(`schedule-workflow`) — touching them through `aramb_workflows.update` regenerates
-the definition for nothing and ignores the actual ask.
+A workflow's *definition* and its *firing conditions* live in different storage
+and different skills. If the change request is **solely** about when/why the
+workflow fires, DO NOT call `aramb_workflows.update` — route it:
+
+- **Cron / wall-clock timing** ("change the schedule to weekly", "stop the cron",
+  "move it to UTC", "run it every Monday at 9am instead of Tuesday", "pause the
+  schedule") → `schedule-workflow`. Cron fields live in flat columns on the
+  workflow row.
+- **Event trigger** ("fire it on a new GitHub issue too", "stop firing on pushes",
+  "trigger when I get a Slack DM instead") → `configure-trigger`. Event triggers
+  live in `workflow_triggers` rows.
+
+Touching either through `aramb_workflows.update` regenerates the definition for
+nothing and ignores the actual ask. Reject and route (the examples below use the
+cron case; for an event condition, substitute `configure-trigger` for
+`schedule-workflow`).
 
 - **Path A (task dispatch):** close the task as failed so master routes correctly:
   ```bash
@@ -147,15 +193,16 @@ the definition for nothing and ignores the actual ask.
     status="failed" \
     rejection_reason="schedule-shaped change request — dispatch schedule-workflow skill instead with workflow_id=<id> and the user's exact phrase"
   ```
-- **Path C (chat dispatch, solo):** use the `schedule-workflow` skill (in your
-  loadout) and call `aramb_workflows.set_schedule` directly. Send a one-line
+- **Path C (chat dispatch, solo):** use the `schedule-workflow` skill (cron) or the
+  `configure-trigger` skill (event) from your loadout directly. Send a one-line
   confirmation. Do not call `aramb_workflows.update` at all.
 
-If the request is **mixed** (definition change + schedule change in one sentence),
-apply the definition change per the rest of this skill, then: Path A — add a
-`schedule_hint` to your closing `outputs` so master dispatches `schedule-workflow`
-next; Path C — call `aramb_workflows.set_schedule` yourself right after
-`aramb_workflows.update` succeeds.
+If the request is **mixed** (definition change + firing-condition change in one
+sentence), apply the definition change per the rest of this skill, then: Path A —
+add a `schedule_hint` (cron) or `trigger_hint` (event) to your closing `outputs`
+so master dispatches the right skill next; Path C — call
+`aramb_workflows.set_schedule` (cron) yourself, or use `configure-trigger` (event),
+right after `aramb_workflows.update` succeeds.
 
 ### Step 4. Analyze the delta
 
@@ -200,7 +247,8 @@ request, or the user's explicit change / chat work):
 - Existing nodes obsolete now (user said remove, or new work supersedes them)? Drop them.
 - Reworded step / changed logic? Update that node's `prompt`.
 - Agent assignments changed? Update `assigned_agent` per node (see below).
-- Env variables still relevant? Drop unused ones, add new required ones.
+- Toolkits changed? Update `required_toolkits` and the singular `toolkit` per node (grounded via `aramb_tools.list_toolkits`).
+- Legacy `{{env.…}}` placeholders or declared `env_variables` carried over from the old definition? Clear them — rewrite the prompts to read from `<run_input>` and drop the `env_variables` map.
 
 **Lean on the existing definition.** Resist rewriting from scratch. If 80% of the
 graph is unchanged, keep 80% unchanged. The user already saw and accepted the
@@ -211,14 +259,16 @@ existing version; the change spec tells you *which* 20% to actually touch.
 - *Path C (chat dispatch, solo):* **read the existing `assigned_agent` verbatim from `aramb_workflows.get` and carry it forward on every node you keep.** Workflows imported from templates can be multi-persona (`developer`, `aramb-deployer`, …) even in a solo chat — do NOT blindly stamp `"solo"` across the graph. Set `assigned_agent: "solo"` only on nodes you author fresh in this update where no prior node exists to copy from AND the new work was clearly done by you (solo) in the chat. If a step the user is adding clearly belongs to an existing persona in the graph, reuse that persona's name.
 
 **Same authoring rules as create-workflow:**
-- Concrete prompts with real business context baked in. No generic templates.
+- Concrete prompts with real business context baked in. No generic templates. No `{{env.…}}` / `{{input.…}}` placeholders — per-run values arrive in `<run_input>` (step 1 only).
 - **Each node `prompt` ends with the closing-instruction template** (below). If you carry an old node forward unchanged, verify it still has the template; if it pre-dates this rule, append it now.
-- **Each node carries `required_toolkits`** — never omit; `[]` for orchestration / file-only nodes.
+- **The entry (first) node's prompt distills `<run_input>` into its `outputs.summary`** — if your delta changes which node runs first, make sure the new entry node funnels the input forward.
+- **Each node carries `required_toolkits`** — never omit; `[]` for orchestration / file-only nodes. Ground slugs via `aramb_tools.list_toolkits`.
+- **Each node that uses toolkits carries a singular `toolkit`** — its primary slug, a member of `required_toolkits`; omit (or `null`) when `required_toolkits` is `[]`.
 - **Each node carries `settings`** — usually `{}`. Carry forward existing per-node overrides from `aramb_workflows.get`, plus or minus what the user is changing. Don't drop overrides the user didn't mention.
 - **Carry forward `default_node_settings`** from the existing workflow, edited only where the user asked. If the existing block is empty / missing (older definitions), seed the same sensible defaults create-workflow uses (`model=claude-sonnet-4-6`, `effort=medium`, `thinking=adaptive`, `max_turns=35`, `admin=false`, `budget_usd=25.0`, `approval_mode=auto`, `instructions=""`).
 - Sequential `unique_id` integers starting at 1 (numbering can differ from the existing version — uniqueness is what matters).
 - Dependencies via the top-level `edges` array, never on nodes.
-- Be stingy with env variables. Same test as create-workflow.
+- **Do NOT declare `env_variables`** — omit the field; drop any the old definition carried.
 
 ## Closing instruction per node — MANDATORY
 
@@ -257,19 +307,23 @@ Update progress: "Saving updated workflow".
 
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
-- `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
+- `prompt` — concrete instruction with business context baked in, **no `{{env.…}}` / `{{input.…}}` placeholders**, **AND ending with the closing-instruction template**. The entry node reads `<run_input>` and distills it into its summary.
 - `assigned_agent` — Path A: existing team persona. Path C: carried verbatim from `aramb_workflows.get`, or `"solo"` / a provisioned sub-agent on freshly authored nodes.
 - `acceptance_criteria` — how to know the step succeeded
-- **`required_toolkits`** — copied from the source task / existing node; `[]` for orchestration / file-only nodes; never omit.
+- **`required_toolkits`** — copied from the source task / existing node, grounded via `aramb_tools.list_toolkits`; `[]` for orchestration / file-only nodes; never omit.
+- **`toolkit`** — the primary slug; a member of `required_toolkits`; omit (or `null`) when `required_toolkits` is `[]`.
 - **`settings`** — JSONB; preserve existing per-node overrides from `aramb_workflows.get`, edit only where the user asked; `{}` when the node has no overrides.
 
 And on the call itself:
 
 - **`default_node_settings`** — carry the existing block forward (or seed sensible defaults if empty), then apply any workflow-wide setting changes the user requested.
+- **No `env_variables`** — omit the field; drop any the old definition declared (the schema rejects a non-empty map).
 
-Two common bugs that silently break downstream behaviour, as fatal as in create-workflow:
+Bugs that silently break downstream behaviour, as fatal as in create-workflow:
 1. Missing `required_toolkits` — kills Evaluate's missing-connection warnings.
-2. Missing closing instruction in `prompt` — outputs stay NULL, downstream sees "(no summary)" preamble.
+2. `toolkit` not in `required_toolkits` (or missing on a toolkit-using node) — brahmi rejects the call.
+3. A `{{env.KEY}}` / `{{input.KEY}}` placeholder in any prompt — brahmi rejects the call.
+4. Missing closing instruction in `prompt` — outputs stay NULL, downstream sees "(no summary)" preamble.
 
 **Each node's `prompt` should look like this (markdown, multi-line) before you JSON-encode it:**
 
@@ -298,11 +352,10 @@ npx mcporter call aramb_workflows.update \
   workflow_id="<workflow_id>" \
   name="Updated Workflow Name" \
   description="What this workflow does in 1-2 sentences" \
-  env_variables='{}' \
   default_node_settings='{"model":"claude-opus-4-7","effort":"medium","thinking":"adaptive","max_turns":35,"admin":false,"budget_usd":50.0,"approval_mode":"auto","instructions":""}' \
   nodes='[
-    {"unique_id": 1, "name": "First step",  "prompt": "<body + closing template>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": ["GMAIL"], "settings": {}},
-    {"unique_id": 2, "name": "Second step", "prompt": "<body + closing template>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": [],        "settings": {"approval_mode":"manual"}}
+    {"unique_id": 1, "name": "First step",  "prompt": "<reads <run_input> + closing template>", "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": ["GMAIL"], "toolkit": "GMAIL", "settings": {}},
+    {"unique_id": 2, "name": "Second step", "prompt": "<body + closing template>",            "assigned_agent": "agent-name", "acceptance_criteria": "...", "required_toolkits": [],        "settings": {"approval_mode":"manual"}}
   ]' \
   edges='[
     {"source": 1, "target": 2}
@@ -311,7 +364,7 @@ npx mcporter call aramb_workflows.update \
 
 The example shows a workflow whose user said "switch the model to Opus and raise the budget to $50, but make me approve step 2" — workflow-level changes land in `default_node_settings`, the per-step gating lands in node 2's `settings`.
 
-`name`, `description`, `env_variables`, `default_node_settings` are optional — omit them to keep existing values. `nodes` is required and must not be empty. `edges` may be `[]` for a single-node workflow.
+`name`, `description`, `default_node_settings` are optional — omit them to keep existing values. Do NOT pass `env_variables` (omit it). `nodes` is required and must not be empty. `edges` may be `[]` for a single-node workflow.
 
 **`required_toolkits` per node — always include it.** Copy the existing list from
 the matching node in `aramb_workflows.get` (step 1), plus or minus what the user is
@@ -401,14 +454,17 @@ definition is intact.
 - One shot: never call `aramb_workflows.update` twice. If the first call succeeded, you're done. If it errored, close as failed (Path A) or tell the user and stop (Path C).
 - Each node's `prompt` carries real business context baked in.
 - **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
-- **Each node carries `required_toolkits`** — `[]` when the node touches no third-party service; never omit.
+- **Each node carries `required_toolkits`** — `[]` when the node touches no third-party service; never omit. Ground slugs via `aramb_tools.list_toolkits`.
+- **Each toolkit-using node carries a singular `toolkit`** — its primary slug, a member of `required_toolkits`; omit (or `null`) when `required_toolkits` is `[]`.
+- **No placeholder syntax in prompts** — no `{{env.KEY}}`, no `{{input.KEY}}`; brahmi rejects prompts containing `{{ env.… }}`. Per-run values arrive in `<run_input>` (step 1 only); rewrite any legacy placeholders carried over from the old definition.
+- **Do NOT declare `env_variables`** — omit the field; drop any the old definition carried. The schema rejects a non-empty map; the column has no runtime path in v2.
+- **The entry node's prompt distills `<run_input>` into its `outputs.summary`** — downstream steps never see `<run_input>`.
 - **Each node carries `settings`** — preserve existing per-node overrides from `aramb_workflows.get`; `{}` when none.
 - **Carry `default_node_settings`** forward unchanged from `aramb_workflows.get`, edited only where the user asked. Never silently drop the workflow defaults block.
-- **Reject pure schedule-shaped change requests** — Path A: close failed with a `rejection_reason` telling master to dispatch `schedule-workflow`. Path C: use `schedule-workflow` directly. Only call `aramb_workflows.update` for definition changes.
+- **Reject pure firing-condition change requests** — cron → route to `schedule-workflow`; event trigger → route to `configure-trigger`. Path A: close failed with a `rejection_reason` naming the skill. Path C: use that skill directly. Only call `aramb_workflows.update` for definition changes.
 - **Apply setting changes at the right level**: workflow-wide phrases ("all steps" / "the workflow" / "everywhere") → `default_node_settings`. Single-step phrases ("the synth step" / "this step") → that one node's `settings` override.
 - **Preserve per-node `assigned_agent` verbatim from `aramb_workflows.get`** — multi-persona workflows (template imports) keep their personas through updates. Stamp `"solo"` (Path C) only on freshly authored nodes with no existing counterpart.
 - **For history-derived chat deltas, generalize the new work** — strip one-off dates / values from any new node prompts before adding them.
-- Only use `{{env.VARIABLE_NAME}}` for secrets, identity, or URLs — empty `env_variables` is the common case.
 - `unique_id` values are sequential integers starting at 1.
 - Dependencies live ONLY in the top-level `edges` array. Never on nodes.
 - `edges` must be a DAG — no cycles.
