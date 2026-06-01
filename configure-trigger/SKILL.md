@@ -55,6 +55,22 @@ router rule lives in `schedule-workflow`; keep the two consistent.
 - **`project_id` + `application_id`** — from your dispatch context (the
   "## Current Context" block). Needed for `aramb_chat.ask_question`.
 
+## Invoked from create-workflow / update-workflow (sub-mode)
+
+When `create-workflow` (or `update-workflow`) calls you mid-authoring, the trigger
+picker already ran — you arrive with a **pre-resolved `workflow_id` and a
+pre-chosen catalog `slug`** (and sometimes `trigger_config`). In that case:
+
+- **Skip steps 1–4** (parse intent, narrow toolkit, list catalog, disambiguate) —
+  the upstream picker already grounded the slug against `aramb_toolkits.list_triggers`.
+- Go straight to **step 5**: `aramb_toolkits.check_connection` for the slug's
+  toolkit, then `aramb_triggers.create workflow_id=<id> slug=<slug> …`.
+- Then **step 6**: confirm the row reaches `active` before reporting success.
+
+The `workflow_id` already exists (create-workflow saved the workflow first), so
+the precondition in "What you need" is satisfied — don't re-resolve it. Standalone
+use (user invokes the skill directly) is unchanged: run the full flow below.
+
 ## Flow
 
 ### 1. Parse the intent

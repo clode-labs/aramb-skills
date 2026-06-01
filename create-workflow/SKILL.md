@@ -349,6 +349,83 @@ into the relevant node's prompt. There is no `env_variables` channel in v2:
 So: constant recipe values → bake into the prompt. Per-run values → read from
 `<run_input>`. Secrets → Composio connection. Nothing goes in `env_variables`.
 
+## 4.5 Pick a trigger before saving — MANDATORY
+
+Every workflow MUST record how it fires. `aramb_workflows.create` now requires a
+`trigger_choice` field (`toolkit_event` | `cron` | `manual`); a call without it
+is rejected. You decide the choice by running this picker with the user — do NOT
+default silently. `manual` is a real, first-class choice (one-shot utilities the
+user runs from the UI), but it is only valid when the user was *offered* the
+options and *picked* manual. Never skip the picker and pass `manual` to satisfy
+the gate.
+
+**1. Read the entry node's `toolkit`.** The entry node is the one with no
+incoming edge (lowest `unique_id` on a tie). Its singular `toolkit` is what an
+event trigger would bind against.
+
+**2. If the entry node has a `toolkit`, enumerate event candidates:**
+
+```bash
+npx mcporter call aramb_toolkits.list_triggers toolkit="<ENTRY_TOOLKIT>"
+```
+
+Each result has a `slug`, name, and description. If the entry node has no
+`toolkit` (a pure-LLM / file-only workflow), skip this step and offer only
+`{ cron, manual }`.
+
+**3. Pre-rank by intent.** Scan the spec (the user's request / consolidated task
+descriptions) for event-shape phrases and match them against the trigger
+names/descriptions, case-insensitively. A small synonym guide:
+- "when an issue is created / new issue / issue opened" → a `*_NEW_ISSUE`-style trigger
+- "when a PR is opened / new pull request" → a `*_PULL_REQUEST`-style trigger
+- "when an email arrives / new email" → a `*_NEW_*MESSAGE` / `*_NEW_EMAIL`-style trigger
+- "when a row is added / new row" → a sheet `*_NEW_ROW`-style trigger
+- "a message is posted / new message / DM" → a chat `*_NEW_MESSAGE`-style trigger
+- "every day / weekly / at 9am / a cron expression" → **cron**, not an event
+
+**4. Ask the user via `aramb_chat.ask_question`.** Convention (no structured
+`recommended` field exists): **the first option is the recommendation**, and you
+say so in the question prose. Build options as `{label, description}` objects —
+the recommended event trigger(s) first, then a synthetic "On a schedule", then
+"Manual run only":
+
+```bash
+npx mcporter call aramb_chat.ask_question \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
+  question="How should this workflow fire? Pick one — the first is recommended based on what you described." \
+  options='[
+    {"label":"[recommended] When a GitHub issue is created","description":"GITHUB_NEW_ISSUE — fires once per new issue in the configured repo"},
+    {"label":"When an issue is assigned to me","description":"GITHUB_ISSUE_ASSIGNED — fires when an issue is assigned to you"},
+    {"label":"On a schedule (e.g. daily at 9am)","description":"A wall-clock cron cadence"},
+    {"label":"Manual run only","description":"No automatic firing — you run it from the Workflows tab"}
+  ]'
+```
+
+If the user closes the chat without answering, do NOT silently default — re-ask
+on the next turn until they answer.
+
+**5. Record the choice** for the create call:
+- event trigger → `trigger_choice="toolkit_event"` (remember the chosen catalog `slug`)
+- schedule → `trigger_choice="cron"` (remember the cadence phrase)
+- manual → `trigger_choice="manual"`
+
+**6. After `aramb_workflows.create` succeeds, wire the actual trigger
+(toolkit_event / cron only).** The create call records the *choice*; the trigger
+row / cron slot is written right after, in this same turn (the workflow_id has to
+exist first):
+- `toolkit_event` → invoke `configure-trigger` with the resolved `workflow_id` +
+  the chosen `slug` (its "invoked-from-create" sub-mode skips re-disambiguation
+  and goes straight to `check_connection` + `aramb_triggers.create`).
+- `cron` → call `aramb_workflows.set_schedule` yourself with the cadence (see
+  `schedule-workflow` for cron-format help).
+- `manual` → nothing to wire.
+
+Report the combined result ("Workflow created and set to fire when a GitHub issue
+is created" / "…and scheduled for 9am IST daily" / "…run it from the Workflows
+tab"). For `toolkit_event`, do NOT claim it's firing until `configure-trigger`
+confirms the row is `active` (creation is async upstream).
+
 ## Browser-login pre-check — required before save
 
 A node that drives a logged-in website through `aramb-browser` only works at run
@@ -440,12 +517,14 @@ atomically in a single transaction.
 And on the call itself:
 
 - **`default_node_settings`** — the workflow-wide defaults block. Emit it; don't leave it empty.
+- **`trigger_choice`** — REQUIRED (`toolkit_event` | `cron` | `manual`), set from the Section 4.5 picker. Brahmi rejects a create without it.
 - **No `env_variables`** — omit the field entirely (the schema rejects a non-empty map).
 
 Bugs that silently break downstream behaviour — fix the payload before calling:
 1. Missing `required_toolkits` — kills Evaluate's missing-connection warnings.
 2. `toolkit` not in `required_toolkits` (or missing on a toolkit-using node) — brahmi rejects the call.
 3. A `{{env.KEY}}` / `{{input.KEY}}` placeholder in any prompt — brahmi rejects the call.
+4. Missing `trigger_choice` — brahmi rejects the call; run the Section 4.5 picker first.
 4. Missing `source_task_id` (task dispatch) — once saved, the link to the originating user task is gone for good.
 5. Missing closing instruction in `prompt` — `outputs` stays NULL, downstream sees "(no summary)" preamble.
 
@@ -484,6 +563,7 @@ npx mcporter call aramb_workflows.create \
   project_id="<project_id>" \
   name="Descriptive Workflow Name" \
   description="What this workflow does in 1-2 sentences" \
+  trigger_choice="toolkit_event" \
   default_node_settings='{"model":"claude-sonnet-4-6","effort":"medium","thinking":"adaptive","max_turns":35,"admin":false,"budget_usd":25.0,"approval_mode":"auto","instructions":""}' \
   nodes='[
     {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<reads <run_input> + closing template>", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "toolkit": "GOOGLECALENDAR", "source_task_id": "<task_id from aramb_tasks.list>", "settings": {}},
@@ -528,22 +608,25 @@ npx mcporter call aramb_tasks.update \
   outputs='{"workflow_id":"<workflow_id from aramb_workflows.create response>","node_count":<number>,"summary":"Consolidated N tasks into M nodes across L levels."}'
 ```
 
-**Compound-schedule / trigger handoff.** If the user's original create message
-*also* asked for a firing condition, this skill does NOT wire it in task dispatch
-— it hands off so the right skill runs next. Distinguish by the kind of condition:
-
-- **Wall-clock schedule** ("a daily standup workflow that runs at 9am") → cron →
-  `schedule-workflow`. Add a `schedule_hint`.
-- **Event trigger** ("…and fire it whenever a new GitHub issue is created") →
-  `toolkit_event` → `configure-trigger`. Add a `trigger_hint`.
+**Trigger wiring.** The firing condition is no longer optional or a post-save
+handoff — you chose it with the user in Section 4.5 and (for `toolkit_event` /
+`cron`) wired it right after `aramb_workflows.create` in 4.5 step 6, in this same
+turn. By the time you close the task, the trigger row / cron slot already exists
+(or the user explicitly picked `manual`). Record what you wired in the close-out
+`summary` so it's auditable:
 
 ```bash
-outputs='{"workflow_id":"<id>","node_count":<n>,"summary":"...","schedule_hint":"User also asked for a schedule: \"daily at 9am IST\". Run schedule-workflow next with workflow_id=<id> and the user phrase verbatim."}'
-# or, for an event condition:
-outputs='{"workflow_id":"<id>","node_count":<n>,"summary":"...","trigger_hint":"User also asked to fire on \"a new GitHub issue\". Run configure-trigger next with workflow_id=<id> and the user phrase verbatim."}'
+outputs='{"workflow_id":"<id>","node_count":<n>,"summary":"Consolidated N tasks into M nodes; trigger: fires on GITHUB_NEW_ISSUE (active)."}'
 ```
 
-Omit both hints if there was no firing-condition intent.
+If the inline `configure-trigger` / `set_schedule` call could not complete within
+this turn (e.g. the async activation poll outran the budget), say so explicitly in
+the summary and add a `trigger_hint` / `schedule_hint` so a follow-up turn
+finishes the wiring — never report the workflow as fully triggered when it isn't:
+
+```bash
+outputs='{"workflow_id":"<id>","node_count":<n>,"summary":"...trigger NOT yet active","trigger_hint":"Finish wiring: run configure-trigger with workflow_id=<id>, slug=GITHUB_NEW_ISSUE."}'
+```
 
 On failure (aramb_tasks.list error, aramb_workflows.create error, cycle detected, …):
 
@@ -556,35 +639,33 @@ npx mcporter call aramb_tasks.update \
 
 **CRITICAL: After calling `aramb_tasks.update`, STOP. Do not send any follow-up messages.**
 
-### Chat dispatch — confirm in chat, schedule if asked
+### Chat dispatch — confirm in chat (trigger already wired)
 
-On success, write a one-line confirmation in your reply text (brahmi saves it as the chat row):
+The firing condition was chosen in Section 4.5 and, for `toolkit_event` / `cron`,
+wired in 4.5 step 6 immediately after `aramb_workflows.create` returned. So your
+confirmation reflects what's already in place — bundle the trigger result into the
+one-line confirmation:
 
 ```
-Workflow created — "<name>" (<workflow_id>) — <n> steps. View it in the Workflows tab.
+Workflow created — "<name>" (<workflow_id>) — <n> steps, fires when a GitHub issue is created. View it in the Workflows tab.
+# or:  …— <n> steps, scheduled for 8am IST every weekday.
+# or:  …— <n> steps, manual run only (run it from the Workflows tab).
 ```
 
-**If the user's original message also contained a scheduling phrase** ("a daily
-standup that runs at 9am IST"), don't surface a hint — **just do it.** Immediately
-after `aramb_workflows.create` succeeds, call `aramb_workflows.set_schedule`
-yourself (it's not gated; the `schedule-workflow` skill has cron-format guidance
-if you need it):
+Reminders for the 4.5 step-6 wiring you already did:
+- `cron` → you called `aramb_workflows.set_schedule` yourself (it's not gated; the
+  `schedule-workflow` skill has cron-format guidance). Example:
+  ```bash
+  npx mcporter call aramb_workflows.set_schedule \
+    workflow_id="<workflow_id>" cron_expression="0 8 * * *" \
+    cron_timezone="Asia/Kolkata" enabled=true
+  ```
+- `toolkit_event` → you invoked `configure-trigger` with the resolved
+  `workflow_id` + chosen `slug`. Don't claim it's firing until it reports
+  `active` (async upstream).
 
-```bash
-npx mcporter call aramb_workflows.set_schedule \
-  workflow_id="<workflow_id>" \
-  cron_expression="0 8 * * *" \
-  cron_timezone="Asia/Kolkata" \
-  enabled=true
-```
-
-Then bundle the schedule into your confirmation line ("Workflow created and scheduled for 8am IST every weekday."). On `aramb_workflows.create` error, tell the user the concise reason and what they could change, then stop — don't retry.
-
-**If instead the user asked for an event trigger** ("…and fire it whenever a new
-GitHub issue is created"), that's not a cron schedule — use the `configure-trigger`
-skill (in your loadout) to wire the `toolkit_event` trigger after the create
-succeeds, then bundle the result into your confirmation. Don't try to express an
-event condition as a cron schedule.
+On `aramb_workflows.create` error, tell the user the concise reason and what they
+could change, then stop — don't retry.
 
 ## Rules
 

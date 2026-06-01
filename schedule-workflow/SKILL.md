@@ -38,6 +38,16 @@ handle the cron part here and tell the user the event part is configured via
 `configure-trigger` — don't silently drop it. (The matching router rule lives in
 `configure-trigger`; keep the two consistent.)
 
+## Invoked from create-workflow / update-workflow (sub-mode)
+
+When `create-workflow` (or `update-workflow`) calls you mid-authoring after the
+trigger picker chose **cron**, you arrive with a pre-resolved `workflow_id` and
+the cadence the user already gave. **Skip step 2 (clarify)** — the cadence is
+settled. Map it to a cron expression (step 3) and call `aramb_workflows.set_schedule`
+(step 4) directly. Only fall back to a clarifying `aramb_chat.ask_question` if the
+supplied cadence genuinely can't be mapped (missing time-of-day, ambiguous day).
+Standalone use (user invokes directly) runs the full flow below.
+
 ## Workflow
 
 ### 1. Decide intent

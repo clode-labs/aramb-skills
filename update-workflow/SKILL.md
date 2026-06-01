@@ -316,6 +316,26 @@ changes** (an untouched node's login was already gated when it was created):
 - If the update *removes* the last browser-login node for a site, no check is
   needed — the dependency is gone.
 
+### Step 4.6. Trigger review when the entry toolkit changes
+
+Unlike create, `aramb_workflows.update` does NOT take a `trigger_choice` — the
+firing condition is managed separately (Step 3 routes explicit schedule/trigger
+change requests to `schedule-workflow` / `configure-trigger`). But one delta
+silently breaks an existing trigger: **changing the entry node's `toolkit`** (the
+slug an event trigger binds against). If this update changes which toolkit the
+entry node uses:
+
+- Check whether a trigger exists (`aramb_workflows.get` surfaces the schedule;
+  for event triggers, the workflow's trigger rows). If a `toolkit_event` trigger
+  is bound to the *old* toolkit, it no longer matches the new entry toolkit.
+- Tell the user via `aramb_chat.ask_question` that the trigger needs to change,
+  and run the same picker shape create-workflow uses (list_triggers for the new
+  toolkit → recommend → cron/manual options). On their answer, re-wire via
+  `configure-trigger` (event) or `set_schedule` (cron) after the update saves.
+
+If the entry toolkit is unchanged, leave the trigger alone — don't reconfigure a
+working trigger the user didn't ask to touch.
+
 ### Step 5. Call aramb_workflows.update
 
 Update progress: "Saving updated workflow".
