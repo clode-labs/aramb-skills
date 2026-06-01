@@ -299,6 +299,23 @@ Notes:
 - Do NOT instruct the agent to call `aramb_tasks.update` from a workflow-step prompt — that targets the tasks domain (different DB rows) and the run will stall on the safety net. Only `aramb_workflows.update_step` closes a workflow run step.
 - When carrying over node prompts from the existing definition, **re-verify the closing template is present and uses `update_step` with explicit IDs.** If the existing version pre-dates this rule (still references `update_my_step`), rewrite it now.
 
+### Step 4.5. Browser-login pre-check — scoped to changed/added nodes
+
+Same hard gate as create-workflow, but only over the nodes this update **adds or
+changes** (an untouched node's login was already gated when it was created):
+
+- For each added/changed node whose `required_toolkits` includes `aramb-browser`
+  AND whose `prompt` names a known-login site (`linkedin.com`, `github.com`,
+  `twitter.com`/`x.com`, `gmail.com`/`mail.google.com`, `reddit.com`, `notion.so`,
+  `slack.com`, `discord.com`, `instagram.com`), infer the `<site>-login` context
+  name and check it with `npx mcporter call aramb-browser.browser_context_list`.
+- **Slot present** → proceed; mention "I'll use your existing `<site>` login."
+- **Slot missing** → do NOT call `aramb_workflows.update`. Surface the canonical
+  aramb-browser login flow (`browser_context_create` → log in → `browser_save_context`,
+  context_name=`<site>-login`) and STOP until the slot exists. No bypass.
+- If the update *removes* the last browser-login node for a site, no check is
+  needed — the dependency is gone.
+
 ### Step 5. Call aramb_workflows.update
 
 Update progress: "Saving updated workflow".

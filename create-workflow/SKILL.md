@@ -349,6 +349,70 @@ into the relevant node's prompt. There is no `env_variables` channel in v2:
 So: constant recipe values → bake into the prompt. Per-run values → read from
 `<run_input>`. Secrets → Composio connection. Nothing goes in `env_variables`.
 
+## Browser-login pre-check — required before save
+
+A node that drives a logged-in website through `aramb-browser` only works at run
+time if the user has already logged in once and saved that login as a browser
+context. A triggered workflow that hits a not-logged-in site fails silently in
+run history. So before you save, gate on the login existing.
+
+**This is a hard gate. There is no "save anyway" path.** If a required login is
+missing, you surface the login instructions and STOP — you do NOT call
+`aramb_workflows.create`. Do not offer a bypass via `aramb_chat.ask_question`.
+
+**1. Detect browser-login nodes.** For every node you designed, check both:
+- `required_toolkits` includes `aramb-browser`, AND
+- the node's `prompt` names a site that's known to require a login. Initial
+  known-login surfaces (match case-insensitively; this list MAY grow as you meet
+  new ones):
+  `linkedin.com`, `github.com`, `twitter.com` / `x.com`, `gmail.com`,
+  `mail.google.com`, `reddit.com`, `notion.so`, `slack.com`, `discord.com`,
+  `instagram.com`.
+
+A node that uses `aramb-browser` only for a public, no-login surface (a docs
+site, a public search, a static page) does NOT trip this gate — skip it.
+
+**2. Infer the expected context name.** Convention: `<site-slug>-login`
+(`linkedin.com` → `linkedin-login`, `github.com` → `github-login`,
+`x.com`/`twitter.com` → `twitter-login`, `mail.google.com`/`gmail.com` →
+`gmail-login`). One login per site for v1. (If a workflow genuinely needs two
+identities on the same site, that's a known limitation — ask the user which
+identity and use `<site>-<identity>-login`; not the common case.)
+
+**3. List the user's saved contexts** (contexts are user-scoped and shared
+across apps, so an earlier login may already exist):
+
+```bash
+npx mcporter call aramb-browser.browser_context_list
+```
+
+**4. Branch per detected `<site>-login`:**
+
+- **Slot present** → continue to save. Mention it in your confirmation: "I'll
+  use your existing `<site>` login." (Note: we can't verify the cookies are
+  still valid at author time — only that you logged in at some point. A stale
+  login surfaces as a run-time auth failure, which `aramb-browser` re-prompts
+  separately. That's expected and out of scope here.)
+- **Slot missing** → do NOT save. Send a chat message via `aramb_chat.send_message`
+  (chat dispatch: write it in your reply text) explaining: (a) this workflow needs
+  a `<site>` login, (b) they log in once in a *separate* `aramb-browser` chat
+  session, (c) the exact commands — citing the canonical aramb-browser flow, do
+  NOT reinvent it:
+
+  ```bash
+  # In a new chat that loads the aramb-browser skill:
+  npx mcporter call aramb-browser.browser_context_create context_name=<site>-login
+  # log in via the viewer (manual), then snapshot the logged-in state:
+  npx mcporter call aramb-browser.browser_save_context browser=<site> context_name=<site>-login
+  ```
+
+  Then tell them to re-run create-workflow here to resume. STOP — the save does
+  not happen until every detected `<site>-login` slot exists.
+
+If you detected multiple login sites, every one must have its slot before you
+proceed. List all the missing ones in a single message so the user logs in once
+per site, not one round-trip per save attempt.
+
 ## 5. Save the workflow
 
 Update progress: "Saving workflow to brahmi".
@@ -356,6 +420,9 @@ Update progress: "Saving workflow to brahmi".
 Call `aramb_workflows.create` with `application_id` + `project_id` (both in your
 session metadata / dispatch block). Brahmi creates the workflow row + nodes
 atomically in a single transaction.
+
+**Do not reach this step if the browser-login pre-check found a missing
+`<site>-login` slot** — that gate is a hard stop, not advisory.
 
 **Pre-flight checklist — verify before calling `aramb_workflows.create`.** For every node:
 

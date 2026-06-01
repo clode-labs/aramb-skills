@@ -199,6 +199,22 @@ When `<wizard-answers>` is empty (`{}`), polish is optional: only rewrite if
 the resolved text is obviously broken. The stale-closing-block strip still
 applies.
 
+### 3.5. Browser-login pre-check — required before save
+
+The imported JSON may declare nodes that drive a logged-in website through
+`aramb-browser`. Same hard gate as create-workflow:
+
+- For each node whose `required_toolkits` includes `aramb-browser` AND whose
+  `prompt` names a known-login site (`linkedin.com`, `github.com`,
+  `twitter.com`/`x.com`, `gmail.com`/`mail.google.com`, `reddit.com`, `notion.so`,
+  `slack.com`, `discord.com`, `instagram.com`), infer the `<site>-login` context
+  name and check it with `npx mcporter call aramb-browser.browser_context_list`.
+- **Slot present** → proceed; note it in the chat summary.
+- **Slot missing** → do NOT call `aramb_workflows.create`. Surface the canonical
+  aramb-browser login flow (`browser_context_create` → log in → `browser_save_context`,
+  context_name=`<site>-login`) and STOP until every detected slot exists. No
+  "import anyway" path.
+
 ### 4. Save the workflow
 
 Call `aramb_workflows.create` with `application_id` + `project_id` (both available
