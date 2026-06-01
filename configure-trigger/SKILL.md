@@ -61,10 +61,17 @@ When `create-workflow` (or `update-workflow`) calls you mid-authoring, the trigg
 picker already ran — you arrive with a **pre-resolved `workflow_id` and a
 pre-chosen catalog `slug`** (and sometimes `trigger_config`). In that case:
 
-- **Skip steps 1–4** (parse intent, narrow toolkit, list catalog, disambiguate) —
-  the upstream picker already grounded the slug against `aramb_toolkits.list_triggers`.
-- Go straight to **step 5**: `aramb_toolkits.check_connection` for the slug's
-  toolkit, then `aramb_triggers.create workflow_id=<id> slug=<slug> …`.
+- **Skip steps 1, 2, 4** (parse intent, narrow toolkit, disambiguate) — the
+  upstream picker already grounded the slug against `aramb_toolkits.list_triggers`.
+- **Do NOT skip step 3's `get_trigger` call** when the trigger needs config. Most
+  event triggers require parameters (GitHub triggers require `owner` + `repo`;
+  Slack needs a channel; Sheets needs a spreadsheet id). Call
+  `aramb_toolkits.get_trigger toolkit=<TK> slug=<slug>` to read `config_schema`,
+  then assemble those values into **`trigger_config`** (see step 5 — the arg is
+  literally `trigger_config`, never `config`). Skipping this is the #1 cause of a
+  Composio 400 ("owner/repo Required") that surfaces back as a toolkit-proxy 502.
+- Then **step 5**: `aramb_toolkits.check_connection` for the slug's toolkit, then
+  `aramb_triggers.create workflow_id=<id> trigger_slug=<slug> trigger_config=<…>`.
 - Then **step 6**: confirm the row reaches `active` before reporting success.
 
 The `workflow_id` already exists (create-workflow saved the workflow first), so
@@ -140,24 +147,30 @@ npx mcporter call aramb_toolkits.check_connection toolkit="GITHUB"
 If it reports no connected account, tell the user they need to connect <toolkit>
 to this app first (the Connections UI), then stop — there's nothing to bind to.
 
-Create the trigger. `slug` is the catalog trigger slug; `name` is a short
-human label; `trigger_config` carries any required parameters from step 3 (omit
-when the trigger needs none). Do NOT pass any payload-mapping / env-binding — in
-v2 the trigger payload flows to the agent verbatim via `<run_input>`; there is no
+Create the trigger. `trigger_slug` is the catalog trigger slug; `name` is a short
+human label; **`trigger_config`** (that EXACT key — NOT `config`) carries the
+required parameters from step 3's `config_schema`. Passing them under `config`
+(or omitting them) makes brahmi send an empty config and Composio rejects it with
+a 400 ("owner/repo Required") that comes back as a confusing toolkit-proxy 502.
+GitHub issue/PR triggers REQUIRE `{"owner": "...", "repo": "..."}` inside
+`trigger_config`. Do NOT pass any payload-mapping / env-binding — in v2 the
+trigger payload flows to the agent verbatim via `<run_input>`; there is no
 mapping step.
 
 ```bash
 npx mcporter call aramb_triggers.create \
   workflow_id="<WORKFLOW_ID>" \
-  slug="GITHUB_NEW_ISSUE" \
+  trigger_slug="GITHUB_NEW_ISSUE" \
   name="New GitHub issue" \
+  connected_account_id="<from check_connection>" \
   trigger_config='{"owner":"acme","repo":"web"}' \
   enabled=true
 ```
 
-(`kind` defaults to `toolkit_event` and `provider` to `composio` — you don't pass
-them. If `check_connection` returned a specific account and the app has more than
-one, pass `connected_account_id` too.)
+Exact required arg names: `workflow_id`, `trigger_slug` (NOT `slug`), `name`,
+`connected_account_id` (from `check_connection` — REQUIRED, don't invent), and
+`trigger_config` (NOT `config`) for triggers that need parameters. (`kind`
+defaults to `toolkit_event` and `provider` to `composio` — you don't pass them.)
 
 ### 6. Confirm activation BEFORE reporting success — async lifecycle
 
