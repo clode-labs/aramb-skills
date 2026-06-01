@@ -216,23 +216,25 @@ The imported JSON may declare nodes that drive a logged-in website through
   context_name=`<site>-login`) and STOP until every detected slot exists. No
   "import anyway" path.
 
-### 3.6. Trigger choice — required for the create call
+### 3.6. Trigger choice — recommend-and-add, optional
 
-`aramb_workflows.create` requires a `trigger_choice` (`toolkit_event` | `cron` |
-`manual`); a call without it is rejected. Resolve it from the imported JSON:
+`trigger_choice` is **optional** on `aramb_workflows.create` — the save does not
+depend on it. Handle the trigger as a recommend-and-add tail step, same as
+create-workflow's Section 4.5:
 
 - If the JSON declares a trigger (a `toolkit_event` slug + config, or a cron
   expression), use that: `trigger_choice="toolkit_event"` (remember the slug +
   config) or `trigger_choice="cron"` (remember the expression).
-- If the JSON declares nothing about firing, **do not silently default to
-  manual.** Prompt the user with the same picker shape create-workflow uses
-  (read the entry node's `toolkit` → `aramb_toolkits.list_triggers` →
-  recommend → offer cron / manual). Record their pick.
+- If the JSON declares nothing about firing, **recommend** one with the same
+  picker shape create-workflow uses (read the entry node's `toolkit` →
+  `aramb_toolkits.list_triggers` → recommend, offer cron / "no trigger / run
+  manually"). If the user declines or picks manual, omit `trigger_choice` and save
+  anyway — don't block the import on it.
 
-After `aramb_workflows.create` succeeds, wire the actual trigger for
-`toolkit_event` (invoke `configure-trigger` with the workflow_id + slug) or
-`cron` (`aramb_workflows.set_schedule`), same as create-workflow's 4.5 step 6.
-`manual` needs no wiring.
+If the user approved an event or schedule, wire it after `aramb_workflows.create`
+succeeds: `toolkit_event` → invoke `configure-trigger` with the workflow_id + slug;
+`cron` → `aramb_workflows.set_schedule`, same as create-workflow's 4.5 step 4.
+`manual` / declined → nothing to wire.
 
 ### 4. Save the workflow
 
@@ -248,7 +250,7 @@ npx mcporter call aramb_workflows.create \
   template_slug="<slug from the template-import block>" \
   name="<workflow.name, polished>" \
   description="<workflow.description, polished>" \
-  trigger_choice="<toolkit_event | cron | manual — see 3.6>" \
+  trigger_choice="<OPTIONAL — toolkit_event | cron | manual per 3.6; omit if the user declined>" \
   default_node_settings='<workflow.default_node_settings JSON, verbatim>' \
   budget_usd=<workflow.budget_usd> \
   stateful=<workflow.stateful> \
@@ -273,8 +275,9 @@ And on the call itself:
 
 - `template_slug` — the slug from the `<template-import>` block, so the
   workflow row records its origin
-- `trigger_choice` — REQUIRED (`toolkit_event` | `cron` | `manual`), resolved per
-  step 3.6; brahmi rejects a create without it
+- `trigger_choice` — OPTIONAL (`toolkit_event` | `cron` | `manual`), resolved per
+  step 3.6; pass it only if the user picked a firing condition, omit otherwise (the
+  save does not depend on it)
 - `default_node_settings` — verbatim from the template payload
 - `env_variables` — omit the field entirely (templates do not declare env
   variables in v2; the schema rejects a non-empty map)
@@ -346,9 +349,10 @@ After posting, STOP. Do not send follow-up messages.
 - Does NOT call `aramb_workflows.update` (we're creating, not editing)
 - Does NOT invoke any other agent (the listed agents only start working
   when the user manually triggers a run of the new workflow)
-- Does NOT set a schedule (template imports do not carry scheduling
-  intent in v1; if the user later wants one, they ask separately and
-  master routes to `schedule-workflow`)
+- Does NOT *force* a trigger — the firing condition is a recommend-and-add tail
+  step (3.6): wire one only if the JSON declares it or the user approves the
+  recommendation; otherwise the workflow saves as manual-run and the user can add
+  a trigger / schedule later via `configure-trigger` / `schedule-workflow`
 - Does NOT rewrite agent personas — `identity` / `soul` / `agentsDoc` from
   the `<agents>` specs land in benji verbatim. Polish (step 3) applies
   only to workflow node text.

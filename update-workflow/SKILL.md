@@ -2,10 +2,11 @@
 name: update-workflow
 description: >
   Regenerate / refresh / tweak an existing workflow's definition. Works in two
-  dispatch modes: (1) task dispatch — master regenerates from the current set of
-  completed user tasks (system task with purpose=update-workflow); (2) chat
-  dispatch — solo applies an explicit change request ("add a Slack DM step",
-  "remove the synth node") or consolidates the work done so far in this chat.
+  dispatch modes: (1) task dispatch — master regenerates from the application's
+  user tasks (any status) plus any change request (system task with
+  purpose=update-workflow); (2) chat dispatch — solo applies an explicit change
+  request ("add a Slack DM step", "remove the synth node") or consolidates the
+  work done so far in this chat.
   Use when: dispatched as a system task with purpose=update-workflow, OR when the
   user asks to refresh / update / regenerate / change the workflow. NOT for:
   creating a workflow from scratch (use create-workflow), polishing a template
@@ -31,9 +32,10 @@ dispatch block — NOT Claude's built-in `TaskCreate`.
 
 - **A) Task dispatch (you are master, dispatched as a system task).** Your "Your
   task id" block gives you `application_id`, `project_id`, `workflow_id`, and
-  `task_id`. Regenerate from the application's completed tasks (+ any user-supplied
-  change request in the task description). Report progress on the task description;
-  close with `aramb_tasks.update`. → Go to **Path A** below.
+  `task_id`. Regenerate from the application's user tasks — ALL statuses, read for
+  intent (+ any user-supplied change request in the task description). Report
+  progress on the task description; close with `aramb_tasks.update`. → Go to **Path
+  A** below.
 - **B) Chat dispatch, team mode (you have `aramb_tasks.*` tools but NO `task_id`).**
   You are master launched directly from chat. **Do not design the update inline.**
   Look up the workflow and dispatch a proper system task, then exit — the
@@ -144,16 +146,16 @@ unless you have a reason.
 
 ### Step 2. Gather the change spec
 
-**Path A (task dispatch) — fetch the completed tasks:**
+**Path A (task dispatch) — fetch the user tasks (ALL statuses):**
 
 ```bash
 npx mcporter call aramb_tasks.list \
-  application_id="<application_id>" \
-  status="done"
+  application_id="<application_id>"
 ```
 
-Same shape as create-workflow: ignore `task_kind == "system"`, consolidate
-`task_kind == "user"` only.
+Same shape as create-workflow: **do NOT filter by `status="done"`** — read intent
+from the whole user-task corpus regardless of success. Ignore
+`task_kind == "system"`, read `task_kind == "user"` only.
 
 Then **check the dispatched task description for a `User-supplied change request:`
 section.** If present, that text is the user's verbatim instruction (e.g. *"add a
@@ -255,9 +257,9 @@ request, or the user's explicit change / chat work):
 graph is unchanged, keep 80% unchanged. The user already saw and accepted the
 existing version; the change spec tells you *which* 20% to actually touch.
 
-**`assigned_agent` handling:**
-- *Path A (task dispatch):* update per node to match the (possibly new) task assignment; use existing team persona names.
-- *Path C (chat dispatch, solo):* **read the existing `assigned_agent` verbatim from `aramb_workflows.get` and carry it forward on every node you keep.** Workflows imported from templates can be multi-persona (`developer`, `aramb-deployer`, …) even in a solo chat — do NOT blindly stamp `"solo"` across the graph. Set `assigned_agent: "solo"` only on nodes you author fresh in this update where no prior node exists to copy from AND the new work was clearly done by you (solo) in the chat. If a step the user is adding clearly belongs to an existing persona in the graph, reuse that persona's name.
+**`assigned_agent` handling — decided by the WORK, not the mode (same model as create-workflow):**
+- *Existing nodes you keep (both paths):* **read the existing `assigned_agent` verbatim from `aramb_workflows.get` and carry it forward.** Workflows imported from templates can be multi-persona (`developer`, `aramb-deployer`, a bespoke agent name, …) even in a solo chat — do NOT blindly stamp `"solo"` across the graph.
+- *Freshly authored nodes:* assign by the node's work, exactly as create-workflow does. Specialized work → **provision a bespoke agent via `create-agent`** and stamp its name (BOTH solo and team — solo is NOT barred from provisioning). Standard work → a roster persona in team mode, or `"solo"` in solo mode. If a new step clearly belongs to an existing persona already in the graph, reuse that persona's name instead of inventing one.
 
 **Same authoring rules as create-workflow:**
 - Concrete prompts with real business context baked in. No generic templates. No `{{env.…}}` / `{{input.…}}` placeholders — per-run values arrive in `<run_input>` (step 1 only).
@@ -346,7 +348,7 @@ Update progress: "Saving updated workflow".
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
 - `prompt` — concrete instruction with business context baked in, **no `{{env.…}}` / `{{input.…}}` placeholders**, **AND ending with the closing-instruction template**. The entry node reads `<run_input>` and distills it into its summary.
-- `assigned_agent` — Path A (team): an existing team persona by role (`developer` / `*-tester` / `checker` / `*-deployer`), never `"solo"`. Path C (solo): carry the existing node's persona verbatim from `aramb_workflows.get`; use `"solo"` only on freshly authored nodes with no prior counterpart. Never `create-agent` (sub-agents are pre-provisioned).
+- `assigned_agent` — kept nodes: carry the existing persona verbatim from `aramb_workflows.get` (both paths). Freshly authored nodes: decided by the work — a bespoke agent (provisioned via `create-agent`, either mode) for specialized work; a roster persona (team) or `"solo"` (solo) for standard work. Never `null` or empty.
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits`** — copied from the source task / existing node, grounded via `aramb_toolkits.list_toolkits`; `[]` for orchestration / file-only nodes; never omit.
 - **`toolkit`** — the primary slug; a member of `required_toolkits`; omit (or `null`) when `required_toolkits` is `[]`.
@@ -383,7 +385,7 @@ If you can't complete the step:
     error="<concise reason>"
 ```
 
-`aramb_workflows.update` skeleton (Path C, solo, would carry `"solo"` or a sub-agent on freshly authored nodes; Path A carries team personas — otherwise identical):
+`aramb_workflows.update` skeleton (kept nodes carry their existing persona verbatim; freshly authored nodes carry a bespoke agent, a roster persona, or `"solo"` per the work — otherwise identical across paths):
 
 ```bash
 npx mcporter call aramb_workflows.update \
@@ -501,7 +503,7 @@ definition is intact.
 - **Carry `default_node_settings`** forward unchanged from `aramb_workflows.get`, edited only where the user asked. Never silently drop the workflow defaults block.
 - **Reject pure firing-condition change requests** — cron → route to `schedule-workflow`; event trigger → route to `configure-trigger`. Path A: close failed with a `rejection_reason` naming the skill. Path C: use that skill directly. Only call `aramb_workflows.update` for definition changes.
 - **Apply setting changes at the right level**: workflow-wide phrases ("all steps" / "the workflow" / "everywhere") → `default_node_settings`. Single-step phrases ("the synth step" / "this step") → that one node's `settings` override.
-- **Preserve per-node `assigned_agent` verbatim from `aramb_workflows.get`** — multi-persona workflows (template imports) keep their personas through updates. Stamp `"solo"` (Path C) only on freshly authored nodes with no existing counterpart.
+- **Preserve per-node `assigned_agent` verbatim from `aramb_workflows.get`** — multi-persona workflows (template imports) keep their personas through updates. For freshly authored nodes, assign by the work: a bespoke agent via `create-agent` (either mode) for specialized work, a roster persona (team) or `"solo"` (solo) for standard work.
 - **For history-derived chat deltas, generalize the new work** — strip one-off dates / values from any new node prompts before adding them.
 - `unique_id` values are sequential integers starting at 1.
 - Dependencies live ONLY in the top-level `edges` array. Never on nodes.
