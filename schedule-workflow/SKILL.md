@@ -3,8 +3,9 @@ name: schedule-workflow
 description: >
   Configure a cron schedule on a workflow from a natural-language phrase.
   Use when the user says things like "run this weekly", "every Monday at 9am",
-  "stop the schedule", "pause it", "disable the schedule". NOT for: triggering
-  a single one-off run, or editing the workflow definition.
+  "stop the schedule", "pause it", "disable the schedule". NOT for: event-driven
+  triggers ("fire when a new GitHub issue is created" → use configure-trigger),
+  triggering a single one-off run, or editing the workflow definition.
 ---
 
 # Schedule Workflow
@@ -22,6 +23,30 @@ asked something like:
 
 The workflow_id is in the chat context (from the Workflow page). If you don't
 have it, call `aramb_workflows.get application_id="<application_id>"` first.
+
+## Schedule vs trigger — route first
+
+This skill only handles **wall-clock schedules** (cron): a fixed cadence or
+time-of-day. If the user instead wants the workflow to fire on an **event** in a
+connected service ("when a new GitHub issue is created", "on every push", "when I
+get a Slack DM"), that's an event trigger — hand off to the `configure-trigger`
+skill and stop. Signals that mean event, not schedule: a *thing that happens*
+rather than a clock or calendar.
+
+If the request asks for **both** ("run it daily AND when a new issue arrives"),
+handle the cron part here and tell the user the event part is configured via
+`configure-trigger` — don't silently drop it. (The matching router rule lives in
+`configure-trigger`; keep the two consistent.)
+
+## Invoked from create-workflow / update-workflow (sub-mode)
+
+When `create-workflow` (or `update-workflow`) calls you mid-authoring after the
+trigger picker chose **cron**, you arrive with a pre-resolved `workflow_id` and
+the cadence the user already gave. **Skip step 2 (clarify)** — the cadence is
+settled. Map it to a cron expression (step 3) and call `aramb_workflows.set_schedule`
+(step 4) directly. Only fall back to a clarifying `aramb_chat.ask_question` if the
+supplied cadence genuinely can't be mapped (missing time-of-day, ambiguous day).
+Standalone use (user invokes directly) runs the full flow below.
 
 ## Workflow
 

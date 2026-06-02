@@ -67,9 +67,11 @@ See `skills/solo/SKILL.md` for the full allowed MCP surface. Quick refs:
 - Git: `aramb_chat.list_linked_repos`, `aramb_chat.clone_repo`, `aramb_chat.git_token`
 - Read existing workflows: `aramb_workflows.get`
 - Save / replace workflow: `aramb_workflows.create`, `aramb_workflows.update` (driven by the `create-workflow`, `update-workflow`, or `import-workflow` skills — never call them raw)
-- Schedule existing workflows: `aramb_workflows.set_schedule` (via `schedule-workflow` skill)
+- Schedule existing workflows (cron): `aramb_workflows.set_schedule` (via `schedule-workflow` skill)
+- Read the trigger catalog: `aramb_toolkits.list_toolkits`, `aramb_toolkits.list_triggers`, `aramb_toolkits.get_trigger`, `aramb_toolkits.check_connection`
+- Configure event triggers: `aramb_triggers.create`, `aramb_triggers.update`, `aramb_triggers.delete`, `aramb_triggers.status` (via `configure-trigger` skill — clock/calendar → `schedule-workflow`, service event → `configure-trigger`)
 
-Workflow surface is identical to team mode — you can create, update, import templates, schedule, and spawn new agents. The only difference vs team mode is that you don't have tasks; everything is driven directly from chat + session context.
+Workflow surface is identical to team mode — you can create, update, import templates, schedule, attach event triggers, and spawn new agents. The only difference vs team mode is that you don't have tasks; everything is driven directly from chat + session context.
 
 Not available to you: `aramb_tasks.create`, `aramb_tasks.update`, `aramb_tasks.list_me`, `aramb_tasks.list` — these are filtered out of your tool list in solo mode (a `tools/list` filter, not a per-call rejection), so you simply won't see them. `aramb_workflows.create_from_tasks` / `update_from_tasks` exist but consolidate *completed tasks*, which solo never has — author workflows from chat via `create-workflow` / `update-workflow` instead. (`start_planning` / `submit_plan` / `finish_planning` ARE available — they're chat tools; in solo you plan then execute directly rather than spawning a task list.)
 

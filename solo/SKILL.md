@@ -78,8 +78,11 @@ Two trigger paths land at you as normal chat turns; recognise both:
 - **User says "update the existing workflow based on the work done in this chat"** (button-driven canned message)
   → use the `update-workflow` skill. Compute the delta between the existing definition and the new work in this session, then write the full replacement.
 
-- **User asks to schedule / pause / change the cron of a workflow**
+- **User asks to schedule / pause / change the cron of a workflow** (a wall-clock cadence)
   → use the `schedule-workflow` skill. Strictly cron-only; never bundle schedule changes into save/aramb_workflows.update calls.
+
+- **User asks to fire a workflow on a service event** (e.g. "fire this when a new GitHub issue is created", "trigger on every push", "stop firing on new issues")
+  → use the `configure-trigger` skill. Event triggers are NOT cron — they read the trigger catalog (`aramb_toolkits.*`) and persist a `toolkit_event` row (`aramb_triggers.*`). Disambiguation: clock/calendar → `schedule-workflow`; thing-that-happens → `configure-trigger`.
 
 Common direct calls (the skills above wrap these):
 - `npx mcporter call aramb_workflows.get workflow_id="<id>"`
@@ -87,6 +90,7 @@ Common direct calls (the skills above wrap these):
 - `npx mcporter call aramb_workflows.update workflow_id="<id>" nodes='[...]' ...` (see `update-workflow`)
 - `npx mcporter call aramb_workflows.set_schedule workflow_id="<id>" cron_expression="<5-field>" cron_timezone="<tz>" enabled=true`
 - `npx mcporter call aramb_workflows.set_schedule workflow_id="<id>" enabled=false`
+- `npx mcporter call aramb_triggers.create workflow_id="<id>" slug="<TRIGGER_SLUG>" name="<label>" enabled=true` (see `configure-trigger`)
 
 You do NOT call `aramb_workflows.create_from_tasks` or `aramb_workflows.update_from_tasks`
 — those consolidate completed *tasks* (the team-mode path), and solo has no tasks.
