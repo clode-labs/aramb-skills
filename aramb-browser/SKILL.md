@@ -53,22 +53,19 @@ Lifecycle tools (`browser_create`, `browser_list`, `browser_switch`, `browser_st
 
 Only if `browser_list` had no match for your slug:
 
-1. **aramb** (~4s, default)
-   ```bash
-   npx mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb ttl_minutes=30
-   ```
-2. **steel** (third-party BaaS, `browser_type=chrome` only) — pick when the user asks for it or when you specifically need Steel's residential proxy / managed captcha solving.
-   ```bash
-   npx mcporter call aramb-browser.browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30
-   ```
+```bash
+npx mcporter call aramb-browser.browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30
+```
 
-Fails → stop and report. Don't autonomously try other providers; don't preemptively prompt about user-network.
+Steel is the default — it ships with residential proxy and managed captcha solving. `browser_type=chrome` is required.
+
+Fails → stop and report. Don't autonomously retry.
 
 ### Optional `browser_create` inputs
 
 - `session_context=<string>` — replay a previously captured browser-context string (cookies + per-origin storage) inline at create time, instead of running `browser_load_context` afterwards. Pass the opaque value returned by `browser_save_context` verbatim.
-- `use_proxy=true|false` — opt into the provider's residential proxy. Defaults to true; only steel acts on it today.
-- `auto_solve_captcha=true|false` — opt into automatic captcha solving. Defaults to true; only steel acts on it today.
+- `use_proxy=true|false` — opt into the residential proxy. Defaults to true.
+- `auto_solve_captcha=true|false` — opt into automatic captcha solving. Defaults to true.
 
 ### Steel + captcha
 
@@ -77,7 +74,7 @@ When a steel session is solving a captcha, the Aramb viewer UI shows a "solving 
 Chain create + first navigate in one Bash call (shell `cwd` resets between mcporter calls; `&&` avoids drift):
 
 ```bash
-npx mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb ttl_minutes=30 \
+npx mcporter call aramb-browser.browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30 \
   && npx mcporter call aramb-browser.navigate_page browser=<app-slug> url=https://example.com
 ```
 
@@ -90,26 +87,15 @@ If after ~60s the page is still blocked, **stop and ask the user**. Don't retry,
 > `<site>` is still blocked after waiting. Looks like a `<captcha challenge | login wall | rate limit | empty body / generic block>`. How would you like to proceed?
 >
 > - **Open the browser viewer in the app and clear the challenge yourself** — fastest and most reliable. Tell me when you're past the gate and I'll continue from the same session.
-> - Route through your machine's network (requires a connected local Aramb client)
 > - Wait and retry later
 > - Try a different URL on the same site
 > - Skip this site
 
 Let the user pick. When they take the viewer route, **don't refresh, navigate, or recreate the browser** while they're working — same session = same cookies + challenge progress. After they confirm they're through, re-run your last `evaluate_script` to extract from the now-cleared page.
 
-**Do not autonomously set up the local Aramb client.** If the user picks the user-network route and a client is already connected:
-
-```bash
-npx mcporter call aramb-browser.browser_clients_list   # get client_id
-npx mcporter call aramb-browser.browser_create name=<app-slug> provider=aramb \
-  use_user_network=true client_id=<id> ttl_minutes=30
-```
-
-If no client is connected yet, ask the user to start their local Aramb client and confirm before recreating the browser.
-
 ## Named contexts — save & reuse logged-in state
 
-A **context** is a tarball of cookies + per-origin storage saved against your user, identified by name. Replay it on future Aramb sessions to skip re-authentication. Only works against **Aramb-backed** browsers (`provider=aramb`); local browsers have no `session_id`.
+A **context** is a tarball of cookies + per-origin storage saved against your user, identified by name. Replay it on future sessions to skip re-authentication.
 
 ### When to use — always ask the user first
 
@@ -179,7 +165,7 @@ Error behavior:
 npx mcporter call aramb-browser.browser_list
 # slug present → new_page browser=<app-slug>, capture target, navigate
 # slug absent  → browser_context_list, prompt user to load a saved context or skip,
-#                then browser_create name=<app-slug> provider=aramb ttl_minutes=30 [session_context=<value>]
+#                then browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30 [session_context=<value>]
 #                && navigate_page browser=<app-slug> url=...
 ```
 
