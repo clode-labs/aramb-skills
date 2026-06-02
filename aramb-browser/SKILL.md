@@ -20,6 +20,29 @@ URL visits, search-engine queries, scraping, form interaction, JSON endpoints be
 
 **Forbidden:** built-in `WebSearch` / `WebFetch` / `Fetch`, `curl`, `wget`, `httpie`, Node `fetch`, Python `requests`, or any script that makes HTTP calls. There is no "this site is simple, let me just curl it" exception.
 
+## Deliver the session — mandatory after create, mandatory when asking the user
+
+Every browser session you open or attach to must be surfaced to the user via `aramb_chat.deliver_artifacts` with a `browser_session` artifact. The chip routes the workbench's browser panel to the live session so the user can see exactly what you're doing.
+
+**Fire it in two cases — no exceptions:**
+
+1. **Right after `browser_create` succeeds** (or right after a `browser_list` reuse hits an existing session you're about to drive). The first chip pins the workbench tab open before you do anything visible — the user shouldn't have to hunt for it after the fact.
+2. **Every time you're about to pause and ask the user for input or attention** — captcha challenge, login wall, "stop and ask" path, "open the viewer and clear it yourself" prompts. The chip is what gives the user a one-click route into the live browser; surfacing the question without the chip leaves them blind.
+
+```bash
+npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
+  artifacts='[{"kind":"browser_session","session_id":"<app-slug>","title":"<short label>"}]' \
+  summary="<one-line context, e.g. 'LinkedIn login — open the viewer and sign in'>"
+```
+
+- `session_id` is the browser name you passed to `browser_create` (the `<app-slug>`). It IS the session identifier — reuse it verbatim. If `browser_create` returned a distinct opaque id in its response footer, prefer that.
+- `title` is a short human label: `"LinkedIn login"`, `"Reddit feed scrape"`, `"captcha — needs you"`.
+- Copy `project_id` + `application_id` verbatim from the `## Current Context` block of your User Message — same rule as every other MCP tool.
+- Mentioning the session in chat prose without the artifact is forbidden — the workbench tab won't open from prose, and "open the viewer" instructions become dead text.
+
+Re-fire on every new attention-request even if you've already delivered the chip earlier in the conversation — each call repins the tab and signals "look here now".
+
 ## Browser name = app slug. Always reuse.
 
 `name=<app-slug>` is mandatory on every `browser_create`. The app slug is in your workspace path (e.g. `/home/node/workspace/reddit-gather-a-9920b7f` → slug `reddit-gather-a-9920b7f`), in `$APPLICATION_SLUG`, and in the dispatch prompt. Never use generic names (`default`, `scraper`, `researcher`) — they collide across apps.
@@ -82,7 +105,9 @@ npx mcporter call aramb-browser.browser_create name=<app-slug> provider=steel br
 
 The browser clears most captchas (reCAPTCHA, Cloudflare Turnstile, hCaptcha, etc.) in the background. If you hit a challenge, **wait 30-60s** and re-check — `navigate_page` to refresh, or `evaluate_script` to read `location.href` / `document.title` / page content. Most pages clear on their own in that window.
 
-If after ~60s the page is still blocked, **stop and ask the user**. Don't retry, don't loop, don't recreate the browser.
+If after ~60s the page is still blocked, **stop and ask the user — but first deliver the session chip**. The chip is what makes "open the browser viewer" a one-click action; without it, the user has nowhere to click. Fire `aramb_chat.deliver_artifacts` with a `browser_session` artifact (see the deliver-the-session section above), then ask.
+
+Don't retry, don't loop, don't recreate the browser.
 
 > `<site>` is still blocked after waiting. Looks like a `<captcha challenge | login wall | rate limit | empty body / generic block>`. How would you like to proceed?
 >
@@ -153,9 +178,10 @@ Error behavior:
 - `browser=` AND `target=` on every page-level call.
 - One browser per app slug. Siblings reuse via `new_page`, not a second `browser_create`.
 - **Never call `browser_destroy`.** TTL cleans up.
+- **Deliver a `browser_session` artifact via `aramb_chat.deliver_artifacts` (a) immediately after `browser_create` succeeds, and (b) every time you stop to ask the user for input or attention.** Both are mandatory. Prose mentions don't open the workbench tab.
 - **Never save or load a context without explicit user approval.** Before `browser_create`, run `browser_context_list` and prompt the user to pick or skip. After a successful login, prompt before `browser_save_context`.
 - `evaluate_script` uses `function=` (NOT `script=`). Body is a JS arrow function: `function="() => JSON.stringify(...)"`.
-- On CAPTCHA / bot wall / 403: **wait 30-60s** for the browser to clear it in the background, then re-check the page. If still blocked, stop and ask the user — describe what you saw, never auto-recommend a specific fix.
+- On CAPTCHA / bot wall / 403: **wait 30-60s** for the browser to clear it in the background, then re-check the page. If still blocked, deliver the session chip and stop to ask the user — describe what you saw, never auto-recommend a specific fix.
 - Snapshots are heavy. Use only before click or when stuck. Prefer `evaluate_script` for data extraction.
 
 ## Scenarios
@@ -167,6 +193,12 @@ npx mcporter call aramb-browser.browser_list
 # slug absent  → browser_context_list, prompt user to load a saved context or skip,
 #                then browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30 [session_context=<value>]
 #                && navigate_page browser=<app-slug> url=...
+
+# Immediately after a successful create OR a list-reuse, deliver the session chip:
+npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
+  artifacts='[{"kind":"browser_session","session_id":"<app-slug>","title":"<short label>"}]' \
+  summary="Browser is up — opened the workbench tab so you can watch."
 ```
 
 ### Scrape Reddit / social — browser, never `.json` curl
