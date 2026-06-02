@@ -391,7 +391,11 @@ docker compose logs <service> --tail=30
 
 ## Step 8: Report
 
-Once ALL URLs are verified, surface the primary frontend URL as a URL-kind artifact on your `aramb_tasks.update` close call. The chip emit, preview-URL state registration, and task close all happen in ONE call.
+Once ALL URLs are verified, surface the primary frontend URL as a URL-kind artifact. Which tool depends on the dispatch context:
+
+### Team mode — closing a task
+
+The chip emit, preview-URL state registration, and task close all happen in ONE call.
 
 ```
 npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
@@ -402,10 +406,22 @@ Env overrides injected: $DEPLOY_ENV_FILE" \
   artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]'
 ```
 
-Rules for preview URLs:
+### Solo mode / no task to close
+
+When the deploy was kicked off directly in a chat (no `task_id` in your `## Current Context`), use `aramb_chat.deliver_artifacts` — same artifact shape, no task transition. Brahmi still auto-registers the preview-URL state from the URL-kind entry.
+
+```
+npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
+  artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]' \
+  summary="✅ App live: $FRONTEND_URL (api: $API_URL if applicable)"
+```
+
+### Rules for preview URLs (apply to both paths above)
+
 - The rule fires whenever this skill produced any URL the user can reach (frontend, API, tunnel, public proxy).
-- A URL-kind artifact on `aramb_tasks.update.artifacts` is mandatory for the primary frontend URL. Brahmi auto-registers preview-URL state from it — no separate call.
-- Mentioning the URL only in chat prose is forbidden — the chip pipeline cannot reconstruct chips from prose after the fact.
+- A URL-kind artifact is **mandatory** for the primary frontend URL — on `aramb_tasks.update.artifacts` in team mode, or on `aramb_chat.deliver_artifacts.artifacts` in solo mode. Brahmi auto-registers preview-URL state from it — no separate call.
+- Mentioning the URL only in chat prose is forbidden — the chip pipeline cannot reconstruct chips from prose after the fact, and the workbench browser/preview tab won't open from prose.
 - For aramb-expose tunnels the `environment` field is `"deployed"` (the URL is a public proxy.clode.space hostname reachable outside the agent's container).
 - The chip is for the *primary* frontend URL only. Secondary backend / API URLs can stay in the `summary` text — one URL chip per chat row is plenty.
 
