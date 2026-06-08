@@ -58,7 +58,12 @@ user's wizard answers, then call `aramb_workflows.create` exactly once.
    one entry, or the primary action toolkit when it has several. Invariant brahmi
    enforces: **`toolkit ∈ required_toolkits`.** Omit (or `null`) only when
    `required_toolkits` is `[]`. This is the one structural field you may *add* —
-   it's the trigger-binding primary, not a graph change.
+   it's the trigger-binding primary, not a graph change. **Preserve the template's
+   toolkit declarations as-is — never invent a binding, and never derive a
+   platform-internal/hidden toolkit** (`composio`, `composio_search`, `browser_tool`,
+   `slackbot`, `discord`, `discordbot`, `microsoft_teams`) — `aramb_workflows.create`
+   rejects those; for Slack/Discord/Teams messaging the node delivers via chil
+   `chat.send_dm` (no toolkit). See the `aramb-workflows` skill.
 7. **No placeholder syntax in any node `prompt`.** Templates ship with placeholders
    already substituted by brahmi, so the prose you receive should be literal. Do
    NOT introduce `{{env.KEY}}` / `{{input.KEY}}` during polish, and if a node still
