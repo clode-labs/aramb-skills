@@ -93,6 +93,14 @@ npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID"
   summary="Frontend deployed." \
   artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend","environment":"deployed"}]'
 
+# Close with a downloadable blob (same path as kind=file, but the
+# platform produces a download URL that works on any surface — Slack,
+# email, share link). Pick when the deliverable needs to reach beyond
+# the workspace tab.
+npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="done" \
+  summary="Report ready." \
+  artifacts='[{"kind":"blob","path":"/home/node/workspace/<YOUR_WD>/report.pdf","name":"report.pdf","mime_hint":"application/pdf"}]'
+
 # Failed close — see TASK EXECUTOR for retryable=false vs default
 npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="failed" error="API quota exhausted" retryable=false
 
@@ -105,8 +113,9 @@ npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID"
 ```
 
 Rules for the `artifacts` payload:
-- **`kind` is required** on every entry: `"file"` or `"url"`.
-- **File paths must be absolute** under `/home/node/workspace/<YOUR_WD>/`. Relative paths are rejected; paths outside your wd are rejected with a corrective error.
+- **`kind` is required** on every entry: `"file"`, `"url"`, or `"blob"`.
+- **File paths must be absolute** under `/home/node/workspace/<YOUR_WD>/`. Relative paths are rejected; paths outside your wd are rejected with a corrective error. Applies to both `"file"` and `"blob"` kinds.
+- **`"blob"`** mirrors `"file"` (same `path` rules, same wd) but the platform stages the bytes so consumers fetch a public download URL — pick whenever the close needs to reach beyond the workspace tab (Slack delivery, share link, headless clients). `name` and `mime_hint` are optional but encouraged.
 - **URLs auto-register the preview state** — no separate `update_preview_url` call.
 - **`summary`** is markdown shown to the user when the task closes (status=done|failed only). 32KB cap.
 
