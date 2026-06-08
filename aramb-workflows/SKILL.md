@@ -34,6 +34,7 @@ npx mcporter call aramb_workflows.create \
 
 - Runs at most once per application. Fails if a workflow already exists — use `aramb_workflows.update` to modify the existing one.
 - **Edges are top-level**, not per-node. Do NOT emit `dependencies` or `dependsOn` on nodes.
+- **Never invent or bind hidden toolkits.** Set a node's `toolkit` / `required_toolkits` only to toolkits the workspace actually exposes. Platform-internal/hidden toolkits (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) are REJECTED by `aramb_workflows.create`/`update` — never bind them. For Slack/Discord/Teams messaging deliverables, deliver via chil `chat.send_dm` (no toolkit).
 - `template_slug` (optional) is forwarded verbatim from a dispatched `<template-import slug="...">` block when this call originates from template import.
 
 ### Fetch a workflow's definition
