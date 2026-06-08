@@ -76,10 +76,20 @@ npx mcporter call aramb_chat.deliver_artifacts \
   project_id="<PROJECT_ID>" \
   application_id="<APPLICATION_ID>" \
   artifacts='[{"kind":"url","url":"https://abc.proxy.clode.space","title":"Frontend"}]'
+
+# Solo / mid-task recall — blob (downloadable file delivery; same path
+# as kind=file, but the result is a download URL that works on any
+# surface — web chat, Slack, exports). Use when the user is reading from
+# somewhere other than the workspace tab.
+npx mcporter call aramb_chat.deliver_artifacts \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
+  artifacts='[{"kind":"blob","path":"/home/node/workspace/<YOUR_WD>/report.pdf","name":"report.pdf","mime_hint":"application/pdf"}]'
 ```
 
 Rules for the `artifacts` payload (same in both surfaces):
-- **`kind` is required** on every entry: `"file"` or `"url"`. No inference.
+- **`kind` is required** on every entry: `"file"`, `"url"`, or `"blob"`. No inference.
+- **`"blob"`** mirrors `"file"` (same `path` argument, same wd rules) but the platform stages the bytes so consumers fetch a public download URL — pick it whenever the deliverable needs to reach a non-web surface (Slack, email, share link). `name` and `mime_hint` are optional but encouraged.
 - **File paths must be absolute** under `/home/node/workspace/<YOUR_WD>/`. Your working directory is in the `## MANDATORY Working Directory` block of your system prompt. Relative paths are rejected; paths outside your wd are rejected with a corrective error.
 - **URLs auto-register the preview state** — there is no separate `update_preview_url` step. The URL chip IS the preview registration.
 - **`summary`** is optional markdown commentary that accompanies the chip in the chat row.
