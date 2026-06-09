@@ -3,18 +3,23 @@ name: chil-mcp
 description: >
   MCP toolkit for Slack chat via chil's MCP server (chat.*). Use these
   to post messages, reply in threads, read channel history and threads,
-  and inspect channel info — all scoped per call by application_id, one
-  Slack channel per application.
+  and inspect channel info. Calls are scoped by application_id (one Slack
+  channel per app), and READ tools may instead scope by channel_id+team_id
+  to read a channel that has no per-channel application.
 ---
 
 # Chil Chat Toolkit
 
-The `chat.*` tools talk to Slack on the agent's behalf via chil. Every call carries `application_id` — chil resolves it to the linked Slack channel and uses the workspace's bot token automatically. The agent never sees Slack channel IDs or workspace tokens.
+The `chat.*` tools talk to Slack on the agent's behalf via chil. Most calls carry `application_id` — chil resolves it to the linked Slack channel and uses the workspace's bot token automatically.
+
+**Two ways to name the channel on READ tools** (`chat.read_messages`, `chat.read_thread`, `chat.get_channel_info`):
+- **`application_id`** — the app linked to a single channel (the usual case).
+- **`channel_id` + `team_id`** — a Slack channel id (e.g. `C0123ABC`) plus its workspace/team id (e.g. `T0123ABC`), used to read a channel that has **no per-channel application** (e.g. scanning many public channels of a workspace). Only public channels in the agent's own org are readable this way. WRITE tools (`chat.send_message`, `chat.reply_in_thread`) require `application_id` — they do not accept `channel_id`.
 
 ## CRITICAL: mcporter syntax rules
 - ALL arguments MUST use `key="value"` format (NOT positional args).
 - Do NOT use `--output` — it is not supported by mcporter call.
-- **ALWAYS include `application_id`** on every call. One application = one channel; without it the call has no scope.
+- **Scope every call.** Write tools: always include `application_id`. Read tools: include EITHER `application_id` OR `channel_id`+`team_id` — without one of those the call has no scope.
 
 ## Send a top-level message
 
@@ -50,8 +55,12 @@ npx mcporter call chat.read_messages application_id="<APPLICATION_ID>" days="1" 
 
 # Next page of the same window
 npx mcporter call chat.read_messages application_id="<APPLICATION_ID>" days="1" limit="50" cursor="<next_cursor from prior response>"
+
+# By channel_id + team_id (a channel with no per-channel app — e.g. scanning workspace channels)
+npx mcporter call chat.read_messages channel_id="<CHANNEL_ID>" team_id="<TEAM_ID>" days="7" limit="50"
 ```
 
+- `channel_id` + `team_id` (optional alternative to `application_id`): read a Slack channel directly. Use this when you were given raw channel ids to scan and there is no application per channel. Only public channels in your org resolve this way.
 - `days` (optional): only messages from the last N days. Translates to Slack's `oldest`. Slack carries the window through cursor pages — pass `days` only on page 1.
 - `limit` (optional): max messages per page. Default 20, hard cap 200.
 - `cursor` (optional): pass back the `next_cursor` from the previous response to fetch the next page. Omit on the first call.
@@ -79,6 +88,9 @@ npx mcporter call chat.read_thread application_id="<APPLICATION_ID>" thread_ts="
 
 ```bash
 npx mcporter call chat.get_channel_info application_id="<APPLICATION_ID>"
+
+# Or by channel_id + team_id (channel with no per-channel app)
+npx mcporter call chat.get_channel_info channel_id="<CHANNEL_ID>" team_id="<TEAM_ID>"
 ```
 
 ## Error handling

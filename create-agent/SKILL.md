@@ -50,9 +50,10 @@ Do NOT ask the end user for this information. The caller (e.g., master agent) pr
 Run this command **before doing anything else**:
 
 ```bash
-benji agent create <name> --model claude-opus-4-6 --backend claude-sdk --thinking medium
+benji agent create <name> --model claude-opus-4-6 --backend claude-pty --thinking medium
 ```
 
+- `--backend claude-pty` is the platform default — use it unless explicitly told otherwise. Do NOT hardcode `claude-sdk`; a new agent should match the deployment's default backend so its behaviour is consistent with every other agent in the workspace.
 - Use the `benji` binary directly — it is on `PATH` in the runtime environment. Do NOT try to invoke the CLI via its source entrypoint; your working directory is the agent workspace, not the source tree, and that form will fail.
 - The `benji agent create` command writes a new entry to `$BENJI_HOME/config.yaml` AND creates default IDENTITY.md/SOUL.md/AGENTS.md in `$BENJI_HOME/workspace-<name>/`. You will overwrite those defaults in Step 3 — that is expected.
 - If the command reports `agent already exists`, that is a HARD FAILURE for a fresh creation. Do not continue. Report the conflict so the caller can delete the old agent first. (`benji agent delete <name>` moves it to `.trash/`.)
