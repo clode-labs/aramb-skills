@@ -2,10 +2,11 @@
 name: chil-mcp
 description: >
   MCP toolkit for Slack chat via chil's MCP server (chat.*). Use these
-  to post messages, reply in threads, read channel history and threads,
-  and inspect channel info. Calls are scoped by application_id (one Slack
-  channel per app), and READ tools may instead scope by channel_id+team_id
-  to read a channel that has no per-channel application.
+  to post messages, reply in threads, send direct messages, read channel
+  history and threads, and inspect channel info. Channel calls are scoped
+  by application_id (one Slack channel per app); READ tools may instead
+  scope by channel_id+team_id, and chat.send_dm scopes by recipient
+  (slack_account_id+team_id) with no application_id.
 ---
 
 # Chil Chat Toolkit
@@ -14,12 +15,12 @@ The `chat.*` tools talk to Slack on the agent's behalf via chil. Most calls carr
 
 **Two ways to name the channel on READ tools** (`chat.read_messages`, `chat.read_thread`, `chat.get_channel_info`):
 - **`application_id`** — the app linked to a single channel (the usual case).
-- **`channel_id` + `team_id`** — a Slack channel id (e.g. `C0123ABC`) plus its workspace/team id (e.g. `T0123ABC`), used to read a channel that has **no per-channel application** (e.g. scanning many public channels of a workspace). Only public channels in the agent's own org are readable this way. WRITE tools (`chat.send_message`, `chat.reply_in_thread`) require `application_id` — they do not accept `channel_id`.
+- **`channel_id` + `team_id`** — a Slack channel id (e.g. `C0123ABC`) plus its workspace/team id (e.g. `T0123ABC`), used to read a channel that has **no per-channel application** (e.g. scanning many public channels of a workspace). Only public channels in the agent's own org are readable this way. The channel-bound WRITE tools (`chat.send_message`, `chat.reply_in_thread`) require `application_id` — they do not accept `channel_id`. **`chat.send_dm` is the exception:** it is recipient-scoped (`slack_account_id` + `team_id`) and takes **no** `application_id` — see "Send a direct message" below.
 
 ## CRITICAL: mcporter syntax rules
 - ALL arguments MUST use `key="value"` format (NOT positional args).
 - Do NOT use `--output` — it is not supported by mcporter call.
-- **Scope every call.** Write tools: always include `application_id`. Read tools: include EITHER `application_id` OR `channel_id`+`team_id` — without one of those the call has no scope.
+- **Scope every call.** Channel-bound write tools (`chat.send_message`, `chat.reply_in_thread`): always include `application_id`. `chat.send_dm`: scope by recipient (`slack_account_id` + `team_id`), never `application_id`. Read tools: include EITHER `application_id` OR `channel_id`+`team_id` — without one of those the call has no scope.
 
 ## Send a top-level message
 
@@ -41,6 +42,23 @@ npx mcporter call chat.reply_in_thread application_id="<APPLICATION_ID>" thread_
 ```
 
 - `thread_ts` is the `ts` of the **root** message of the thread (not a reply's `ts`). If you only have a reply's `ts`, use the reply's own `thread_ts` field instead.
+
+## Send a direct message
+
+`chat.send_dm` posts a Slack DM to an **explicit recipient** you name, not to a channel linked to an application. chil opens (or reuses) the DM conversation with that user and posts there. This is the surface **system / appless workflows** use to deliver per-user output (e.g. the discovery report DM) — there is no per-channel app, so the channel-bound write tools don't apply. Returns `{ok, channel, ts, slack_user_id, team_id}` (plus `thread_ts` when you threaded). Keep `ts` if you might thread a follow-up DM to the same person.
+
+```bash
+npx mcporter call chat.send_dm slack_account_id="<SLACK_USER_ID>" team_id="<TEAM_ID>" text="<message text>"
+
+# Thread a follow-up under an earlier DM (pass the ts a prior send_dm returned)
+npx mcporter call chat.send_dm slack_account_id="<SLACK_USER_ID>" team_id="<TEAM_ID>" text="<reply text>" thread_ts="<ts from a prior send_dm>"
+```
+
+- `slack_account_id` (**required**) — the recipient's Slack user id (e.g. `U0123ABC`), not a channel id. chil resolves it to that user's DM channel via `conversations.open`.
+- `team_id` (**required**) — the recipient's workspace/team id (e.g. `T0123ABC`); selects the bot token used to reach them.
+- `text` (**required**) — the message body. Slack mrkdwn is supported (`*bold*`, `_italic_`, backtick code).
+- `thread_ts` (optional) — thread this DM under an earlier one; pass back the `ts` a prior `send_dm` to the **same recipient** returned.
+- **No `application_id`.** Unlike `chat.send_message` / `chat.reply_in_thread`, `send_dm` is recipient-scoped — passing `application_id` is neither needed nor used. Missing `slack_account_id`, `team_id`, or `text` is rejected with `missing <field>`.
 
 ## Read recent channel messages
 

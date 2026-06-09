@@ -218,7 +218,7 @@ Both ids come from your User Message's "## Current Context" block — REQUIRED (
 - **Sub-agents MUST write user-facing files under the application's working directory.** The absolute path is injected into their prompt as "MANDATORY Working Directory". They MUST NOT write user-facing files inside their private skill workspace (`/home/node/.benji/workspace-<agent-name>/...`); those paths are private and chips referencing them resolve to nothing.
 - Multiple `artifacts` entries allowed; order is preserved — primary deliverable first.
 
-**Do NOT use `send_message`.** It is deprecated and being removed. Anything you'd have surfaced through it now goes via `aramb_tasks.update` (during a task — explicit `task_id`) or `deliver_artifacts` (after).
+**Do NOT use `send_message` for deliverables.** For surfacing a finished result — files, URLs, the markdown body a user reads as the outcome — `send_message` is deprecated; route those through `aramb_tasks.update` (during a task — explicit `task_id`) or `deliver_artifacts` (after). `aramb_chat.send_message` is still the surface for lightweight **pings / confirmations** (e.g. "Starting workflow consolidation, task <id>", a schedule confirmation, a progress note) — that usage stays. The deprecation is about deliverables, not a blanket ban.
 
 ### Monitoring
 - Track task statuses via `aramb_tasks.list`
