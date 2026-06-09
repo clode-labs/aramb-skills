@@ -96,6 +96,29 @@ There is **no** `<agents>` array and **no** `<workflow>` body in the block — t
 agents and the workflow already live server-side. Fetch the workflow to see its
 current nodes/edges.
 
+## System / appless imports (discovery & per-user system workflows)
+
+Some template imports are **system workflows** — the canonical one is
+`discovery-workflow` (the slug on the opening tag). brahmi materializes these as
+**project-scoped, appless** workflows in the user's **private project** (the
+per-user DM project), not as a channel-app workflow in the public project:
+
+- **No application binding.** The draft has `application_id = NULL` and is keyed
+  by its `workflow_id` / lineage. Your `get` + `update` flow is keyed on
+  `workflow_id`, so it works **unchanged** — never reach for an `application_id`
+  to fetch or save a system workflow.
+- **Output is DM-delivered.** A system workflow's final/delivery node reports to
+  the user over their **DM**, via chil `chat.send_dm` (no toolkit) — it must NOT
+  post to a public channel-app. When you polish a delivery node, keep it on the
+  DM path; do not rewrite it into a chil `chat.send_message`/channel post or bind
+  a Slack toolkit. (The Discovery template already does this — "scan your channels
+  and DM you a report.")
+- **It lives in the private project.** Treat the report as a per-user artifact:
+  per-user output, even when the source data is shared/public channels.
+
+Everything else (polish text only, preserve structure, auto-publish) is identical
+to an app-bound import.
+
 ## Output contract per node
 
 End each polished node `prompt` with one short line naming what the next step
@@ -229,6 +252,15 @@ npx mcporter call aramb_chat.send_message \
   application_id="<APPLICATION_ID>" \
   content="Set up the **Discovery Report** workflow — it'll scan your channels and DM you a report shortly, then refresh on schedule."
 ```
+
+Use the `project_id` / `application_id` from your User Message's "## Current
+Context" block. For a **system / appless import** — a system slug (e.g.
+`discovery-workflow`) **and** no `application_id` in the context (see "System /
+appless imports" above) — post with `project_id` only and omit `application_id`;
+the message lands in the user's private-project chat. Decide "appless" from the
+system slug, not the missing field alone. The
+report itself still arrives via the workflow's DM delivery node — this summary is
+just the acknowledgement.
 
 After posting, STOP. Do not send follow-up messages.
 
