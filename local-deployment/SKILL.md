@@ -28,7 +28,8 @@ This skill covers the complete workflow for deploying an application locally and
 5. Start docker compose with those env vars injected at runtime
 6. Wait for healthy
 7. Verify all public URLs
-8. Report
+8. Report — deliver primary URL as a URL-kind artifact (chip)
+9. Offer cloud deployment via ask_question (separate row, options as buttons)
 ```
 
 Why expose first: the tunnel infrastructure assigns public URLs regardless of whether local services are up. Starting the tunnel before `docker compose up` gives you the real public URLs to inject as env vars, so every container boots with the correct inter-service addresses from the first start.
@@ -424,6 +425,27 @@ npx mcporter call aramb_chat.deliver_artifacts \
 - Mentioning the URL only in chat prose is forbidden — the chip pipeline cannot reconstruct chips from prose after the fact, and the workbench browser/preview tab won't open from prose.
 - For aramb-expose tunnels the `environment` field is `"deployed"` (the URL is a public proxy.clode.space hostname reachable outside the agent's container).
 - The chip is for the *primary* frontend URL only. Secondary backend / API URLs can stay in the `summary` text — one URL chip per chat row is plenty.
+
+---
+
+## Step 9: Offer cloud deployment
+
+After the local URL artifact is delivered (Step 8), ask the user whether they also want a cloud deployment. **Always a separate call** — the URL belongs on its own chip in the previous chat row, and the question is a fresh row underneath it with action buttons. Do NOT embed the URL inside the question text — the chip pipeline cannot reconstruct it from prose, and Slack will render a duplicate link instead of a clean preview.
+
+```bash
+npx mcporter call aramb_chat.ask_question \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
+  question="Want me to deploy this to cloud as well? Local tunnel URLs die when the tunnel restarts; a cloud deployment is durable." \
+  options='["Yes, deploy to cloud","Not now","Skip — I will deploy myself"]'
+```
+
+Rules:
+- **One question per deployment** — fire this exactly once, immediately after the Step 8 artifact call. Do not re-prompt on the same deploy.
+- **Options stay in the `options` array**, not in the question prose. The Slack/web renderer turns each option into a button (chil's `QuestionBlocks` emits one button per option; any N up to ~5 renders cleanly).
+- **`chat_location` is forced to `"main"`** by brahmi for every `ask_question` call — the question always surfaces in the user's main chat, even if you were dispatched from inside a task. The `task_id` (if any) is auto-carried via question metadata so the answer routes back into your session.
+- **Blocking** — the run pauses until the user picks. The answer arrives as your next dispatch with the user's selection; do not poll.
+- **If the user picks the "Yes…" option**, hand off to the cloud-deploy skill with the same app slug. If they pick "Not now" or "Skip", end the session — do NOT kill the local tunnel (see "Keep the tunnel alive" below).
 
 ---
 
