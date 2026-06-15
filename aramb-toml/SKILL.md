@@ -72,15 +72,18 @@ Read the Dockerfile `CMD` or app source — set `commandPort` to whatever port t
 |---|---|
 | `${N.vars.KEY}` / `${N.secrets.KEY}` | Var / secret of service N |
 | `${N.outputs.IMAGE_URL}` | Image URL from build service N (Docker image or static OCI artifact) |
-| `${N.outputs.PRIVATE_URL}` | In-cluster URL of service N — `http://<slug>.clode.internal:<port>` |
-| `${N.outputs.PUBLIC_URL}` | Public URL of service N — `https://<slug>.proxy.clode.space` |
+| `${N.outputs.PRIVATE_URL}` | In-cluster URL of HTTP service N — `http://<slug>.clode.internal:<port>` |
+| `${N.outputs.PUBLIC_URL}` | Public URL of HTTP service N — `https://<slug>.proxy.clode.space` |
+| `${N.outputs.PRIVATE_HOST}` | Scheme-free in-cluster hostname of datasource service N — `<slug>.clode.internal` |
+| `${N.outputs.PRIVATE_PORT}` | In-cluster port of datasource service N (e.g. `5432`, `6379`, `27017`) |
 
-Pick the URL by caller:
-- **In-cluster → in-cluster** (backend → backend, backend → db, SSR frontend → backend): `PRIVATE_URL`
-- **Static frontend → backend** (the browser fetches the API): `PUBLIC_URL`
-- **Anything user-facing** (OAuth callbacks, links, redirects): `PUBLIC_URL`
+Pick the right output by caller:
+- **HTTP service → datasource** (backend → postgres / redis / mongodb): use `PRIVATE_HOST` and `PRIVATE_PORT` as separate `DB_HOST` / `DB_PORT` vars. Datasources don't speak HTTP, so wiring `DB_HOST = ${100.outputs.PRIVATE_URL}` won't work — every Postgres / Redis / Mongo client expects host and port as discrete inputs.
+- **In-cluster HTTP → HTTP** (backend → backend, SSR frontend → backend): `PRIVATE_URL`.
+- **Static frontend → backend** (the browser fetches the API): `PUBLIC_URL`.
+- **Anything user-facing** (OAuth callbacks, links, redirects): `PUBLIC_URL`.
 
-`PRIVATE_URL` / `PUBLIC_URL` always include the scheme and (for `PRIVATE_URL`) the port. Consumers parse the URL in code — see the `dev-workflow` skill's "Datasource Connections" section.
+For HTTP services, `PRIVATE_URL` / `PUBLIC_URL` include the scheme and (for `PRIVATE_URL`) the port. Datasource services expose only the `PRIVATE_HOST` / `PRIVATE_PORT` atoms — public exposure for raw TCP wire protocols (5432, 6379, 27017) isn't wired today, so they have no `PUBLIC_*` outputs.
 
 ### Vars vs secrets classification
 
@@ -167,8 +170,11 @@ value = "8080"
 key = "ALLOWED_ORIGINS"
 value = "https://*.proxy.clode.space"
 [[services.configuration.vars]]
-key = "POSTGRES_HOST_URL"
-value = "${100.outputs.PRIVATE_URL}"
+key = "POSTGRES_HOST"
+value = "${100.outputs.PRIVATE_HOST}"
+[[services.configuration.vars]]
+key = "POSTGRES_PORT"
+value = "${100.outputs.PRIVATE_PORT}"
 [[services.configuration.vars]]
 key = "POSTGRES_USER"
 value = "${100.vars.POSTGRES_USER}"
@@ -245,7 +251,7 @@ Apply these changes to the git-mode template; everything else stays identical:
 6. Any value referencing `${N.secrets.KEY}` lives in `[[secrets]]`; no hardcoded sensitive values (`""` or a `${…}` reference only).
 7. Backend services omit `cmd` and have `commandPort` matching the Dockerfile bind port.
 8. Static frontends (`type="frontend"`) have `image = ""` and `staticPath` set; image is filled by a local `--static-outdir` build.
-9. Static frontends reference backends via `${backend-id.outputs.PUBLIC_URL}`; SSR frontends (`type="backend"`) and other backends reference in-cluster services via `${N.outputs.PRIVATE_URL}`.
+9. Static frontends reference backends via `${backend-id.outputs.PUBLIC_URL}`; SSR frontends (`type="backend"`) and other backends reference in-cluster HTTP services via `${N.outputs.PRIVATE_URL}`. Datasource consumers (backend → postgres / redis / mongodb) wire `DB_HOST = ${N.outputs.PRIVATE_HOST}` and `DB_PORT = ${N.outputs.PRIVATE_PORT}` — never `PRIVATE_URL` for a database.
 10. Every backend and every frontend service has an `ALLOWED_ORIGINS` var that includes `https://*.proxy.clode.space`.
 11. Every `type="build"` service declares `targetType` matching its consuming runtime (`"backend"`, `"frontend"`, `"aramb-agent"`, or `"template"`). When `targetType="frontend"`, `staticOutDir` is also set.
 12. Git mode: every build service has `repoUrl`, `buildPath`, `targetBranches`, `installationId`. No-git mode: all own-codebase services have `image = ""`.
