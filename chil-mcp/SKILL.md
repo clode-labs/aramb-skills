@@ -21,6 +21,7 @@ Server name is `chil`. Tool names are flat. Every call is scoped server-side by 
 | `read_thread` | `channel_id`, `thread_id`, `limit?`, `cursor?` | `{messages, next_cursor, has_more}` |
 | `get_channel_info` | `channel_id` | `{id, name, is_private, topic, purpose}` |
 | `list_channels` | `account_id` | `{channels: [{id, name, is_private}]}` |
+| `list_joined_channels` | — | `{channels: [{id, name}]}` |
 
 - `channel_id`: target channel id (DM channels work too — use the `channel_id` returned by `send_dm`).
 - `account_id`: a user id.
@@ -29,11 +30,47 @@ Server name is `chil`. Tool names are flat. Every call is scoped server-side by 
 
 ## Invocation
 
-```bash
-npx mcporter call chil <tool> key="value" key="value"
-```
+All tools: `npx mcporter call chil.<tool> key="value" key="value"`. Server is `chil`, tool name is appended after a dot (same pattern as `aramb_chat.send_message`, `aramb_tasks.update`).
 
-All arguments are `key="value"`. Do not pass `--output`.
+## CRITICAL: mcporter syntax rules
+
+- All arguments MUST be `key="value"` format with quotes.
+- Do NOT use `--output` — it is not supported by `mcporter call`.
+- Do NOT use positional args — every parameter is named.
+
+## Examples
+
+```bash
+# Post in a channel
+npx mcporter call chil.send_message channel_id="C0B8P73U77Y" text="Heads up — deploy starting in 5 min"
+
+# Reply inside an existing thread (thread_id = root message id from a prior send_message / read)
+npx mcporter call chil.reply_in_thread channel_id="C0B8P73U77Y" thread_id="1781360386.219519" text="Done."
+
+# DM a user (opens or reuses the DM channel; returns channel_id + id)
+npx mcporter call chil.send_dm account_id="U0BABQ1V882" text="Quick sync?"
+
+# Reply in the same DM thread (reuse the id returned by send_dm as thread_id)
+npx mcporter call chil.send_dm account_id="U0BABQ1V882" text="follow-up" thread_id="1781360471.979729"
+
+# Read recent messages (last 7 days, default page size)
+npx mcporter call chil.read_messages channel_id="C0B8P73U77Y" days="7"
+
+# Paginate
+npx mcporter call chil.read_messages channel_id="C0B8P73U77Y" cursor="<next_cursor from prior call>"
+
+# Read a thread (root is repeated as messages[0] on every page)
+npx mcporter call chil.read_thread channel_id="C0B8P73U77Y" thread_id="1781360386.219519"
+
+# Channel metadata
+npx mcporter call chil.get_channel_info channel_id="C0B8P73U77Y"
+
+# What channels is a user in?
+npx mcporter call chil.list_channels account_id="U0BABQ1V882"
+
+# What public channels is the bot itself in?
+npx mcporter call chil.list_joined_channels
+```
 
 ## Read tool details
 
