@@ -30,15 +30,20 @@ project**:
 npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"
 ```
 
-Returns BOTH appless and app-bound workflows for the project — an array of:
+Returns BOTH appless and app-bound workflows for the project, wrapped as
+`{ "workflows": [ … ], "count": N }`. Read the `workflows` array — `count: 0`
+(empty array) means genuinely no workflows. Each row:
 
 ```json
-[{ "workflow_id": "<lineage_id>", "name": "...", "application_id": "<uuid|null>", "status": "...", "schedule": "<cron|null>", "updated_at": "..." }]
+{ "workflow_id": "<lineage_id>", "name": "...", "application_id": "<uuid|null>", "status": "...", "schedule": null, "updated_at": "..." }
 ```
 
-`aramb_workflows.get project_id="<PROJECT_ID>"` (no `workflow_id`) also returns
-the project's workflows array — so your habitual `get` reach works project-scoped
-too.
+`schedule` is `null` unless a cron is configured, in which case it is an object
+`{ "cron_expression": "...", "cron_timezone": "...", "enabled": true, "next_run_at": "..." }`.
+
+`aramb_workflows.get project_id="<PROJECT_ID>"` (no `workflow_id`) returns the
+same `{ "workflows": [ … ], "count": N }` shape — so your habitual `get` reach
+works project-scoped too.
 
 **Do NOT enumerate with `get application_id=…`.** That finds at most the single
 legacy app-bound row for one application and misses every appless workflow — it
