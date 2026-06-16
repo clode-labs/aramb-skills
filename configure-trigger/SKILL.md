@@ -19,6 +19,12 @@ catalog with `aramb_toolkits.*` (read-only) and persist with `aramb_triggers.*`
 (write). The two namespaces are split for security and discoverability — look up
 with one, mutate with the other.
 
+> **The `aramb_toolkits.*` call contract (`list_toolkits`, `list_triggers`,
+> `get_trigger`, `check_connection` — arg is `toolkit=`, never `toolkit_slug`)
+> is documented canonically in the `aramb-toolkits` skill.** This skill just uses
+> those calls in its flow; read `aramb-toolkits` for the full arg reference. For
+> the actual data fetch / action (not trigger wiring), that's `composio-cli`.
+
 > **Schedules are NOT triggers.** A wall-clock cadence ("daily at 9am", "every
 > Monday", a cron expression) is a *schedule* and lives on different storage with
 > a different skill. See "Schedule vs trigger — route first" below. If the intent
@@ -46,12 +52,14 @@ router rule lives in `schedule-workflow`; keep the two consistent.
 ## What you need
 
 - **`workflow_id`** — usually in the chat context (you're on the Workflow page).
-  If you don't have it, resolve it from the application (one workflow per app):
+  If you don't have it, find the project's workflows and pick the right one:
   ```bash
-  npx mcporter call aramb_workflows.get application_id="<APPLICATION_ID>"
+  npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"
   ```
-  If no workflow exists, tell the user there's nothing to attach a trigger to and
-  suggest they create one first (`create-workflow`). Stop.
+  (A project can hold several workflows — appless is the norm; don't assume one
+  per application. If more than one matches, ask the user which.) If no workflow
+  exists, tell the user there's nothing to attach a trigger to and suggest they
+  create one first (`create-workflow`). Stop.
 - **`project_id` + `application_id`** — from your dispatch context (the
   "## Current Context" block). Needed for `aramb_chat.ask_question`.
 

@@ -102,10 +102,12 @@ You were launched directly from chat instead of via the system-task dispatch, an
 you have the `aramb_tasks.*` toolkit (team mode). **Do not design the workflow
 inline.** Instead:
 
-1. Look up the application's workflow:
+1. Look up the project's workflows and pick the one to update:
    ```bash
-   npx mcporter call aramb_workflows.get application_id="<APPLICATION_ID>"
+   npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"
    ```
+   (A project can hold several workflows — appless is the norm; don't assume one
+   per application. If more than one matches the user's intent, ask which.)
 2. **If a workflow exists** — dispatch a proper system task and exit:
    ```bash
    npx mcporter call aramb_workflows.update_from_tasks workflow_id="<WORKFLOW_ID_FROM_STEP_1>"
@@ -128,11 +130,12 @@ Do not continue past this section — there is no `task_id` to close in Path B.
 npx mcporter call aramb_workflows.get workflow_id="<workflow_id>"
 ```
 
-Chat dispatch (Path C): if you don't have a `workflow_id`, look it up by
-application (each app has at most one workflow):
+Chat dispatch (Path C): if you don't have a `workflow_id`, find the project's
+workflows and pick the one the user means (a project can hold several — appless
+is the norm; if more than one matches, ask which):
 
 ```bash
-npx mcporter call aramb_workflows.get application_id="<application_id>"
+npx mcporter call aramb_workflows.list project_id="<project_id>"
 ```
 
 If no workflow exists (Path C), tell the user there's nothing to update and suggest

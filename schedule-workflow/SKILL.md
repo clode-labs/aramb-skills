@@ -22,7 +22,9 @@ asked something like:
 - "Stop the schedule" / "Pause it"
 
 The workflow_id is in the chat context (from the Workflow page). If you don't
-have it, call `aramb_workflows.get application_id="<application_id>"` first.
+have it, list the project's workflows and pick the right one:
+`aramb_workflows.list project_id="<PROJECT_ID>"` (a project can hold several
+workflows — appless is the norm; if more than one matches, ask which).
 
 ## Schedule vs trigger — route first
 

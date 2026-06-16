@@ -85,6 +85,7 @@ Two trigger paths land at you as normal chat turns; recognise both:
   → use the `configure-trigger` skill. Event triggers are NOT cron — they read the trigger catalog (`aramb_toolkits.*`) and persist a `toolkit_event` row (`aramb_triggers.*`). Disambiguation: clock/calendar → `schedule-workflow`; thing-that-happens → `configure-trigger`.
 
 Common direct calls (the skills above wrap these):
+- `npx mcporter call aramb_workflows.list project_id="<id>"` — enumerate the project's workflows (appless + app-bound). This is how you answer "are there any workflows?" — NOT `get application_id=` (misses appless workflows).
 - `npx mcporter call aramb_workflows.get workflow_id="<id>"`
 - `npx mcporter call aramb_workflows.create application_id="<id>" project_id="<id>" name="<name>" ...` (see `create-workflow`)
 - `npx mcporter call aramb_workflows.update workflow_id="<id>" nodes='[...]' ...` (see `update-workflow`)

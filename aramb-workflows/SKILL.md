@@ -10,10 +10,40 @@ description: >
 
 The `aramb_workflows.*` tools cover workflow definition CRUD, schedule management, run-step updates, and "consolidate from tasks" / "update from tasks" dispatch.
 
+**Workflows are project-scoped (appless is the norm).** A workflow's identity is
+its `lineage_id` (returned as `workflow_id`); `application_id` is **optional and
+usually NULL**. There is no longer a "one workflow per application" invariant — a
+project can hold many workflows, most of them appless. To find what workflows
+exist, query **by project** (`list project_id=…`), not by application.
+
 ## CRITICAL: mcporter syntax rules
 - ALL arguments MUST use `key="value"` format.
 - Do NOT use `--output` — it is not supported by mcporter call.
 - Workflow run step updates use `update_step` with an explicit `step_id` (rendered into your dispatch User Message). There is no session-implicit variant.
+
+## Find a project's workflows — start here
+
+To answer "what workflows exist / are there any workflows?" enumerate **by
+project**:
+
+```bash
+npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"
+```
+
+Returns BOTH appless and app-bound workflows for the project — an array of:
+
+```json
+[{ "workflow_id": "<lineage_id>", "name": "...", "application_id": "<uuid|null>", "status": "...", "schedule": "<cron|null>", "updated_at": "..." }]
+```
+
+`aramb_workflows.get project_id="<PROJECT_ID>"` (no `workflow_id`) also returns
+the project's workflows array — so your habitual `get` reach works project-scoped
+too.
+
+**Do NOT enumerate with `get application_id=…`.** That finds at most the single
+legacy app-bound row for one application and misses every appless workflow — it
+will answer "none" when the project actually has workflows. Use `list project_id=`
+(or `get project_id=`) for any "which workflows are there?" question.
 
 ## Workflow CRUD
 
@@ -32,8 +62,9 @@ npx mcporter call aramb_workflows.create \
   edges='[{"source":1,"target":2}]'
 ```
 
-- Runs at most once per application. Fails if a workflow already exists — use `aramb_workflows.update` to modify the existing one.
-- **Project-scoped / appless workflows** — omit `application_id` and pass `project_id` alone to create a workflow that belongs to the **project**, not a channel-app. This is how per-user **system** workflows (e.g. the discovery report) live in a user's **private project**: `application_id` is nullable, the workflow is keyed by its own lineage, and the per-application "one workflow per app" limit does not apply. Such workflows deliver their output via **DM** (chil `chat.send_dm`), never a public channel-app post. `get` / `update` by `workflow_id` work identically for appless workflows. (Template imports of system workflows arrive pre-created — polish them via the `import-workflow` skill, don't `create` them.)
+- **`project_id` is required; `application_id` is optional/legacy.** Pass `project_id` alone to create a **project-scoped / appless** workflow — this is the norm. The workflow is keyed by its own lineage (`workflow_id`) and belongs to the project, not a channel-app.
+- **`application_id` (optional, legacy app-bound)** — passing it binds the workflow to one application. App-bound workflows retain the old "at most one per application" behavior, so a second `create` with the same `application_id` fails (use `aramb_workflows.update` to modify it). Appless workflows have no such limit — a project can hold many.
+- Per-user **system** workflows (e.g. the discovery report) are appless workflows in the user's **private project**. They deliver output via **DM** (chil `chat.send_dm`), never a public channel-app post. `get` / `update` by `workflow_id` work identically for appless workflows. (Template imports of system workflows arrive pre-created — polish them via the `import-workflow` skill, don't `create` them.)
 - **Edges are top-level**, not per-node. Do NOT emit `dependencies` or `dependsOn` on nodes.
 - **Never invent or bind hidden toolkits.** Set a node's `toolkit` / `required_toolkits` only to toolkits the workspace actually exposes. Platform-internal/hidden toolkits (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) are REJECTED by `aramb_workflows.create`/`update` — never bind them. For Slack/Discord/Teams messaging deliverables, deliver via chil `chat.send_dm` (no toolkit).
 - `template_slug` (optional) is forwarded verbatim from a dispatched `<template-import slug="...">` block when this call originates from template import.
@@ -41,14 +72,20 @@ npx mcporter call aramb_workflows.create \
 ### Fetch a workflow's definition
 
 ```bash
-# By workflow_id
+# By workflow_id (the canonical identity — lineage_id)
 npx mcporter call aramb_workflows.get workflow_id="<WORKFLOW_ID>"
 
-# By application_id (single-workflow-per-application invariant)
+# By project_id (no workflow_id) — returns the project's workflows array
+# (appless + app-bound). Use this to enumerate; see "Find a project's workflows".
+npx mcporter call aramb_workflows.get project_id="<PROJECT_ID>"
+
+# By application_id (legacy, app-bound only) — returns the single workflow bound
+# to that one application, if any. Misses appless workflows — don't use it to
+# answer "what workflows exist?".
 npx mcporter call aramb_workflows.get application_id="<APPLICATION_ID>"
 ```
 
-Returns nodes, edges, env_variables, schedule, stateful flag, and `auto_triggerable` / `missing_required_env` status.
+A single-workflow fetch returns nodes, edges, env_variables, schedule, stateful flag, and `auto_triggerable` / `missing_required_env` status.
 
 ### Update an existing workflow (atomic full replace)
 
@@ -80,7 +117,7 @@ npx mcporter call aramb_workflows.update_from_tasks \
   change_request="add a Slack DM step after the standup comment"
 ```
 
-Decide between them by checking `aramb_workflows.get application_id="..."` first — empty result → `create_from_tasks`; existing row → `update_from_tasks`.
+Decide between them by checking the project's workflows first (`aramb_workflows.list project_id="..."`) — no workflow for this application yet → `create_from_tasks`; an existing one → `update_from_tasks` with its `workflow_id`.
 
 Both tools return `{status: "ok", task_id: "<uuid>", message: "..."}`. The actual workflow design happens later when the system task arrives back at master and loads the appropriate skill.
 
