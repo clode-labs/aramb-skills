@@ -217,11 +217,15 @@ value = "8080"
 
 [[services.configuration.vars]]
 key = "DB_HOST"
-value = "localhost"
+value = "${100.outputs.PRIVATE_HOST}"
+
+[[services.configuration.vars]]
+key = "DB_PORT"
+value = "${100.outputs.PRIVATE_PORT}"
 
 [[services.configuration.secrets]]
 key = "DATABASE_URL"
-value = "postgres://${100.vars.POSTGRES_USER}:${100.secrets.POSTGRES_PASSWORD}@localhost:5432/${100.vars.POSTGRES_DB}"
+value = "postgres://${100.vars.POSTGRES_USER}:${100.secrets.POSTGRES_PASSWORD}@${100.outputs.PRIVATE_HOST}:${100.outputs.PRIVATE_PORT}/${100.vars.POSTGRES_DB}"
 # ↑ SECRET because it references ${100.secrets.POSTGRES_PASSWORD}
 
 [[services.configuration.secrets]]
@@ -341,7 +345,7 @@ value = ""
 # Service 102: Backend
 [[services.configuration.secrets]]  # ← SECRET because it references a secret
 key = "DATABASE_URL"
-value = "postgres://${100.vars.POSTGRES_USER}:${100.secrets.POSTGRES_PASSWORD}@postgres:5432/${100.vars.POSTGRES_DB}"
+value = "postgres://${100.vars.POSTGRES_USER}:${100.secrets.POSTGRES_PASSWORD}@${100.outputs.PRIVATE_HOST}:${100.outputs.PRIVATE_PORT}/${100.vars.POSTGRES_DB}"
 ```
 
 **Example (INCORRECT)**:
