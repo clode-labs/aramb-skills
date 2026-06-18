@@ -16,6 +16,7 @@ Server name is `chil`. Tool names are flat. Every call is scoped server-side by 
 |---|---|---|
 | `send_message` | `channel_id`, `text` | `{ok, id, channel_id}` |
 | `reply_in_thread` | `channel_id`, `thread_id`, `text` | `{ok, id, channel_id, thread_id}` |
+| `send_question` | `channel_id`, `question`, `options`, `thread_id?` | `{ok, id, channel_id, options, thread_id?}` |
 | `send_dm` | `account_id`, `text`, `thread_id?` | `{ok, id, channel_id, account_id, thread_id?}` |
 | `read_messages` | `channel_id`, `days?`, `limit?`, `cursor?` | `{messages, next_cursor, has_more}` |
 | `read_thread` | `channel_id`, `thread_id`, `limit?`, `cursor?` | `{messages, next_cursor, has_more}` |
@@ -27,6 +28,7 @@ Server name is `chil`. Tool names are flat. Every call is scoped server-side by 
 - `account_id`: a user id.
 - `thread_id`: the `id` of the thread root (also the `id` returned by a prior `send_message`/`send_dm`).
 - `id` in responses is the message identifier — reuse it as the next `thread_id`.
+- `options` (send_question): array of strings, e.g. `'["Yes","No"]'`. Each option becomes a button on the posted card. Object form `{label, description?}` is also accepted by the schema — only the `label` drives button text.
 
 ## Invocation
 
@@ -46,6 +48,12 @@ npx mcporter call chil.send_message channel_id="C0B8P73U77Y" text="Heads up — 
 
 # Reply inside an existing thread (thread_id = root message id from a prior send_message / read)
 npx mcporter call chil.reply_in_thread channel_id="C0B8P73U77Y" thread_id="1781360386.219519" text="Done."
+
+# Ask a question with option buttons (use this whenever you need a choice from the user)
+npx mcporter call chil.send_question channel_id="C0B8P73U77Y" question="Ready to deploy?" options='["Yes","No","Hold"]'
+
+# Same, but posted inside an existing thread
+npx mcporter call chil.send_question channel_id="C0B8P73U77Y" thread_id="1781360386.219519" question="Pick a region" options='["us-east-1","eu-west-2"]'
 
 # DM a user (opens or reuses the DM channel; returns channel_id + id)
 npx mcporter call chil.send_dm account_id="U0BABQ1V882" text="Quick sync?"
