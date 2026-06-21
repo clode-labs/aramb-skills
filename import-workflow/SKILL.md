@@ -238,6 +238,13 @@ npx mcporter call aramb_workflows.set_schedule \
   enabled="true"
 ```
 
+If the template (or the user's request) carries a **randomized cadence** — fires
+staggered off the exact tick rather than at a robotic time — pass the optional
+cron-only args through: `random_delay_enabled=true` and, if the template specifies
+a cap, `random_delay_max_minutes=<N>` (the delay is clamped to 80% of the gap to
+the next tick). Omit both when the template's cadence is a plain cron. See the
+`schedule-workflow` skill.
+
 This configures the repeat cadence only. The **first** run still fires
 immediately via auto-publish — do NOT trigger it yourself.
 

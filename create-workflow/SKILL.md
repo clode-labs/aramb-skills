@@ -443,6 +443,25 @@ approval.
    - `cron` → `aramb_workflows.set_schedule` with the cadence.
    - `manual` / declined → nothing to wire.
 
+## 4.6 Run-status callback — optional, only if asked
+
+If the user wants an external system notified when this workflow runs ("POST to my
+endpoint when it starts/finishes", "send run status to this URL"), set a
+workflow-level callback after `aramb_workflows.create` succeeds:
+
+```bash
+npx mcporter call aramb_workflows.set_callback \
+  workflow_id="<workflow_id>" \
+  callback_url="https://example.com/hooks/run-status"
+```
+
+The response returns a **signing secret once** — surface it to the user verbatim
+and tell them it won't be shown again (they verify `Webhook-Signature` with it).
+brahmi then POSTs a signed status payload on every real run, on start (`running`)
+and on terminal (`completed`/`failed`/`cancelled`). It's workflow-level config —
+see the `aramb-workflows` skill for the full payload contract. Don't set one
+unless the user asked.
+
 ## Browser-login pre-check — required before save
 
 If a node uses `aramb-browser` to act on a logged-in site, that login must already
@@ -642,6 +661,10 @@ Reminders for the 4.5 step-4 wiring (only if the user approved a trigger):
     workflow_id="<workflow_id>" cron_expression="0 8 * * *" \
     cron_timezone="Asia/Kolkata" enabled=true
   ```
+  If the user also wants the fire time staggered (not landing on a robotic exact
+  minute), add the optional cron-only args `random_delay_enabled=true` and
+  `random_delay_max_minutes=<N>` — the delay is clamped to 80% of the gap to the
+  next tick. See the `schedule-workflow` skill.
 - `toolkit_event` → you invoked `configure-trigger` with the resolved
   `workflow_id` + chosen `slug`. Don't claim it's firing until it reports
   `active` (async upstream).

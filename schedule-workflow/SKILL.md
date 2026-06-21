@@ -137,9 +137,40 @@ npx mcporter call aramb_workflows.set_schedule \
 
 The response includes the resulting `schedule` view: `cron_expression`,
 `cron_timezone`, `enabled`, `next_run_at`, `auto_triggerable`,
-`missing_required_env`. If `auto_triggerable` is `false`, the schedule was
-saved but won't fire until the user provides the listed env values — relay
+`missing_required_env`, plus `random_delay_enabled` + `random_delay_max_minutes`
+(see "Randomize fire time" below). If `auto_triggerable` is `false`, the schedule
+was saved but won't fire until the user provides the listed env values — relay
 that to the user.
+
+### 4a. Randomize fire time (cron-only — optional)
+
+If the user wants runs to NOT land on robotic exact times ("don't fire at exactly
+9:00", "stagger it a bit", "make it look less bot-like"), enable random delay. Two
+extra args on the same `set_schedule` call:
+
+- `random_delay_enabled` (bool, default `false`)
+- `random_delay_max_minutes` (int, optional) — an absolute cap on the delay
+
+```bash
+npx mcporter call aramb_workflows.set_schedule \
+  workflow_id="<workflow_id>" \
+  cron_expression="0 9 * * *" \
+  cron_timezone="UTC" \
+  random_delay_enabled=true \
+  random_delay_max_minutes=20 \
+  enabled=true
+```
+
+How it behaves: each fire lands at a random point **after** the scheduled tick, up
+to a cap chosen fresh every fire. The cap is `min(random_delay_max_minutes, 80% of
+the gap to the next tick)` — so a jittered run **always** lands before the next
+scheduled tick (no overlap, no skipped run) even if the user sets a large cap. Omit
+`random_delay_max_minutes` ⇒ the cap is just 80% of the gap. The fields are echoed
+in `get_schedule`/the `schedule` response view.
+
+**Cron-only.** Random delay applies to wall-clock schedules only — it does not
+apply to event/toolkit triggers (those fire on external events, with no scheduled
+gap to jitter within). Default is off; only enable it when the user asks.
 
 ### 5. Confirm in chat
 
@@ -165,6 +196,10 @@ Schedule paused. The workflow won't run on its schedule until you re-enable it.
   2–3 options, then stop.
 - Default timezone is UTC. State the timezone you used in your reply.
 - Use 5-field cron only. No seconds field.
+- Random delay (`random_delay_enabled` / `random_delay_max_minutes`) is optional,
+  off by default, and cron-only — enable it only when the user asks. The effective
+  delay is clamped to 80% of the gap to the next tick, so a jittered run never
+  spills past it.
 - For pause/disable, `cron_expression` and `cron_timezone` can be omitted — the
   saved values stay so the user can re-enable later without retyping.
 - Do not edit the workflow definition from this skill — that's update-workflow.
