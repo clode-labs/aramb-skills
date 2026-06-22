@@ -61,6 +61,38 @@ npx mcporter call chil.slack_read_messages channel_id="C0B8P73U77Y" days="7"
 
 For exact field names, defaults, limits, and any platform-specific extras, read the tool's own MCP schema and description — they are the source of truth.
 
+## Receiving button clicks
+
+If you post a Block Kit button (or any interactive element) and want the click to come back to you, give the button an `action_id` that starts with **`aramb_btn:`**. Whatever you put after the colon is yours — an option name, a correlation id, a small payload — and you'll get it back verbatim.
+
+When the user clicks, the click arrives as a regular user message in the same thread. The message body is the button's `value` (falling back to the button label if `value` is empty), followed by a single machine-readable line:
+
+```
+<value-or-label>
+
+[aramb:button] action_id=aramb_btn:<your-suffix> message_ts=<ts> user=<U…>
+```
+
+That `message_ts` is the same `id` you got back from your earlier `slack_post_message` (or reply/DM) call, so you can pinpoint which of your messages was clicked — even if the user replied much later, after other conversation.
+
+Buttons without the `aramb_btn:` prefix are ignored. The convention is the only handshake — nothing is registered server-side per button.
+
+Example (one card, two buttons, distinct correlation):
+
+```json
+{
+  "type": "actions",
+  "elements": [
+    {"type": "button", "action_id": "aramb_btn:deploy_yes", "text": {"type": "plain_text", "text": "Yes, deploy"}, "value": "yes"},
+    {"type": "button", "action_id": "aramb_btn:deploy_no",  "text": {"type": "plain_text", "text": "Cancel"},     "value": "no"}
+  ]
+}
+```
+
+A click on the first button arrives as `"yes\n\n[aramb:button] action_id=aramb_btn:deploy_yes message_ts=…"` in the thread.
+
+> Note: today the click is attributed to the org's service account, not the human who clicked. Identity-preserving forwarding is a tracked follow-up.
+
 ## Errors
 
 Errors come back as `{isError: true, content: [{type: "text", text: "…"}]}`. The text is user-presentable: relay it verbatim and stop retrying. Capability / membership / rate-limit / stale-thread errors are not something you can fix by retrying or by trying a different provider's tool — there is no different provider.
