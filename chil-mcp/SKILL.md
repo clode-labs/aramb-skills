@@ -1,104 +1,66 @@
 ---
 name: chil-mcp
 description: >
-  Chat tools (Slack today) via chil's MCP server. Post, reply, DM,
-  read channels/threads, list a user's channels. Scope is the caller's
-  org — no team_id or application_id.
+  Chat tools via chil's MCP server. Post, reply, DM, ask, read channels
+  and threads, list a user's channels — on whatever chat platform the
+  caller's org has installed (Slack today; MS Teams / Discord later).
 ---
 
 # Chil Chat Toolkit
 
-Server name is `chil`. Tool names are flat. Every call is scoped server-side by the JWT's `organization_id` — pass only what the action needs.
+Use this when you need to talk to a chat platform on behalf of the caller's organization — sending a message, asking the user a question, reading recent history, looking up a channel or a user's channels.
 
-## Tools
+## Provider model
 
-| Tool | Args | Returns |
-|---|---|---|
-| `send_message` | `channel_id`, `text` | `{ok, id, channel_id}` |
-| `reply_in_thread` | `channel_id`, `thread_id`, `text` | `{ok, id, channel_id, thread_id}` |
-| `send_question` | `channel_id`, `question`, `options`, `thread_id?` | `{ok, id, channel_id, options, thread_id?}` |
-| `send_dm` | `account_id`, `text`, `thread_id?` | `{ok, id, channel_id, account_id, thread_id?}` |
-| `read_messages` | `channel_id`, `days?`, `limit?`, `cursor?` | `{messages, next_cursor, has_more}` |
-| `read_thread` | `channel_id`, `thread_id`, `limit?`, `cursor?` | `{messages, next_cursor, has_more}` |
-| `get_channel_info` | `channel_id` | `{id, name, is_private, topic, purpose}` |
-| `list_channels` | `account_id` | `{channels: [{id, name, is_private}]}` |
-| `list_joined_channels` | — | `{channels: [{id, name}]}` |
+Chil is a chat-platform-agnostic gateway. The org has exactly one chat platform installed (Slack, MS Teams, Discord, …), and chil exposes only that platform's tools to you. You do not choose the provider — it is decided by the caller's organization.
 
-- `channel_id`: target channel id (DM channels work too — use the `channel_id` returned by `send_dm`).
-- `account_id`: a user id.
-- `thread_id`: the `id` of the thread root (also the `id` returned by a prior `send_message`/`send_dm`).
-- `id` in responses is the message identifier — reuse it as the next `thread_id`.
-- `options` (send_question): array of strings, e.g. `'["Yes","No"]'`. Each option becomes a button on the posted card. Object form `{label, description?}` is also accepted by the schema — only the `label` drives button text.
+Tools are named `<provider>_<action>`, e.g. `slack_post_message`, `msteams_post_message`, `discord_post_message`. If you see `slack_*` tools in your tool list, the org is on Slack; you will not see `msteams_*` or `discord_*` and there is no point asking for them.
+
+The examples below all use Slack because that is what most orgs have today. The pattern (`<provider>_<verb>`, same argument shape modulo platform-native fields) is the same on any platform.
+
+## You own the formatting
+
+Chil sends what you give it, verbatim, to the platform. Plain text goes through as plain text. If you want a richer message (buttons, sections, images, dividers, code blocks rendered properly, mentions that resolve, an action card), pass the platform's native rich-content payload in the tool call — Slack Block Kit for `slack_*`, Adaptive Cards for `msteams_*`, embeds + components for `discord_*`. The tool schema documents which field carries it.
+
+Use rich content when the message is decision-shaped (a question with choices, an approval, a link with context) or status-shaped (a deploy summary, a check list). Use plain text for one-liners.
+
+## Identifiers
+
+Channel ids, user ids, and thread ids are always **the platform's own ids** (Slack `C…`/`U…`/`ts`, Teams channel + message ids, Discord snowflakes). Chil does not invent its own ids. The `id` returned by a send call is the message id — reuse it as `thread_id` when you want the next message to land in the same thread.
 
 ## Invocation
 
-All tools: `npx mcporter call chil.<tool> key="value" key="value"`. Server is `chil`, tool name is appended after a dot (same pattern as `aramb_chat.send_message`, `aramb_tasks.update`).
-
-## CRITICAL: mcporter syntax rules
-
-- All arguments MUST be `key="value"` format with quotes.
-- Do NOT use `--output` — it is not supported by `mcporter call`.
-- Do NOT use positional args — every parameter is named.
-
-## Examples
-
 ```bash
-# Post in a channel
-npx mcporter call chil.send_message channel_id="C0B8P73U77Y" text="Heads up — deploy starting in 5 min"
-
-# Reply inside an existing thread (thread_id = root message id from a prior send_message / read)
-npx mcporter call chil.reply_in_thread channel_id="C0B8P73U77Y" thread_id="1781360386.219519" text="Done."
-
-# Ask a question with option buttons (use this whenever you need a choice from the user)
-npx mcporter call chil.send_question channel_id="C0B8P73U77Y" question="Ready to deploy?" options='["Yes","No","Hold"]'
-
-# Same, but posted inside an existing thread
-npx mcporter call chil.send_question channel_id="C0B8P73U77Y" thread_id="1781360386.219519" question="Pick a region" options='["us-east-1","eu-west-2"]'
-
-# DM a user (opens or reuses the DM channel; returns channel_id + id)
-npx mcporter call chil.send_dm account_id="U0BABQ1V882" text="Quick sync?"
-
-# Reply in the same DM thread (reuse the id returned by send_dm as thread_id)
-npx mcporter call chil.send_dm account_id="U0BABQ1V882" text="follow-up" thread_id="1781360471.979729"
-
-# Read recent messages (last 7 days, default page size)
-npx mcporter call chil.read_messages channel_id="C0B8P73U77Y" days="7"
-
-# Paginate
-npx mcporter call chil.read_messages channel_id="C0B8P73U77Y" cursor="<next_cursor from prior call>"
-
-# Read a thread (root is repeated as messages[0] on every page)
-npx mcporter call chil.read_thread channel_id="C0B8P73U77Y" thread_id="1781360386.219519"
-
-# Channel metadata
-npx mcporter call chil.get_channel_info channel_id="C0B8P73U77Y"
-
-# What channels is a user in?
-npx mcporter call chil.list_channels account_id="U0BABQ1V882"
-
-# What public channels is the bot itself in?
-npx mcporter call chil.list_joined_channels
+npx mcporter call chil.<tool> key="value" key="value"
 ```
 
-## Read tool details
+- All args are named: `key="value"` with quotes.
+- No positional args, no `--output` flag.
+- Rich payloads (Block Kit, Adaptive Card, embeds) are passed as a JSON string in the documented field.
 
-- One MCP call = one platform call. Paginate with `cursor` until `has_more` is false.
-- `days` (read_messages only): window in days, set once on page 1; the window carries through cursor pages.
-- `limit`: read_messages default 20, read_thread default 50, hard cap 200 both.
-- `read_thread` repeats the root as `messages[0]` on every page — dedupe by `id`.
+## Examples (Slack — substitute your org's provider prefix)
 
-## DM threading
+```bash
+# Plain message
+npx mcporter call chil.slack_post_message channel_id="C0B8P73U77Y" text="Deploy starting in 5 min"
 
-`send_dm` opens (or reuses) a DM channel and returns `channel_id` + `id`. To reply in the same DM thread, pass that `id` back as `thread_id` on the next `send_dm`, or use `reply_in_thread` with the returned `channel_id`.
+# Reply in a thread (thread_id = id from a prior send / read)
+npx mcporter call chil.slack_reply_in_thread channel_id="C0B8P73U77Y" thread_id="1781360386.219519" text="Done."
+
+# Rich message with a button — full Block Kit in `blocks`
+npx mcporter call chil.slack_post_message channel_id="C0B8P73U77Y" \
+  text="Ready to deploy?" \
+  blocks='[{"type":"section","text":{"type":"mrkdwn","text":"*Ready to deploy?*"}},{"type":"actions","elements":[{"type":"button","text":{"type":"plain_text","text":"Yes"},"value":"yes"},{"type":"button","text":{"type":"plain_text","text":"No"},"value":"no"}]}]'
+
+# DM a user
+npx mcporter call chil.slack_send_dm account_id="U0BABQ1V882" text="Quick sync?"
+
+# Read recent history, paginate via cursor
+npx mcporter call chil.slack_read_messages channel_id="C0B8P73U77Y" days="7"
+```
+
+For exact field names, defaults, limits, and any platform-specific extras, read the tool's own MCP schema and description — they are the source of truth.
 
 ## Errors
 
-Errors come back as `{isError: true, content: [{type: "text", text: "..."}]}`. The text is user-presentable — relay it verbatim and stop retrying. Common messages:
-
-- *"No chat workspace is connected for your organization."* → no install for this org; nothing the agent can fix.
-- *"That user isn't part of your organization's workspace."* → wrong `account_id`.
-- *"The bot is not a member of this channel."* → invite the bot, then retry.
-- *"… rate-limiting this workspace."* → back off briefly.
-- *"Thread not found in this channel."* → parent deleted; the `thread_id` is stale.
-
-Read tools may also deny with a capability-scope message (cross-org / private channel / no capability) — same handling.
+Errors come back as `{isError: true, content: [{type: "text", text: "…"}]}`. The text is user-presentable: relay it verbatim and stop retrying. Capability / membership / rate-limit / stale-thread errors are not something you can fix by retrying or by trying a different provider's tool — there is no different provider.
