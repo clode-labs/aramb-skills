@@ -181,11 +181,18 @@ workflow fires, DO NOT call `aramb_workflows.update` — route it:
 
 - **Cron / wall-clock timing** ("change the schedule to weekly", "stop the cron",
   "move it to UTC", "run it every Monday at 9am instead of Tuesday", "pause the
-  schedule") → `schedule-workflow`. Cron fields live in flat columns on the
-  workflow row.
+  schedule", "stagger the fire time / don't run at exactly 9:00") → `schedule-workflow`.
+  Cron fields — including the optional `random_delay_enabled` /
+  `random_delay_max_minutes` jitter — live in flat columns on the workflow row.
 - **Event trigger** ("fire it on a new GitHub issue too", "stop firing on pushes",
   "trigger when I get a Slack DM instead") → `configure-trigger`. Event triggers
   live in `workflow_triggers` rows.
+- **Run-status callback** ("POST run status to my endpoint", "add/change the
+  callback URL", "stop sending run webhooks") → set `callback_url` directly via
+  `aramb_workflows.set_callback` (workflow-level config; see the `aramb-workflows`
+  skill). This is NOT a definition change — do NOT call `aramb_workflows.update`
+  for it. Path C: call `set_callback` yourself; Path A: close with a hint so master
+  handles it.
 
 Touching either through `aramb_workflows.update` regenerates the definition for
 nothing and ignores the actual ask. Reject and route (the examples below use the

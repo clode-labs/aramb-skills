@@ -26,6 +26,42 @@ The response tells you the id brahmi assigned.
 > polishing a template-import draft, use `import-workflow`.** This skill only
 > handles first-time creation.
 
+## Non-negotiables — read these before you call `aramb_workflows.create`
+
+1. **Every `create` is a NEW, separate workflow. NEVER replace an existing one.**
+   A project can hold many workflows side by side — `aramb_workflows.create` always
+   adds a new one; it never touches what's already there. If the user says "create
+   a workflow" and one already exists, you still **create a new one** — do NOT fall
+   back to `aramb_workflows.update`, and do NOT overwrite the existing workflow's
+   definition. The ONLY time you modify an existing workflow is when the user
+   explicitly asks to *change/edit* that specific one — and then you use the
+   `update-workflow` skill, never this one. Silently replacing a user's workflow is
+   a serious failure.
+
+2. **Created workflows publish automatically — UNLESS they need a toolkit the user
+   hasn't connected.** `aramb_workflows.create` saves the workflow project-scoped and,
+   when it depends on **no** third-party toolkit, publishes v1 in the same call
+   (response: `"published": true`) — runnable immediately, no UI step, and you must
+   NOT tell the user to "publish from the Workflows tab" (that step is gone).
+   **But** when the workflow's nodes require toolkits (Gmail, Google Sheets,
+   Composio-backed Slack, …), the response comes back `"published": false` with a
+   `requires_toolkits` list — the workflow is **NOT live yet**. Then you MUST:
+     1. For EACH slug in `requires_toolkits`, call `aramb_toolkits.check_connection`.
+     2. If any is not connected, tell the user plainly which toolkit(s) to connect,
+        and **wait** — do NOT publish, and do NOT say it's ready / scheduled / running.
+     3. Once the user has connected them and all check out, call
+        `aramb_workflows.publish` with the `workflow_id`. Only after publish succeeds
+        is the workflow live and runnable.
+   Read the `message` in the create response — it spells out exactly which toolkits to
+   verify. Never invent a "publish from the UI" step; publishing is `aramb_workflows.publish`.
+
+3. **Never claim a workflow ran unless the run tool said so.** When the user asks to
+   run a workflow, call `aramb_workflows.run` and read its result. If it returns an
+   error (e.g. "not published", wrong id), report THAT — do not say "it's running",
+   and never substitute a different workflow to make the action appear to succeed.
+   Run exactly the workflow the user named; if you can't, say why. See the
+   `aramb-workflows` skill's run section.
+
 ## Two things to figure out first — read this before anything else
 
 There are **two independent axes**. Do NOT conflate them — confusing them is what
@@ -443,6 +479,25 @@ approval.
    - `cron` → `aramb_workflows.set_schedule` with the cadence.
    - `manual` / declined → nothing to wire.
 
+## 4.6 Run-status callback — optional, only if asked
+
+If the user wants an external system notified when this workflow runs ("POST to my
+endpoint when it starts/finishes", "send run status to this URL"), set a
+workflow-level callback after `aramb_workflows.create` succeeds:
+
+```bash
+npx mcporter call aramb_workflows.set_callback \
+  workflow_id="<workflow_id>" \
+  callback_url="https://example.com/hooks/run-status"
+```
+
+The response returns a **signing secret once** — surface it to the user verbatim
+and tell them it won't be shown again (they verify `Webhook-Signature` with it).
+brahmi then POSTs a signed status payload on every real run, on start (`running`)
+and on terminal (`completed`/`failed`/`cancelled`). It's workflow-level config —
+see the `aramb-workflows` skill for the full payload contract. Don't set one
+unless the user asked.
+
 ## Browser-login pre-check — required before save
 
 If a node uses `aramb-browser` to act on a logged-in site, that login must already
@@ -642,6 +697,10 @@ Reminders for the 4.5 step-4 wiring (only if the user approved a trigger):
     workflow_id="<workflow_id>" cron_expression="0 8 * * *" \
     cron_timezone="Asia/Kolkata" enabled=true
   ```
+  If the user also wants the fire time staggered (not landing on a robotic exact
+  minute), add the optional cron-only args `random_delay_enabled=true` and
+  `random_delay_max_minutes=<N>` — the delay is clamped to 80% of the gap to the
+  next tick. See the `schedule-workflow` skill.
 - `toolkit_event` → you invoked `configure-trigger` with the resolved
   `workflow_id` + chosen `slug`. Don't claim it's firing until it reports
   `active` (async upstream).

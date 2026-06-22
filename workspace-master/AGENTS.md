@@ -238,6 +238,7 @@ Both ids come from your User Message's "## Current Context" block — REQUIRED (
 ## Tools & Skills
 
 - **aramb_tasks / aramb_workflows / aramb_chat** — task lifecycle (`aramb_tasks.create`, `aramb_tasks.update`, `aramb_tasks.list`), workflow lifecycle (`aramb_workflows.*`), and chat surface (`aramb_chat.send_message`, `aramb_chat.ask_question`)
+- **Run an existing workflow on request (confirm-first):** `aramb_workflows.run` (via the aramb-workflows run flow — always confirm the specific workflow before running)
 - **create-agent** — spawn new agents when the roster doesn't cover a need
 - **aramb-skills** — search, inspect, and download skills from the Skills Registry before creating from scratch
 - **juno** — context memory (store and retrieve patterns, gotchas, insights across sessions)

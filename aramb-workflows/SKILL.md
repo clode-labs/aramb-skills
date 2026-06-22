@@ -8,7 +8,7 @@ description: >
 
 # Aramb Workflows Toolkit
 
-The `aramb_workflows.*` tools cover workflow definition CRUD, schedule management, run-step updates, and "consolidate from tasks" / "update from tasks" dispatch.
+The `aramb_workflows.*` tools cover workflow definition CRUD, schedule management, manual run (`aramb_workflows.run` — confirm-first), run-step updates, and "consolidate from tasks" / "update from tasks" dispatch.
 
 **Workflows are project-scoped (appless is the norm).** A workflow's identity is
 its `lineage_id` (returned as `workflow_id`); `application_id` is **optional and
@@ -35,11 +35,15 @@ Returns BOTH appless and app-bound workflows for the project, wrapped as
 (empty array) means genuinely no workflows. Each row:
 
 ```json
-{ "workflow_id": "<lineage_id>", "name": "...", "application_id": "<uuid|null>", "status": "...", "schedule": null, "updated_at": "..." }
+{ "workflow_id": "<lineage_id>", "name": "...", "application_id": "<uuid|null>", "status": "...", "schedule": null, "callback_url": null, "updated_at": "..." }
 ```
 
 `schedule` is `null` unless a cron is configured, in which case it is an object
-`{ "cron_expression": "...", "cron_timezone": "...", "enabled": true, "next_run_at": "..." }`.
+`{ "cron_expression": "...", "cron_timezone": "...", "enabled": true, "next_run_at": "...", "random_delay_enabled": false, "random_delay_max_minutes": null }`.
+
+`callback_url` is `null` unless a run-status webhook is set (see "Run status
+callbacks" below). The signing secret is **never** returned here — only once, when
+the callback is first set.
 
 `aramb_workflows.get project_id="<PROJECT_ID>"` (no `workflow_id`) returns the
 same `{ "workflows": [ … ], "count": N }` shape — so your habitual `get` reach
@@ -90,7 +94,7 @@ npx mcporter call aramb_workflows.get project_id="<PROJECT_ID>"
 npx mcporter call aramb_workflows.get application_id="<APPLICATION_ID>"
 ```
 
-A single-workflow fetch returns nodes, edges, env_variables, schedule, stateful flag, and `auto_triggerable` / `missing_required_env` status.
+A single-workflow fetch returns nodes, edges, env_variables, schedule, stateful flag, `auto_triggerable` / `missing_required_env` status, and `callback_url` (the run-status webhook, `null` if unset — the signing secret is never returned here).
 
 ### Update an existing workflow (atomic full replace)
 
@@ -140,6 +144,7 @@ npx mcporter call aramb_workflows.set_schedule \
 - Master converts natural-language schedule phrases ("every Monday at 9am Pacific") into `cron_expression` + `cron_timezone` before calling.
 - Pass `enabled=false` to disable without removing fields.
 - Optional `env_overrides`: cron-specific env values that override workflow defaults at fire time.
+- Optional `random_delay_enabled` (bool, default `false`) + `random_delay_max_minutes` (int, optional): jitter each fire to a random point after the scheduled tick so runs don't land on robotic exact times. Effective delay = `min(random_delay_max_minutes, 80% of the gap to the next tick)`, chosen fresh each fire — so a jittered run always lands before the next tick. Omit `random_delay_max_minutes` ⇒ cap is purely 80% of the gap. **Cron-only** — does not apply to event/toolkit triggers. The `schedule-workflow` skill owns the natural-language mapping for this.
 - Always tell the user which timezone you picked.
 
 ### Read schedule
@@ -147,7 +152,142 @@ npx mcporter call aramb_workflows.set_schedule \
 npx mcporter call aramb_workflows.get_schedule workflow_id="<WORKFLOW_ID>"
 ```
 
-Returns `cron_expression`, `cron_timezone`, `enabled`, `env_overrides`, `next_run_at`, paused state, and env-readiness flags.
+Returns `cron_expression`, `cron_timezone`, `enabled`, `env_overrides`, `next_run_at`, `random_delay_enabled`, `random_delay_max_minutes`, paused state, and env-readiness flags.
+
+## Run status callbacks (workflow-level webhook)
+
+Set an optional `callback_url` on a workflow so brahmi POSTs a signed status
+payload on every **real** run — manual, cron, and event. Preview/test runs are
+excluded. Each run fires twice: on **start** (`running`) and on **terminal**
+(`completed` / `failed` / `cancelled`).
+
+### Set / update the callback
+
+```bash
+npx mcporter call aramb_workflows.set_callback \
+  workflow_id="<WORKFLOW_ID>" \
+  callback_url="https://example.com/hooks/run-status"
+```
+
+- The response returns a **signing secret ONCE**. Surface it to the user verbatim
+  and tell them it won't be shown again — they need it to verify the
+  `Webhook-Signature` header. brahmi never returns the secret again (not in `get` /
+  `list`), so if the user loses it they must re-set the callback to regenerate one.
+- Workflow-level config (not per-node, not per-trigger). `callback_url` shows up in
+  `get` / `list` output; the secret never does.
+
+### Signed payload contract (matches brahmi exactly)
+
+Each delivery is an HTTP POST to `callback_url`:
+
+```
+POST <callback_url>
+Content-Type: application/json
+Webhook-Id:        <delivery uuid>      # receiver dedup key
+Webhook-Timestamp: <unix seconds>
+Webhook-Signature: v1,<base64(HMAC-SHA256(secret, "{Webhook-Id}.{Webhook-Timestamp}.{raw-body}"))>
+
+{
+  "event": "running",            // running | completed | failed | cancelled
+  "run_id": "<uuid>",
+  "workflow_id": "<uuid>",
+  "workflow_name": "<string>",
+  "application_id": "<uuid>",
+  "project_id": "<uuid>",
+  "status": "running",           // mirrors event for terminal; "running" on start
+  "trigger_type": "cron",        // cron | manual | external_event | ...
+  "started_at": "2026-06-21T09:14:32Z",
+  "finished_at": null,           // null on running; set on terminal
+  "error_message": null,         // non-null only on failed
+  "duration_ms": null            // null on running; set on terminal
+}
+```
+
+The receiver verifies the HMAC over the **raw body** with its per-workflow secret.
+Delivery is persisted and retried with exponential backoff, so the same
+`Webhook-Id` may arrive more than once — receivers must be **idempotent on
+`Webhook-Id`**.
+
+## Publishing a workflow — `aramb_workflows.publish` (toolkit gate)
+
+A workflow only runs (by schedule or manual run) once it is **published**.
+`aramb_workflows.create` publishes automatically **only when the workflow needs no
+third-party toolkit**. When the workflow depends on toolkits, `create` returns
+`"published": false` with a `requires_toolkits` list, and you must switch it on
+yourself once those toolkits are connected:
+
+1. **Check connections.** For EACH slug in `requires_toolkits`, call
+   `aramb_toolkits.check_connection toolkit="<SLUG>"`.
+2. **If any is missing**, tell the user exactly which toolkit(s) to connect and
+   **stop**. Do NOT publish, and do NOT claim the workflow is live, scheduled, or
+   runnable. (brahmi cannot run a workflow whose toolkits aren't connected, and it
+   cannot verify the connection for you — that's why this gate is yours.)
+3. **Once all are connected**, publish:
+   ```bash
+   npx mcporter call aramb_workflows.publish workflow_id="<WORKFLOW_ID>"
+   ```
+   A `{ "published": true, "version": N }` result means it is now live — only then
+   tell the user it's ready, and offer to run it now or leave it on its schedule.
+
+Never instruct the user to "publish from the Workflows tab" — publishing is this
+tool. Never publish a toolkit-dependent workflow whose toolkits you have not
+confirmed connected.
+
+## Running an existing workflow (manual run)
+
+When the user asks to run a workflow that already exists — "run X", "run the X
+workflow", "execute X", "kick off X", "trigger X now", "start X" — kick off a
+single manual run with `aramb_workflows.run`. **Policy: ALWAYS confirm the specific
+workflow before running, even on an exact name match.** The flow is
+list → fuzzy-match → confirm → run.
+
+### 1. List + match
+```bash
+npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"
+```
+Fuzzy-match the user's phrase against the returned `name`s (partial / typo /
+synonym is fine — you do the matching).
+
+### 2. Confirm — ALWAYS, before running
+State the matched workflow's **exact `name`** (note its `status`, and
+`application_id` if app-bound) and ask the user to confirm:
+
+> About to run **Daily Digest** (id `<workflow_id>`). Confirm?
+
+- **Multiple plausible matches** → list them and ask which one.
+- **No match** → say so and offer to list what exists. Never invent a `workflow_id`.
+- **Status not runnable** (e.g. `draft` / `review` / paused) → surface that in the
+  confirmation so the user knows it may not fire as-is.
+
+### 3. Run — only after explicit confirmation
+```bash
+npx mcporter call aramb_workflows.run \
+  workflow_id="<WORKFLOW_ID>" \
+  custom_instruction="<optional per-run context the user gave>"
+```
+`custom_instruction` is optional free-form text passed into the workflow's first
+step (`<run_input>`) — include it only if the user supplied extra instructions for
+this run; omit it otherwise.
+
+### 4. Report — only what the tool actually returned
+Read `aramb_workflows.run`'s result before you say anything:
+- **Success (a `run_id` came back):** echo the `run_id`, say the run started, and
+  mention how to check status.
+- **Error (no `run_id`):** report the error to the user **verbatim and plainly**
+  (e.g. "not published yet", "wrong id"). Do **NOT** say "it's running", "kicked
+  off", or "working now" when the call failed — that is a lie the user will catch
+  the moment they look at the empty Runs tab.
+
+**Guardrails:**
+- Never call `aramb_workflows.run` without an explicit user confirmation of the
+  specific workflow.
+- Never guess a `workflow_id` — always resolve via `aramb_workflows.list` first.
+- **Run exactly the workflow the user named.** If it can't run (unpublished, wrong
+  status, error), say so — NEVER substitute a different, runnable workflow to make
+  the action appear to succeed. Running the wrong workflow and reporting success is
+  a serious failure.
+- One run per confirmation — don't batch-run multiple workflows off one "run X"
+  unless the user asked for that.
 
 ## Update a workflow run step (workflow dispatch only)
 
