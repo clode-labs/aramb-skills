@@ -26,6 +26,42 @@ The response tells you the id brahmi assigned.
 > polishing a template-import draft, use `import-workflow`.** This skill only
 > handles first-time creation.
 
+## Non-negotiables — read these before you call `aramb_workflows.create`
+
+1. **Every `create` is a NEW, separate workflow. NEVER replace an existing one.**
+   A project can hold many workflows side by side — `aramb_workflows.create` always
+   adds a new one; it never touches what's already there. If the user says "create
+   a workflow" and one already exists, you still **create a new one** — do NOT fall
+   back to `aramb_workflows.update`, and do NOT overwrite the existing workflow's
+   definition. The ONLY time you modify an existing workflow is when the user
+   explicitly asks to *change/edit* that specific one — and then you use the
+   `update-workflow` skill, never this one. Silently replacing a user's workflow is
+   a serious failure.
+
+2. **Created workflows publish automatically — UNLESS they need a toolkit the user
+   hasn't connected.** `aramb_workflows.create` saves the workflow project-scoped and,
+   when it depends on **no** third-party toolkit, publishes v1 in the same call
+   (response: `"published": true`) — runnable immediately, no UI step, and you must
+   NOT tell the user to "publish from the Workflows tab" (that step is gone).
+   **But** when the workflow's nodes require toolkits (Gmail, Google Sheets,
+   Composio-backed Slack, …), the response comes back `"published": false` with a
+   `requires_toolkits` list — the workflow is **NOT live yet**. Then you MUST:
+     1. For EACH slug in `requires_toolkits`, call `aramb_toolkits.check_connection`.
+     2. If any is not connected, tell the user plainly which toolkit(s) to connect,
+        and **wait** — do NOT publish, and do NOT say it's ready / scheduled / running.
+     3. Once the user has connected them and all check out, call
+        `aramb_workflows.publish` with the `workflow_id`. Only after publish succeeds
+        is the workflow live and runnable.
+   Read the `message` in the create response — it spells out exactly which toolkits to
+   verify. Never invent a "publish from the UI" step; publishing is `aramb_workflows.publish`.
+
+3. **Never claim a workflow ran unless the run tool said so.** When the user asks to
+   run a workflow, call `aramb_workflows.run` and read its result. If it returns an
+   error (e.g. "not published", wrong id), report THAT — do not say "it's running",
+   and never substitute a different workflow to make the action appear to succeed.
+   Run exactly the workflow the user named; if you can't, say why. See the
+   `aramb-workflows` skill's run section.
+
 ## Two things to figure out first — read this before anything else
 
 There are **two independent axes**. Do NOT conflate them — confusing them is what

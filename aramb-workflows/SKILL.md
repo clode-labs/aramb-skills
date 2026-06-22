@@ -208,6 +208,31 @@ Delivery is persisted and retried with exponential backoff, so the same
 `Webhook-Id` may arrive more than once — receivers must be **idempotent on
 `Webhook-Id`**.
 
+## Publishing a workflow — `aramb_workflows.publish` (toolkit gate)
+
+A workflow only runs (by schedule or manual run) once it is **published**.
+`aramb_workflows.create` publishes automatically **only when the workflow needs no
+third-party toolkit**. When the workflow depends on toolkits, `create` returns
+`"published": false` with a `requires_toolkits` list, and you must switch it on
+yourself once those toolkits are connected:
+
+1. **Check connections.** For EACH slug in `requires_toolkits`, call
+   `aramb_toolkits.check_connection toolkit="<SLUG>"`.
+2. **If any is missing**, tell the user exactly which toolkit(s) to connect and
+   **stop**. Do NOT publish, and do NOT claim the workflow is live, scheduled, or
+   runnable. (brahmi cannot run a workflow whose toolkits aren't connected, and it
+   cannot verify the connection for you — that's why this gate is yours.)
+3. **Once all are connected**, publish:
+   ```bash
+   npx mcporter call aramb_workflows.publish workflow_id="<WORKFLOW_ID>"
+   ```
+   A `{ "published": true, "version": N }` result means it is now live — only then
+   tell the user it's ready, and offer to run it now or leave it on its schedule.
+
+Never instruct the user to "publish from the Workflows tab" — publishing is this
+tool. Never publish a toolkit-dependent workflow whose toolkits you have not
+confirmed connected.
+
 ## Running an existing workflow (manual run)
 
 When the user asks to run a workflow that already exists — "run X", "run the X
@@ -244,14 +269,23 @@ npx mcporter call aramb_workflows.run \
 step (`<run_input>`) — include it only if the user supplied extra instructions for
 this run; omit it otherwise.
 
-### 4. Report
-Echo the returned `run_id` and that the run started; mention how to check status if
-relevant.
+### 4. Report — only what the tool actually returned
+Read `aramb_workflows.run`'s result before you say anything:
+- **Success (a `run_id` came back):** echo the `run_id`, say the run started, and
+  mention how to check status.
+- **Error (no `run_id`):** report the error to the user **verbatim and plainly**
+  (e.g. "not published yet", "wrong id"). Do **NOT** say "it's running", "kicked
+  off", or "working now" when the call failed — that is a lie the user will catch
+  the moment they look at the empty Runs tab.
 
 **Guardrails:**
 - Never call `aramb_workflows.run` without an explicit user confirmation of the
   specific workflow.
 - Never guess a `workflow_id` — always resolve via `aramb_workflows.list` first.
+- **Run exactly the workflow the user named.** If it can't run (unpublished, wrong
+  status, error), say so — NEVER substitute a different, runnable workflow to make
+  the action appear to succeed. Running the wrong workflow and reporting success is
+  a serious failure.
 - One run per confirmation — don't batch-run multiple workflows off one "run X"
   unless the user asked for that.
 
