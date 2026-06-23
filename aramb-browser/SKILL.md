@@ -14,11 +14,35 @@ argument-hint: "[task or URL]"
 
 All tools: `npx mcporter call aramb-browser.<tool> [param=value ...]`
 
-## Use this for every web touch — no exceptions
+## Fetch hierarchy — reach for the browser LAST
 
-URL visits, search-engine queries, scraping, form interaction, JSON endpoints behind public sites (Reddit/X/LinkedIn `.json` returns HTML), JS evaluation, network inspection, live pricing/status — all of it.
+Before you open a browser, ask: **does this content actually need a rendered DOM, JS execution, a login, or visual inspection?** If not, fetch it the cheap, reliable way. The browser is 30–120s per call and **hiccups** under load (mid-run batch failures, partial fetches); `curl` / `git clone` do not. Routing public files through a headless browser is the single biggest cause of slow, flaky big-node runs — don't.
 
-**Forbidden:** built-in `WebSearch` / `WebFetch` / `Fetch`, `curl`, `wget`, `httpie`, Node `fetch`, Python `requests`, or any script that makes HTTP calls. There is no "this site is simple, let me just curl it" exception.
+**Default to non-browser fetch for public / static content.** Use `curl`, `git clone --depth 1`, or `WebFetch` from Bash for:
+
+- **Public GitHub repos & raw files** — `git clone --depth 1 https://github.com/<owner>/<repo>` or `curl -sL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>`. ~50× faster than driving the browser, and it never "hiccups."
+- **Public Notion / Google Docs / Drive pages**, plain HTML pages, and **JSON / API responses** that aren't gated behind a JS app or login.
+
+**Public repos need NO auth, NO GitHub toolkit, NO OAuth.** Never reason "the GitHub toolkit isn't connected, so I'll use the browser to hit the API" — a public repo is a plain `git clone` / `curl`. If you discover an unmetered raw URL (e.g. `raw.githubusercontent.com`), `curl` it directly; do **not** route it through the browser.
+
+**Toolkit-unconnected fallback is curl, never the browser.** If a toolkit (GitHub, Sheets, …) isn't connected, fall back to the **unauthenticated** public path (`curl` / `clone` / public API). Never fall back to the browser to scrape what `curl` can fetch.
+
+**Use the browser ONLY for** content that genuinely requires a real, rendered browser:
+
+- JS-rendered / client-side-rendered pages where the meaningful content isn't in the initial HTML.
+- Authenticated / gated content — login walls, dashboards behind auth.
+- Visual inspection — Figma, Rive, interactive web apps, canvas, anything you need to *see* rendered.
+- Sites that return SPA HTML or 403 to a datacenter UA (most half-restricted sites — the sections below cover these).
+
+**Never drive the browser to fetch a file you could `curl`.**
+
+## Use this for every (rendered / restricted) web touch — no exceptions
+
+For the content that *does* need a browser (per the Fetch hierarchy above), this skill is the only path — no escape hatch.
+
+URL visits to JS-rendered or restricted pages, search-engine queries, scraping, form interaction, JSON endpoints behind public sites (Reddit/X/LinkedIn `.json` returns HTML), JS evaluation, network inspection, live pricing/status — all of it.
+
+**Forbidden for this class of content:** built-in `WebSearch` / `WebFetch` / `Fetch`, `curl`, `wget`, `httpie`, Node `fetch`, Python `requests`, or any script that makes HTTP calls — against restricted / JS-rendered / gated sites they hit the datacenter-UA wall and return SPA HTML or 403. There is no "this restricted site is simple, let me just curl it" exception. (The opposite case — public/static files like GitHub raw — is exactly what the **Fetch hierarchy** sends to `curl`; don't browser those.)
 
 ## Deliver the session — mandatory after create, mandatory when asking the user
 
@@ -172,7 +196,7 @@ Error behavior:
 
 ## Rules (no exceptions)
 
-- All web access goes through this skill. No `WebSearch` / `WebFetch` / `curl` / `wget` / script HTTP.
+- **Rendered / restricted / authenticated / visual** web access goes through this skill — no `WebSearch` / `WebFetch` / `curl` / `wget` / script HTTP for those. **Public / static** content (GitHub repos & raw files, plain pages, JSON/APIs) goes the other way: `curl` / `git clone --depth 1` / `WebFetch`, never the browser (see the **Fetch hierarchy** at the top).
 - `browser_list` BEFORE `browser_create`. Reuse the matching slug.
 - `name=<app-slug>` on every `browser_create`. Never invent names.
 - `browser=` AND `target=` on every page-level call.
