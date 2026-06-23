@@ -78,6 +78,15 @@ npx mcporter call aramb_workflows.create \
 - **Never invent or bind hidden toolkits.** Set a node's `toolkit` / `required_toolkits` only to toolkits the workspace actually exposes. Platform-internal/hidden toolkits (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) are REJECTED by `aramb_workflows.create`/`update` — never bind them. For Slack/Discord/Teams messaging deliverables, deliver via chil `chat.send_dm` (no toolkit).
 - `template_slug` (optional) is forwarded verbatim from a dispatched `<template-import slug="...">` block when this call originates from template import.
 
+### Bake the fetch tool into each evaluator node prompt
+
+When a node's `prompt` will have the runtime agent fetch external content (scoring GitHub submissions, reviewing live sites, evaluating applicants), **name the fetch tool in the prompt itself** so the evaluator doesn't rediscover tooling mid-run. Agents that "figure out" how to fetch at runtime default to the headless browser even for public files — that is the #1 cause of slow, flaky big nodes (browser calls are 30–120s and hiccup under load). Author the tool choice per role:
+
+- **Code-evaluation roles** (Backend / Frontend / any GitHub-repo submissions) → bake in: *"Clone or curl the repo (`git clone --depth 1 https://github.com/<owner>/<repo>` or `curl -sL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>`). Public repos need NO auth and NO toolkit — do NOT use the browser for GitHub."*
+- **Visual roles** (Product / UI/UX, design, Figma / Rive) → bake in: *"Use the browser (aramb-browser) to open and visually inspect the rendered artifact."*
+
+**General principle (mirror in every fetch-bearing node prompt):** reach for the browser only for JS-rendered, authenticated, or visually-inspected content; fetch public/static content (repos, raw files, plain pages, JSON/APIs) with `curl` / `git clone --depth 1` / `WebFetch`.
+
 ### Fetch a workflow's definition
 
 ```bash
@@ -226,12 +235,20 @@ yourself once those toolkits are connected:
    ```bash
    npx mcporter call aramb_workflows.publish workflow_id="<WORKFLOW_ID>"
    ```
-   A `{ "published": true, "version": N }` result means it is now live — only then
-   tell the user it's ready, and offer to run it now or leave it on its schedule.
+   `aramb_workflows.publish` takes one param, **`workflow_id`** (required), and on
+   success returns `{ "workflow_id", "status": "active", "version", "published_at" }`.
+   A `status: "active"` result means it is now live — only then tell the user it's
+   ready, and offer to run it now or leave it on its schedule. (Idempotent if the
+   workflow is already active.)
+
+If the publish eval gate fails (e.g. a required toolkit isn't connected), the tool
+returns a **structured error naming the missing toolkit(s)** — relay those names to
+the user verbatim so they know exactly what to connect. Don't treat it as a generic
+failure, and don't claim the workflow is live.
 
 Never instruct the user to "publish from the Workflows tab" — publishing is this
-tool. Never publish a toolkit-dependent workflow whose toolkits you have not
-confirmed connected.
+tool, and you (the agent) can call it directly. Never publish a toolkit-dependent
+workflow whose toolkits you have not confirmed connected.
 
 ## Running an existing workflow (manual run)
 
@@ -265,9 +282,19 @@ npx mcporter call aramb_workflows.run \
   workflow_id="<WORKFLOW_ID>" \
   custom_instruction="<optional per-run context the user gave>"
 ```
+`aramb_workflows.run` takes **`workflow_id`** (required) and **`custom_instruction`**
+(optional). On success it returns `{ "run_id", "status" }`.
+
 `custom_instruction` is optional free-form text passed into the workflow's first
 step (`<run_input>`) — include it only if the user supplied extra instructions for
 this run; omit it otherwise.
+
+**Auto-publish on run:** if the workflow is still a draft, `run` **publishes it
+first** (same "publishes on first run" semantics), then triggers — so a confirmed
+run on an unpublished-but-ready workflow still works without a separate
+`publish` call. That first publish runs the same toolkit gate, so if a required
+toolkit isn't connected the call comes back with the structured
+missing-toolkit error instead of a `run_id` (see step 4).
 
 ### 4. Report — only what the tool actually returned
 Read `aramb_workflows.run`'s result before you say anything:

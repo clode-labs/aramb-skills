@@ -686,7 +686,7 @@ confirmation:
 ```
 Workflow created — "<name>" (<workflow_id>) — <n> steps, fires when a GitHub issue is created. View it in the Workflows tab.
 # or:  …— <n> steps, scheduled for 8am IST every weekday.
-# or:  …— <n> steps, manual run only (run it from the Workflows tab).
+# or:  …— <n> steps, manual run only (just ask me to run it, or run it from the Workflows tab).
 ```
 
 Reminders for the 4.5 step-4 wiring (only if the user approved a trigger):
