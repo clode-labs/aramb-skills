@@ -367,7 +367,7 @@ ops (after the closing-instruction template):
 ```
 ### Tool routing for git operations on this step
 1. PRIMARY — call `aramb_chat.list_linked_repos` first to confirm the repo
-   is linked to this application. If linked, call `aramb_chat.clone_repo`
+   is linked to this project. If linked, call `aramb_chat.clone_repo`
    (Gitana issues a short-lived clone token). This is the only path that
    yields a real working tree.
 2. FALLBACK — only if step 1 returns "not linked" or errors out: use the
