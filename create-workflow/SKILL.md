@@ -62,8 +62,9 @@ The response tells you the id brahmi assigned.
    Run exactly the workflow the user named; if you can't, say why. **And once a run
    starts, hand off to it — brahmi posts real progress and the final result to the
    conversation automatically, so never narrate fabricated progress ("4/382 scored,
-   working through the rest…") you can't verify.** When asked for status, read it
-   with `aramb_workflows.get` / `list` and report only that. See the
+   working through the rest…") you can't verify.** The conversation thread is the
+   source of truth for run progress; `aramb_workflows.get` / `list` report only the
+   workflow's definition/lifecycle state, not per-step run progress. See the
    `aramb-workflows` skill's run section.
 
 ## Two things to figure out first — read this before anything else
@@ -288,8 +289,9 @@ Pick sensible defaults where you can and state what you picked.
   workflow will touch (Sheets, GitHub, Gmail, Slack, …), check the connection
   yourself with `aramb_toolkits.check_connection toolkit="<SLUG>"`. If any is not
   connected, tell the user plainly which one(s) to connect **now** — before the
-  build — rather than discovering it mid-run. (This is the same gate `create`
-  enforces at publish; checking up front saves a failed run.)
+  build — rather than discovering it mid-run. (The authoritative check is the
+  publish/run eval gate, which can still reject on scopes/expiry; this up-front
+  check just catches the common "not connected at all" case early.)
 - **Scale / cost heads-up.** If the input set is large (hundreds of items, a big
   repo list, a long candidate sheet), state the rough scale and expected time/cost
   up front, and **offer a small pilot first** (e.g. "run the first 10 to validate
