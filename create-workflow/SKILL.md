@@ -260,6 +260,46 @@ npx mcporter call aramb_chat.ask_question \
   question="Which Gmail account should the workflow read from — the one connected to this app, or a different one?"
 ```
 
+## 1.5 Pre-build checklist — confirm-then-build (one concise round)
+
+Before you construct nodes, confirm the few things that **materially change the
+build**. The failure this prevents: building the whole workflow on silent
+assumptions, then leaking the gaps as broken runs and contradictory status (e.g.
+guessing a Proceed threshold the user never set, never noticing Sheets/GitHub
+weren't connected, never warning that a 300-item job is long and costly).
+
+Do it as **confirm-then-build, not interrogation**: **one** concise round of **2–4
+questions** total, covering only the items below that actually apply and aren't
+already specified. If everything is clear, skip straight to building — don't
+manufacture questions. Verify the things you CAN verify yourself (toolkit
+connections) rather than asking. Ask via `aramb_chat.ask_question` (chat dispatch)
+or fold into your progress narration / a single batched question (task dispatch).
+Pick sensible defaults where you can and state what you picked.
+
+- **Scoring / decision params not clearly specified.** If the workflow makes a
+  judgement (a Proceed/Reject threshold, rubric weights, a pass mark, a ranking
+  cutoff), confirm the value — don't guess one. A wrong threshold silently mis-sorts
+  every item.
+- **Toolkit connectivity — verify, don't assume.** For **every** external system the
+  workflow will touch (Sheets, GitHub, Gmail, Slack, …), check the connection
+  yourself with `aramb_toolkits.check_connection toolkit="<SLUG>"`. If any is not
+  connected, tell the user plainly which one(s) to connect **now** — before the
+  build — rather than discovering it mid-run. (This is the same gate `create`
+  enforces at publish; checking up front saves a failed run.)
+- **Scale / cost heads-up.** If the input set is large (hundreds of items, a big
+  repo list, a long candidate sheet), state the rough scale and expected time/cost
+  up front, and **offer a small pilot first** (e.g. "run the first 10 to validate
+  the rubric, then the full set?"). Don't quietly kick off a multi-hour job.
+- **Source accessibility.** Confirm the links / repos / sheets the workflow reads
+  are reachable the way the run will reach them — **public vs needs auth**. A
+  private repo or a permissioned sheet that looked fine in your browser will fail
+  in the run. If something needs auth, say what's required (toolkit connection,
+  repo link, browser login) before building.
+
+Keep it to the items that apply. The goal is to surface the handful of unknowns
+that would otherwise become failed runs — then build with confidence, not to
+interrogate the user.
+
 ## Progress reports — do this throughout
 
 **Task dispatch.** The user sees your task card in the chat sidebar. If you don't
