@@ -1,12 +1,16 @@
 ---
 name: aramb-browser
 description: >
-  The ONLY way to touch the web. Every URL visit, scrape, search engine
-  query, form fill, screenshot, JS evaluation, or live data fetch goes
-  through this skill. No WebSearch, WebFetch, curl, wget, or HTTP
-  libraries — they use the datacenter UA, can't execute JS, and return
-  SPA HTML or 403 from any half-restricted site. Fork of
-  chrome-devtools-mcp; standard CDP actions all work.
+  The way to touch JS-rendered, authenticated, or visually-inspected web
+  content — every URL visit, scrape, search engine query, form fill,
+  screenshot, JS evaluation, or live data fetch on a rendered/restricted
+  site goes through this skill. For those sites do NOT use WebSearch,
+  WebFetch, curl, wget, or HTTP libraries — they use the datacenter UA,
+  can't execute JS, and return SPA HTML or 403 from any half-restricted
+  site. Public/static content (GitHub repos & raw files, plain pages,
+  JSON/APIs) is the opposite case — fetch it with curl/git clone/WebFetch,
+  not the browser (see the Fetch hierarchy). Fork of chrome-devtools-mcp;
+  standard CDP actions all work.
 argument-hint: "[task or URL]"
 ---
 
@@ -21,7 +25,7 @@ Before you open a browser, ask: **does this content actually need a rendered DOM
 **Default to non-browser fetch for public / static content.** Use `curl`, `git clone --depth 1`, or `WebFetch` from Bash for:
 
 - **Public GitHub repos & raw files** — `git clone --depth 1 https://github.com/<owner>/<repo>` or `curl -sL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>`. ~50× faster than driving the browser, and it never "hiccups."
-- **Public Notion / Google Docs / Drive pages**, plain HTML pages, and **JSON / API responses** that aren't gated behind a JS app or login.
+- **Plain HTML pages, raw/exported docs, and real API / JSON endpoints** whose content is in the response body, not assembled client-side. (Two traps: many "public" Notion / Google Docs / Drive pages are JS-rendered and return a near-empty shell to `curl`, and social `.json` URLs — Reddit / X / LinkedIn — return HTML, not JSON. Those are **browser** cases. When unsure, `curl` first and apply the escalation rule below.)
 
 **Public repos need NO auth, NO GitHub toolkit, NO OAuth.** Never reason "the GitHub toolkit isn't connected, so I'll use the browser to hit the API" — a public repo is a plain `git clone` / `curl`. If you discover an unmetered raw URL (e.g. `raw.githubusercontent.com`), `curl` it directly; do **not** route it through the browser.
 
@@ -35,6 +39,8 @@ Before you open a browser, ask: **does this content actually need a rendered DOM
 - Sites that return SPA HTML or 403 to a datacenter UA (most half-restricted sites — the sections below cover these).
 
 **Never drive the browser to fetch a file you could `curl`.**
+
+**Escalation — curl first, browser on failure.** The hierarchy is a default, not a guess you're locked into. If a `curl` / `WebFetch` of a supposedly-static page comes back as **SPA HTML, a near-empty shell, a login/redirect, or a 403**, that page was actually rendered or restricted — switch to the browser for it. So the rule is: try the cheap fetch first for anything that *looks* public/static; escalate to the browser the moment the response proves it wasn't. Content you already know needs JS / auth / visual inspection (the list below) skips straight to the browser.
 
 ## Use this for every (rendered / restricted) web touch — no exceptions
 
