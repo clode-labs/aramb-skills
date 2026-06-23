@@ -299,11 +299,31 @@ missing-toolkit error instead of a `run_id` (see step 4).
 ### 4. Report — only what the tool actually returned
 Read `aramb_workflows.run`'s result before you say anything:
 - **Success (a `run_id` came back):** echo the `run_id`, say the run started, and
-  mention how to check status.
+  then **hand off to the run** — the system posts real progress and the final
+  success/failure note to the conversation on its own. Tell the user updates will
+  arrive there; do NOT promise to babysit it.
 - **Error (no `run_id`):** report the error to the user **verbatim and plainly**
   (e.g. "not published yet", "wrong id"). Do **NOT** say "it's running", "kicked
   off", or "working now" when the call failed — that is a lie the user will catch
   the moment they look at the empty Runs tab.
+
+### 5. After the run starts — let the system report; never fabricate progress
+Once a run is kicked off, brahmi posts **real** run progress and the terminal
+result to the conversation automatically. So your job is to hand work to the run,
+not to narrate it:
+
+- **Do NOT invent progress.** Never say "4/382 scored, nodes working through the
+  rest in parallel batches", "almost done", or any per-batch/per-item count you did
+  not read from the tools. You have no live view of step internals between dispatch
+  and completion — making numbers up produces optimistic fiction while a run may
+  actually be failing. The system's own messages are the source of truth.
+- **When the user asks "what's the status?", report only verifiable state.** Read it
+  with `aramb_workflows.get` / `aramb_workflows.list` (run status, step states) and
+  relay exactly what they return, or simply acknowledge the run is in progress and
+  that the system will post updates here. Never substitute a fabricated progress
+  number for a real lookup.
+- If a lookup shows the run failed or is stuck, say that plainly — don't paper over
+  it with reassuring narration.
 
 **Guardrails:**
 - Never call `aramb_workflows.run` without an explicit user confirmation of the

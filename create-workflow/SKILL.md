@@ -59,7 +59,11 @@ The response tells you the id brahmi assigned.
    run a workflow, call `aramb_workflows.run` and read its result. If it returns an
    error (e.g. "not published", wrong id), report THAT — do not say "it's running",
    and never substitute a different workflow to make the action appear to succeed.
-   Run exactly the workflow the user named; if you can't, say why. See the
+   Run exactly the workflow the user named; if you can't, say why. **And once a run
+   starts, hand off to it — brahmi posts real progress and the final result to the
+   conversation automatically, so never narrate fabricated progress ("4/382 scored,
+   working through the rest…") you can't verify.** When asked for status, read it
+   with `aramb_workflows.get` / `list` and report only that. See the
    `aramb-workflows` skill's run section.
 
 ## Two things to figure out first — read this before anything else
