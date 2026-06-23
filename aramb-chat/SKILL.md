@@ -97,14 +97,16 @@ Rules for the `artifacts` payload (same in both surfaces):
 
 ## Git integration
 
+Linked repositories are **project-scoped** (brahmi migration 0140). One link per project; every application under the project shares the same repo set, and the project's cloud agent clones each repo into `/home/node/workspace/<repo_name>`. The three git tools below take **no** `application_id` / `project_id` — project context flows implicitly from your session via the kairo MCP proxy.
+
 ### List linked repositories
 ```bash
-npx mcporter call aramb_chat.list_linked_repos application_id="<APPLICATION_ID>"
+npx mcporter call aramb_chat.list_linked_repos
 ```
 
 ### Clone a linked repository
 ```bash
-npx mcporter call aramb_chat.clone_repo application_id="<APPLICATION_ID>" repo_slug="org/repo"
+npx mcporter call aramb_chat.clone_repo repo_slug="org/repo"
 ```
 Returns an authenticated clone URL with an embedded access token. Use it with `git clone`:
 ```bash
@@ -113,7 +115,7 @@ git clone <returned_clone_url> <returned_clone_path>
 
 ### Get a fresh git token (for push/pull)
 ```bash
-npx mcporter call aramb_chat.git_token application_id="<APPLICATION_ID>" repo_slug="org/repo"
+npx mcporter call aramb_chat.git_token repo_slug="org/repo"
 ```
 Returns a repo-scoped token valid for 1 hour. Use it to update the remote URL before push/pull:
 ```bash

@@ -55,9 +55,10 @@ Rules:
 `environment` on URL entries (`"local"` for tunnels you exposed from this container, `"deployed"` for hosted infra) is preserved on the chip for context.
 
 ## Git
+Linked repos are project-scoped; the three git tools take no `application_id`/`project_id` (project context flows from your session). `clone_repo` and `git_token` both key on `repo_slug` (e.g. `"org/repo"`), not URL.
 - `npx mcporter call aramb_chat.list_linked_repos`
-- `npx mcporter call aramb_chat.clone_repo repo_url="<url>"`
-- `npx mcporter call aramb_chat.git_token`
+- `npx mcporter call aramb_chat.clone_repo repo_slug="org/repo"`
+- `npx mcporter call aramb_chat.git_token repo_slug="org/repo"`
 
 ## Workflows
 
