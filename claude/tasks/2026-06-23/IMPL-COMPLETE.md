@@ -94,3 +94,54 @@ Both **exactly match** the cross-repo contract in the workspace design doc
 - `8589eb1` — docs(aramb-workflows): bake per-role fetch tool into node prompts; align publish/run with registered MCP contract
 
 Not pushed; no PR (per instructions).
+
+---
+
+## Fix pass (post-audit, commit `b06f2bd`)
+
+A production audit of `main...HEAD` returned a **fix-then-ship** verdict. The #5
+contract alignment was clean (no changes needed). Three #1 findings on
+`aramb-browser/SKILL.md` were fixed; all stay in Batch 1 scope (prompt/skill only).
+
+### H1 (HIGH) — frontmatter `description` still contradicted the new policy
+- **Finding:** the body was scoped to the fetch hierarchy, but the YAML
+  `description` (the most-read, selection-surfaced line) still said *"The ONLY way
+  to touch the web… No WebSearch, WebFetch, curl, wget, or HTTP libraries"* — the
+  literal opposite of the new policy 14 lines below.
+- **Fix:** rewrote the `description` to lead with the browser's real scope
+  (JS-rendered / authenticated / visually-inspected content), keep the
+  datacenter-UA rationale scoped to *those* sites, and state the public/static →
+  `curl`/`git clone`/`WebFetch` case explicitly, pointing at the Fetch hierarchy.
+
+### M2 (MEDIUM — over-correction) — JS-rendered "public" pages on the curl side, no fallback
+- **Finding:** public Notion / Google Docs / Drive pages are heavily JS-rendered
+  and return a near-empty shell or 403 to a datacenter UA, yet were listed as curl
+  targets — and there was no "if curl fails, escalate to browser" rule. Risk:
+  agents curl a JS page, get garbage, and don't know they may fall back.
+- **Fix:** (a) re-bucketed the curl bullet to "plain HTML pages, raw/exported docs,
+  and real API/JSON endpoints whose content is in the response body," explicitly
+  flagging public Notion/Docs/Drive as JS-rendered **browser** cases; (b) added an
+  **"Escalation — curl first, browser on failure"** rule: SPA HTML / near-empty
+  shell / login-redirect / 403 from a `curl` of a supposedly-static page → switch
+  to the browser. Content already known to need JS/auth/visual inspection still
+  skips straight to the browser, so genuinely-rendered pages are **not** pushed to
+  curl.
+
+### M3 (MEDIUM — ambiguity) — JSON bullet could be misread as "all JSON → curl"
+- **Finding:** the curl-side "JSON / API responses" bullet (19 lines above the
+  Reddit/X/LinkedIn `.json`-returns-HTML browser case) could be read as "all JSON →
+  curl," re-colliding with the social-`.json` trap.
+- **Fix:** tightened to "real API / JSON endpoints" and named the social-`.json`
+  trap inline in the same bullet, pointing at the escalation rule.
+
+### Post-fix verification (re-read of lines 1–52)
+- Description now agrees with the body — **no residual contradiction.**
+- JS-rendered and auth-gated content is routed to the browser in three places (the
+  `description`, the "Use the browser ONLY for" list, and the escalation carve-out)
+  — **no over-correction**; the escalation makes the curl/browser boundary a
+  try-then-escalate default rather than an up-front guess.
+- The #5 publish/run tool names/params/returns were unchanged by this pass and
+  still match the cross-repo contract.
+
+**Fix-pass commit:** `b06f2bd` — docs(aramb-browser): fix-pass — scope frontmatter
+desc, qualify static traps, add curl-first escalation. Not pushed; no PR.
