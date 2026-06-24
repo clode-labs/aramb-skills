@@ -392,48 +392,54 @@ Notes:
 - The agent reads its `project_id` and `step_id` from the User Message under "## Current Context" (`Project ID:` and `Workflow Run Step ID:` lines) at dispatch time. Brahmi rejects cross-step writes (`context_drift`), so the agent MUST copy these UUIDs verbatim into the close call.
 - Do NOT instruct the agent to call `aramb_tasks.update` from a workflow-step prompt — that targets the tasks domain (different DB rows) and the run will stall on the safety net. Only `aramb_workflows.update_step` closes a workflow run step.
 
-## Git operations — route through aramb_chat first, Composio as fallback
+## Git operations — route through aramb_toolkits + native git/gh
 
-**When to emit this block:** any node whose described work involves git-protocol
-operations — clone, fetch, checkout, push, branch, commit, or anything that
-needs a working tree of the repo on disk. Issue / PR / comment / label-style
-operations don't need this block; they are pure GitHub API and run through the
-Composio toolkit directly.
+**When to emit this block:** any node whose described work involves anything on
+github — clone, fetch, checkout, push, branch, commit, PRs, issues, releases,
+comments. Everything github goes through the same surface (no API-vs-protocol
+split anymore): `aramb_toolkits.get_github_credential` → `GH_TOKEN` → native
+`git` / `gh` CLI.
 
-**Why it matters:** the toolkit (`required_toolkits: ["GITHUB"]`) gates API
-operations, not git-protocol operations. A `git clone` is not a GitHub API
-endpoint; Composio cannot perform it. The container shell has no git
-credentials (no `gh` CLI, no credential helper, no PAT). Without explicit
-routing the executing agent's reflex is to try raw `bash git clone`, which
-will always fail on private repos.
+**Why it matters:** github is NOT a Composio toolkit on this platform —
+`composio execute GITHUB_*` is hard-blocked at the proxy with `403`. The
+credential broker is the only way to get a usable github token from the
+agent's container.
 
-**Append this block verbatim** to the END of any node prompt that involves git
-ops (after the closing-instruction template):
+**Append this block verbatim** to the END of any node prompt that involves
+github work (after the closing-instruction template):
 
 ```
-### Tool routing for git operations on this step
-1. PRIMARY — call `aramb_chat.list_linked_repos` first to confirm the repo
-   is linked to this project. If linked, call `aramb_chat.clone_repo`
-   (Gitana issues a short-lived clone token). This is the only path that
-   yields a real working tree.
-2. FALLBACK — only if step 1 returns "not linked" or errors out: use the
-   Composio GitHub toolkit for whatever the work allows — read file contents
-   via `GITHUB_GET_REPO_CONTENT`, open PRs via the pull-requests action, etc.
-   This path is API-only; you will not have a working tree.
-3. NEVER use raw `git clone`, `gh`, or any shell git command. There are no
-   credentials available to the container shell. Bash attempts will fail
-   with "could not read Username" or "gh: command not found" and waste a
-   turn each.
-4. If neither path can complete the work (repo unlinked AND Composio cannot
-   express the operation), close the step via `aramb_workflows.update_step`
-   with `status="blocked"` and a clear message asking the user to either
-   link the repo (Project Settings → Repos) or expand the Composio scope.
-   Don't keep retrying.
+### Tool routing for github operations on this step
+1. Confirm the user has connected github:
+   `aramb_toolkits.check_connection toolkit="GITHUB"`
+   - If `connected: false` — call
+     `aramb_toolkits.connect_toolkit toolkit="github"` and share the
+     returned `redirect_url` with the user via your reply or
+     `aramb_chat.alert_user`. Close the step with `status="blocked"` until
+     they finish OAuth; do not retry without confirmation.
+2. Mint a token:
+   `aramb_toolkits.get_github_credential` (returns `{ token, username,
+   account_ref, ... }`).
+   - If the org has multiple github accounts in scope and the response is
+     `409 ambiguous_connection`, call
+     `aramb_toolkits.list_connections toolkit="GITHUB"`, pick the right
+     `account_ref`, then re-call with `account_ref="ca_..."`.
+3. Export and use native CLI for everything:
+   `export GH_TOKEN="<token>"`
+   `git clone https://x-access-token:$GH_TOKEN@github.com/<owner>/<repo>.git`
+   `git push`, `gh pr create`, `gh issue list`, `gh release create`, etc.
+4. On `401` from `git` / `gh` (~8h token lifetime), re-call
+   `aramb_toolkits.get_github_credential` for a fresh token. Cheap, no rate
+   concerns.
+5. NEVER use `composio execute GITHUB_*` — those slugs are hard-blocked at
+   the proxy with `403`. Also do NOT use `aramb_chat.list_linked_repos`,
+   `aramb_chat.clone_repo`, or `aramb_chat.git_token` — those don't exist
+   on this surface anymore.
 ```
 
-Do NOT emit this block on nodes that only do API operations (read issue,
-comment on PR, list assignees). It is noise on those nodes and the executing
-agent will spend turns reasoning about a fallback chain that doesn't apply.
+Emit this block on every node that touches github — there is no "API-only"
+exemption anymore since both API and protocol ops go through the same
+native-CLI path.
 
 ## Durable-output nodes — foreground + append-only
 

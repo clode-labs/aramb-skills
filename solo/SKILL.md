@@ -55,10 +55,13 @@ Rules:
 `environment` on URL entries (`"local"` for tunnels you exposed from this container, `"deployed"` for hosted infra) is preserved on the chip for context.
 
 ## Git
-Linked repos are project-scoped; the three git tools take no `application_id`/`project_id` (project context flows from your session). `clone_repo` and `git_token` both key on `repo_slug` (e.g. `"org/repo"`), not URL.
-- `npx mcporter call aramb_chat.list_linked_repos`
-- `npx mcporter call aramb_chat.clone_repo repo_slug="org/repo"`
-- `npx mcporter call aramb_chat.git_token repo_slug="org/repo"`
+All git work routes through the `aramb-toolkits` skill, NOT through `aramb_chat`
+and NOT through `composio execute GITHUB_*` (blocked). Read that skill for the
+full workflow; the short version:
+1. `npx mcporter call aramb_toolkits.check_connection toolkit="GITHUB"` — confirm a github account is connected.
+2. If `connected: false` → `npx mcporter call aramb_toolkits.connect_toolkit toolkit="github"` and share the `redirect_url` with the user.
+3. Once connected → `npx mcporter call aramb_toolkits.get_github_credential` → export `GH_TOKEN=<token>`.
+4. Use native `git clone https://x-access-token:$GH_TOKEN@github.com/<owner>/<repo>.git`, `git push`, `gh pr create`, `gh issue list`, etc. Re-call `get_github_credential` on any `401`.
 
 ## Workflows
 
