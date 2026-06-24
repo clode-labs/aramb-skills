@@ -64,12 +64,13 @@ See `skills/solo/SKILL.md` for the full allowed MCP surface. Quick refs:
 - Urgent alert: `aramb_chat.alert_user`
 - **Deliver a file chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/<file>"}]'` — MANDATORY whenever you wrote a user-facing file. project_id + application_id come from your User Message's "## Current Context" block; brahmi rejects calls without them.
 - **Deliver a URL chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'` — auto-registers preview state on application_id.
-- Git: `aramb_chat.list_linked_repos`, `aramb_chat.clone_repo`, `aramb_chat.git_token`
+- Git (all github work): `aramb_toolkits.get_github_credential` → export `GH_TOKEN` → native `git`/`gh` CLI (see `aramb-toolkits` skill). `composio execute GITHUB_*` is blocked; do NOT use `aramb_chat.*` git helpers.
+- Connect a toolkit from chat: `aramb_toolkits.connect_toolkit toolkit="<slug>"` → share the returned `redirect_url`.
 - Read existing workflows: `aramb_workflows.get`
 - Save / replace workflow: `aramb_workflows.create`, `aramb_workflows.update` (driven by the `create-workflow`, `update-workflow`, or `import-workflow` skills — never call them raw)
 - Schedule existing workflows (cron): `aramb_workflows.set_schedule` (via `schedule-workflow` skill)
 - Run an existing workflow on request (confirm-first): `aramb_workflows.run` (via the aramb-workflows run flow — always confirm the specific workflow before running)
-- Read the trigger catalog: `aramb_toolkits.list_toolkits`, `aramb_toolkits.list_triggers`, `aramb_toolkits.get_trigger`, `aramb_toolkits.check_connection`
+- Read the toolkit catalog + connection state: `aramb_toolkits.list_toolkits`, `aramb_toolkits.list_triggers`, `aramb_toolkits.get_trigger`, `aramb_toolkits.check_connection`, `aramb_toolkits.list_connections`
 - Configure event triggers: `aramb_triggers.create`, `aramb_triggers.update`, `aramb_triggers.delete`, `aramb_triggers.status` (via `configure-trigger` skill — clock/calendar → `schedule-workflow`, service event → `configure-trigger`)
 
 Workflow surface is identical to team mode — you can create, update, import templates, schedule, attach event triggers, and spawn new agents. The only difference vs team mode is that you don't have tasks; everything is driven directly from chat + session context.

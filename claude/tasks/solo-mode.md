@@ -52,9 +52,9 @@ sub-agents, no task tracking. Use these MCP tools via mcporter.
 - npx mcporter call brahmi.alert_user message="<urgent text>"
 
 ## Git
-- npx mcporter call brahmi.list_linked_repos
-- npx mcporter call brahmi.clone_repo repo_url="<url>"
-- npx mcporter call brahmi.git_token
+- npx mcporter call aramb_toolkits.check_connection toolkit="GITHUB"
+- npx mcporter call aramb_toolkits.connect_toolkit toolkit="github"   # when check_connection.connected=false; share returned redirect_url
+- npx mcporter call aramb_toolkits.get_github_credential               # then export GH_TOKEN and use native git/gh CLI
 
 ## Deployment
 - npx mcporter call brahmi.update_preview_url url="<url>" environment="local"|"deployed"

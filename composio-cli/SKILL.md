@@ -13,10 +13,11 @@ on the `/cli` surface with `403 github is not on /cli`. GitHub tools are also
 hidden from `composio search` results (no slugs to discover).
 
 To do GitHub work:
-1. Call `aramb_toolkits.get_github_credential` (MCP tool, no arguments) → returns `{username: "x-access-token", token, account_ref}`.
-2. Export the token: `export GH_TOKEN=<token>`.
-3. Use **native git / gh CLI** for everything: `git clone`, `git push`, `gh pr create`, `gh issue list`, `gh release create`, etc.
-4. On 401 from git/gh, call `aramb_toolkits.get_github_credential` again for a fresh token (~8h lifetime).
+1. Confirm a github connection exists: `aramb_toolkits.check_connection toolkit="GITHUB"`. If `connected: false`, call `aramb_toolkits.connect_toolkit toolkit="github"` and share the returned `redirect_url` with the user — do NOT use `composio link github`.
+2. Mint a token: `aramb_toolkits.get_github_credential` → `{username: "x-access-token", token, account_ref}`. On `409 ambiguous_connection`, call `aramb_toolkits.list_connections toolkit="GITHUB"`, pick the right `account_ref`, and re-call.
+3. Export the token: `export GH_TOKEN=<token>`.
+4. Use **native git / gh CLI** for everything: `git clone`, `git push`, `gh pr create`, `gh issue list`, `gh release create`, etc.
+5. On 401 from git/gh, call `aramb_toolkits.get_github_credential` again for a fresh token (~8h lifetime).
 
 See the `aramb-toolkits` skill for the full GitHub workflow.
 

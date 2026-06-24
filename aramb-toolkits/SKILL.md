@@ -1,14 +1,15 @@
 ---
 name: aramb-toolkits
 description: >
-  MCP toolkit for the Composio toolkit CATALOG and CONNECTION checks
-  (aramb_toolkits.*). Use these read-only tools to discover which toolkits exist
-  (GMAIL, GITHUB, SLACK, GOOGLESHEETS…), list/inspect their event triggers, and
-  check whether a toolkit has a connected account — BEFORE telling the user you
-  can't reach an external service. This surface is catalog + check only: it
-  CANNOT fetch data. To actually fetch/act (read emails, create an issue, append
-  a row) use the `composio-cli` skill (`composio execute <SLUG>`). The flow is:
-  check connection here → execute via composio-cli.
+  MCP surface for the Composio toolkit CATALOG, CONNECTION lifecycle, and the
+  github credential broker (aramb_toolkits.*). Discover which toolkits exist
+  (GMAIL, GITHUB, SLACK, GOOGLESHEETS…), list/inspect their event triggers,
+  check / list / connect accounts, and mint github user-OAuth tokens for native
+  git/gh CLI use. To actually fetch / act on non-github toolkits (read emails,
+  create an issue, append a row) use the `composio-cli` skill
+  (`composio execute <SLUG>`). For github: this skill is the ONLY surface —
+  composio github tools are blocked. Standard flow: check here → execute via
+  composio-cli (or native git/gh for github) → connect from chat when missing.
 ---
 
 # Aramb Toolkits — catalog & connection checks
@@ -25,13 +26,17 @@ There are two distinct surfaces. Pick the right one for the job:
 
 | Need | Tool | Skill |
 |---|---|---|
-| What toolkits / triggers exist? Is GMAIL connected? | `aramb_toolkits.*` (read-only catalog + check) | **this skill** |
+| What toolkits / triggers exist? Is GMAIL connected? | `aramb_toolkits.*` (catalog + check) | **this skill** |
+| Connect a toolkit from chat (OAuth) | `aramb_toolkits.connect_toolkit` | **this skill** |
 | Actually fetch data / perform an action (read emails, create an issue) | `composio execute <SLUG>` | **`composio-cli`** |
+| Anything github — clone, push, PRs, issues | `aramb_toolkits.get_github_credential` + native `git`/`gh` | **this skill** |
 | Persist an event trigger on a workflow | `aramb_triggers.*` (write) | **`configure-trigger`** |
 
-**`aramb_toolkits` CANNOT fetch data.** `check_connection` tells you a toolkit is
-connected; it does NOT read emails or create issues. Execution is the
-`composio-cli` skill (`composio execute GMAIL_FETCH_EMAILS`, etc.).
+**`aramb_toolkits` CANNOT fetch data for non-github toolkits.** `check_connection`
+tells you a toolkit is connected; it does NOT read emails or create issues.
+Execution for non-github is the `composio-cli` skill (`composio execute
+GMAIL_FETCH_EMAILS`, etc.). Github execution is `get_github_credential` + native
+CLI — `composio execute GITHUB_*` is blocked here.
 
 **The flow for "can I reach the user's <service>?":**
 
@@ -100,15 +105,55 @@ before creating a trigger so you can assemble `trigger_config` correctly (see
 npx mcporter call aramb_toolkits.check_connection toolkit="GMAIL"
 ```
 
-Reports whether the toolkit has a connected account for this project/app, and
-(when connected) the `connected_account_id`. Two uses:
+Reports whether the toolkit has a connected account for this project, and
+(when connected) the `connected_account_id` + `account_ref`. Three uses:
 
 - **Before executing** an external action — confirm the connection exists, then
-  run the action via the `composio-cli` skill. If it reports no connected
-  account, tell the user they need to connect <toolkit> first (the Connections
-  UI), then stop.
+  run the action via the `composio-cli` skill (or, for github, the
+  `get_github_credential` flow below).
 - **Before binding a trigger** — `configure-trigger` calls this to get the
   `connected_account_id` the trigger row binds to.
+- **Decide if you need to connect** — if `connected: false`, hand off to
+  `connect_toolkit` (below) so the user can authorize from chat.
+
+### `list_connections` — enumerate connections for a toolkit
+
+```bash
+npx mcporter call aramb_toolkits.list_connections toolkit="GITHUB"
+```
+
+`check_connection` collapses to one row (yes/no). `list_connections` returns
+the full set, with `account_ref` + `alias` on each — use it when the user has
+or might have **multiple** accounts of the same toolkit (personal + work
+github, two gmail accounts) and you need to pick one. Then pass the chosen
+`account_ref` to `get_github_credential`.
+
+Omit `toolkit=` to list every connection in the project.
+
+### `connect_toolkit` — start a new connection (OAuth) from chat
+
+```bash
+npx mcporter call aramb_toolkits.connect_toolkit toolkit="github"
+```
+
+Initiates the OAuth flow for a toolkit and returns a `redirect_url` the user
+must complete in a browser. Share the URL in chat (plain text or via
+`aramb_chat.alert_user`), then poll `check_connection` until status flips to
+`ACTIVE`.
+
+Args: `toolkit=` (required, e.g. `"github"`, `"gmail"`). Optional `alias=`
+for naming a non-default account (e.g. `"work"`), `share="all_projects"` to
+make the connection org-wide instead of project-only.
+
+When to call: `check_connection` returns `connected: false` AND the user is
+asking you to do something that needs the toolkit. Don't pre-emptively
+connect things the user didn't ask for.
+
+### `get_github_credential` — mint a github token for native git/gh
+
+```bash
+npx mcporter call aramb_toolkits.get_github_credential
+```
 
 ### `get_github_credential` — mint a github token for native git/gh
 
@@ -118,32 +163,37 @@ npx mcporter call aramb_toolkits.get_github_credential
 
 GitHub is **NOT a Composio toolkit** in this stack — it's served by gitana, a
 separate broker. The agent does NOT use `composio execute GITHUB_*` (those
-slugs are blocked on the /cli surface with `403`); instead it calls this MCP
-tool to get a short-lived user OAuth token and then uses **native `git` and
-`gh` CLI** for everything.
+slugs are blocked on the `/cli` surface with `403`); instead it calls this
+MCP tool to get a short-lived user OAuth token and then uses **native `git`
+and `gh` CLI** for everything.
+
+Optional `account_ref="ca_..."` disambiguates when the org has multiple
+github connections in scope (`check_connection` / `list_connections` reports
+this). Without it, the broker auto-resolves the single in-scope account and
+returns `409 ambiguous_connection` if there are several.
 
 Response:
 
 ```json
 { "username": "x-access-token",
-  "token":    "gho_<40-char token>",
+  "token":    "gho_<token>",
   "account_ref": "ca_xxx",
   "expires_at":  "...",
   "scope":      "repo read:user user:email read:org workflow" }
 ```
 
-The full workflow:
+The full workflow — happy path:
 
 ```bash
-# 1. Confirm the user has connected github
+# 1. Confirm github is connected
 npx mcporter call aramb_toolkits.check_connection toolkit="GITHUB"
-# → { connected: true, ... }
+# → { connected: true, account_ref: "ca_…", ... }
 
-# 2. Get a token (no args)
+# 2. Get a token
 npx mcporter call aramb_toolkits.get_github_credential
 # → { token: "gho_…", username: "x-access-token", ... }
 
-# 3. Export and use native CLI for everything else
+# 3. Export and use native CLI
 export GH_TOKEN="gho_…"
 git clone https://x-access-token:$GH_TOKEN@github.com/acme/repo.git
 cd repo && git checkout -b feat/x && git push -u origin feat/x
@@ -152,11 +202,27 @@ gh issue list --repo acme/repo
 gh release create v1.0.0 --notes "..."
 ```
 
-On 401 from `git` / `gh` (~8h token lifetime, can be shorter) call
-`get_github_credential` again for a fresh token — cheap, no rate concerns.
+On `401` from `git` / `gh` (~8h token lifetime), call `get_github_credential`
+again for a fresh token — cheap, no rate concerns.
 
-If `check_connection toolkit="GITHUB"` returns `connected: false`, tell the
-user to connect github in the Connections UI; do NOT proceed.
+**Multiple github accounts in scope** (`ambiguous_connection` from
+`get_github_credential`): call `list_connections toolkit="GITHUB"`, pick the
+right `account_ref`, then re-call `get_github_credential
+account_ref="ca_..."`.
+
+**No github connection** (`check_connection` returns `connected: false`):
+mint one from chat — do NOT just tell the user to "go to the Connections UI":
+
+```bash
+npx mcporter call aramb_toolkits.connect_toolkit toolkit="github"
+# → { redirect_url: "https://github.com/login/oauth/authorize?...",
+#     connected_account_id: "...",
+#     status: "INITIATED" }
+```
+
+Share the `redirect_url` in chat ("Open this in your browser to connect
+GitHub: …"). Once the user completes the flow, `check_connection` flips to
+`ACTIVE` and `get_github_credential` works.
 
 ## Rules
 
