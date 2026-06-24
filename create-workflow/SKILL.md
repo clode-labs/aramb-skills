@@ -59,7 +59,12 @@ The response tells you the id brahmi assigned.
    run a workflow, call `aramb_workflows.run` and read its result. If it returns an
    error (e.g. "not published", wrong id), report THAT — do not say "it's running",
    and never substitute a different workflow to make the action appear to succeed.
-   Run exactly the workflow the user named; if you can't, say why. See the
+   Run exactly the workflow the user named; if you can't, say why. **And once a run
+   starts, hand off to it — brahmi posts real progress and the final result to the
+   conversation automatically, so never narrate fabricated progress ("4/382 scored,
+   working through the rest…") you can't verify.** The conversation thread is the
+   source of truth for run progress; `aramb_workflows.get` / `list` report only the
+   workflow's definition/lifecycle state, not per-step run progress. See the
    `aramb-workflows` skill's run section.
 
 ## Two things to figure out first — read this before anything else
@@ -260,6 +265,47 @@ npx mcporter call aramb_chat.ask_question \
   question="Which Gmail account should the workflow read from — the one connected to this app, or a different one?"
 ```
 
+## 1.5 Pre-build checklist — confirm-then-build (one concise round)
+
+Before you construct nodes, confirm the few things that **materially change the
+build**. The failure this prevents: building the whole workflow on silent
+assumptions, then leaking the gaps as broken runs and contradictory status (e.g.
+guessing a Proceed threshold the user never set, never noticing Sheets/GitHub
+weren't connected, never warning that a 300-item job is long and costly).
+
+Do it as **confirm-then-build, not interrogation**: **one** concise round of **2–4
+questions** total, covering only the items below that actually apply and aren't
+already specified. If everything is clear, skip straight to building — don't
+manufacture questions. Verify the things you CAN verify yourself (toolkit
+connections) rather than asking. Ask via `aramb_chat.ask_question` (chat dispatch)
+or fold into your progress narration / a single batched question (task dispatch).
+Pick sensible defaults where you can and state what you picked.
+
+- **Scoring / decision params not clearly specified.** If the workflow makes a
+  judgement (a Proceed/Reject threshold, rubric weights, a pass mark, a ranking
+  cutoff), confirm the value — don't guess one. A wrong threshold silently mis-sorts
+  every item.
+- **Toolkit connectivity — verify, don't assume.** For **every** external system the
+  workflow will touch (Sheets, GitHub, Gmail, Slack, …), check the connection
+  yourself with `aramb_toolkits.check_connection toolkit="<SLUG>"`. If any is not
+  connected, tell the user plainly which one(s) to connect **now** — before the
+  build — rather than discovering it mid-run. (The authoritative check is the
+  publish/run eval gate, which can still reject on scopes/expiry; this up-front
+  check just catches the common "not connected at all" case early.)
+- **Scale / cost heads-up.** If the input set is large (hundreds of items, a big
+  repo list, a long candidate sheet), state the rough scale and expected time/cost
+  up front, and **offer a small pilot first** (e.g. "run the first 10 to validate
+  the rubric, then the full set?"). Don't quietly kick off a multi-hour job.
+- **Source accessibility.** Confirm the links / repos / sheets the workflow reads
+  are reachable the way the run will reach them — **public vs needs auth**. A
+  private repo or a permissioned sheet that looked fine in your browser will fail
+  in the run. If something needs auth, say what's required (toolkit connection,
+  repo link, browser login) before building.
+
+Keep it to the items that apply. The goal is to surface the handful of unknowns
+that would otherwise become failed runs — then build with confidence, not to
+interrogate the user.
+
 ## Progress reports — do this throughout
 
 **Task dispatch.** The user sees your task card in the chat sidebar. If you don't
@@ -388,6 +434,56 @@ ops (after the closing-instruction template):
 Do NOT emit this block on nodes that only do API operations (read issue,
 comment on PR, list assignees). It is noise on those nodes and the executing
 agent will spend turns reasoning about a fallback chain that doesn't apply.
+
+## Durable-output nodes — foreground + append-only
+
+**When to emit this block:** any node that builds up a durable output file or
+sheet over a long task — scoring/ranking many submissions into a `results.csv`,
+walking a candidate list into a sheet, batch-evaluating a repo set into a report.
+These are the long nodes that may hand off mid-run (a continuation picks up where
+the previous attempt left off), so how the agent treats its output file decides
+whether the work converges or thrashes.
+
+**Why it matters:** a long durable-output node can be re-entered — on a
+continuation handoff or a stranded-step recovery a fresh session resumes against
+the same working directory and the same partially-written file. Two failure modes
+seen in the wild: (1) the agent **backgrounds** the scoring loop (`run2.sh &`) and
+the session closes while the child keeps running, so the next session spawns
+another loop and N orphaned processes race on the same file; (2) the agent
+**truncates or rewrites** the results file each run (recreate, in-place dedup,
+"clean up and re-emit"), so progress oscillates and never converges instead of
+growing monotonically. Foreground + append-only is what makes a resumed run safe.
+
+**Append this block verbatim** to the END of any durable-output node prompt
+(after the closing-instruction template), substituting `<output file>` with the
+node's actual results path:
+
+```
+### Building your durable output (foreground + append-only)
+This step writes `<output file>` incrementally over a long run, and may be
+resumed by a fresh session against the same working directory. Treat the file
+as a growing ledger, never a scratchpad:
+1. FOREGROUND ONLY. Run the core loop in the foreground — do the scoring/work
+   inline, turn by turn. NEVER background it (`script &`, `nohup`, `&` of any
+   kind, detached `run.sh`). A backgrounded loop keeps running after the session
+   closes and a later session will spawn a second loop that races it on the file.
+2. APPEND-ONLY. Treat `<output file>` as strictly append-only. Append each new
+   row as you produce it. NEVER truncate, recreate, overwrite, reorder, or do an
+   in-place dedup/rewrite of the file — those destroy committed progress and make
+   the output oscillate instead of converge. Write the header once, only if the
+   file does not yet exist.
+3. ON RESUME, re-read then append. If `<output file>` already exists when you
+   start, READ it first, treat every row already in it as DONE, and continue from
+   where it left off — append only the rows not yet present, skip the ones that
+   are. Do NOT restart the task from scratch, re-run prior work, or relaunch any
+   script/background process a previous attempt may have started; pick up and add
+   only the remaining work.
+```
+
+Do NOT emit this block on nodes that produce a single small output in one pass
+(send a message, write one summary file, post a digest). It is noise there — the
+append-only ledger discipline only matters when output accumulates across a long,
+potentially-resumed run.
 
 ## Default node settings — workflow-level
 
@@ -686,7 +782,7 @@ confirmation:
 ```
 Workflow created — "<name>" (<workflow_id>) — <n> steps, fires when a GitHub issue is created. View it in the Workflows tab.
 # or:  …— <n> steps, scheduled for 8am IST every weekday.
-# or:  …— <n> steps, manual run only (run it from the Workflows tab).
+# or:  …— <n> steps, manual run only (just ask me to run it, or run it from the Workflows tab).
 ```
 
 Reminders for the 4.5 step-4 wiring (only if the user approved a trigger):

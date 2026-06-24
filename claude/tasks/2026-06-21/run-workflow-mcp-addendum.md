@@ -1,5 +1,14 @@
 # aramb-skills ADDENDUM — run an existing workflow on request (confirm-first)
 
+> **RESOLVED (2026-06-23, batch `feat/workflow-reliability-batch1`).** The run-flow
+> guidance below was documented in the 2026-06-21 batch (see this dir's
+> `IMPL-COMPLETE.md` → "Run-flow addendum"). Batch 1 (#5) finished the job by aligning
+> the documented tool shapes with brahmi's now-registered MCP tools:
+> `aramb_workflows.run` returns `{ run_id, status }` and **auto-publishes a draft
+> first**; `aramb_workflows.publish` takes `workflow_id` and returns
+> `{ workflow_id, status:"active", version, published_at }`. The confirm-first policy
+> is unchanged. No further action — kept for history.
+
 Same branch `feat/trigger-jitter-and-callbacks`. Document the new `aramb_workflows.run` MCP tool and
 the flow for "run X workflow" requests. **Policy (locked): ALWAYS confirm before running** — even on
 an exact name match.

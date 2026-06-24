@@ -78,6 +78,15 @@ npx mcporter call aramb_workflows.create \
 - **Never invent or bind hidden toolkits.** Set a node's `toolkit` / `required_toolkits` only to toolkits the workspace actually exposes. Platform-internal/hidden toolkits (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) are REJECTED by `aramb_workflows.create`/`update` — never bind them. For Slack/Discord/Teams messaging deliverables, deliver via chil `chat.send_dm` (no toolkit).
 - `template_slug` (optional) is forwarded verbatim from a dispatched `<template-import slug="...">` block when this call originates from template import.
 
+### Bake the fetch tool into each evaluator node prompt
+
+When a node's `prompt` will have the runtime agent fetch external content (scoring GitHub submissions, reviewing live sites, evaluating applicants), **name the fetch tool in the prompt itself** so the evaluator doesn't rediscover tooling mid-run. Agents that "figure out" how to fetch at runtime default to the headless browser even for public files — that is the #1 cause of slow, flaky big nodes (browser calls are 30–120s and hiccup under load). Author the tool choice per role:
+
+- **Code-evaluation roles** (Backend / Frontend / any GitHub-repo submissions) → bake in: *"Clone or curl the repo (`git clone --depth 1 https://github.com/<owner>/<repo>` or `curl -sL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>`). Public repos need NO auth and NO toolkit — do NOT use the browser for GitHub."*
+- **Visual roles** (Product / UI/UX, design, Figma / Rive) → bake in: *"Use the browser (aramb-browser) to open and visually inspect the rendered artifact."*
+
+**General principle (mirror in every fetch-bearing node prompt):** reach for the browser only for JS-rendered, authenticated, or visually-inspected content; fetch public/static content (repos, raw files, plain pages, JSON/APIs) with `curl` / `git clone --depth 1` / `WebFetch`.
+
 ### Fetch a workflow's definition
 
 ```bash
@@ -226,12 +235,20 @@ yourself once those toolkits are connected:
    ```bash
    npx mcporter call aramb_workflows.publish workflow_id="<WORKFLOW_ID>"
    ```
-   A `{ "published": true, "version": N }` result means it is now live — only then
-   tell the user it's ready, and offer to run it now or leave it on its schedule.
+   `aramb_workflows.publish` takes one param, **`workflow_id`** (required), and on
+   success returns `{ "workflow_id", "status": "active", "version", "published_at" }`.
+   A `status: "active"` result means it is now live — only then tell the user it's
+   ready, and offer to run it now or leave it on its schedule. (Idempotent if the
+   workflow is already active.)
+
+If the publish eval gate fails (e.g. a required toolkit isn't connected), the tool
+returns a **structured error naming the missing toolkit(s)** — relay those names to
+the user verbatim so they know exactly what to connect. Don't treat it as a generic
+failure, and don't claim the workflow is live.
 
 Never instruct the user to "publish from the Workflows tab" — publishing is this
-tool. Never publish a toolkit-dependent workflow whose toolkits you have not
-confirmed connected.
+tool, and you (the agent) can call it directly. Never publish a toolkit-dependent
+workflow whose toolkits you have not confirmed connected.
 
 ## Running an existing workflow (manual run)
 
@@ -265,18 +282,54 @@ npx mcporter call aramb_workflows.run \
   workflow_id="<WORKFLOW_ID>" \
   custom_instruction="<optional per-run context the user gave>"
 ```
+`aramb_workflows.run` takes **`workflow_id`** (required) and **`custom_instruction`**
+(optional). On success it returns `{ "run_id", "status" }`.
+
 `custom_instruction` is optional free-form text passed into the workflow's first
 step (`<run_input>`) — include it only if the user supplied extra instructions for
 this run; omit it otherwise.
 
+**Auto-publish on run:** if the workflow is still a draft, `run` **publishes it
+first** (same "publishes on first run" semantics), then triggers — so a confirmed
+run on an unpublished-but-ready workflow still works without a separate
+`publish` call. That first publish runs the same toolkit gate, so if a required
+toolkit isn't connected the call comes back with the structured
+missing-toolkit error instead of a `run_id` (see step 4).
+
 ### 4. Report — only what the tool actually returned
 Read `aramb_workflows.run`'s result before you say anything:
 - **Success (a `run_id` came back):** echo the `run_id`, say the run started, and
-  mention how to check status.
+  then **hand off to the run** — the system posts real progress and the final
+  success/failure note to the conversation on its own. Tell the user updates will
+  arrive there; do NOT promise to babysit it.
 - **Error (no `run_id`):** report the error to the user **verbatim and plainly**
   (e.g. "not published yet", "wrong id"). Do **NOT** say "it's running", "kicked
   off", or "working now" when the call failed — that is a lie the user will catch
   the moment they look at the empty Runs tab.
+
+### 5. After the run starts — let the system report; never fabricate progress
+Once a run is kicked off, brahmi posts **real** run progress and the terminal
+result to the conversation automatically. So your job is to hand work to the run,
+not to narrate it:
+
+- **Do NOT invent progress.** Never say "4/382 scored, nodes working through the
+  rest in parallel batches", "almost done", or any per-batch/per-item count the
+  system's posted updates didn't state. You have no live view of step internals
+  between dispatch and completion — making numbers up produces optimistic fiction
+  while a run may actually be failing. The system's own messages are the source of
+  truth.
+- **When the user asks "what's the status?", point at the run's own updates.** The
+  conversation thread is the source of truth for run/step progress — brahmi posts it
+  there as it happens. So acknowledge the run is in progress and that its updates
+  (and the final result) arrive here automatically. `aramb_workflows.get` / `list`
+  do **not** return run progress — they return the workflow's **definition and
+  lifecycle** state (`status` is the workflow's `draft`/`active`/paused state, plus
+  schedule/nodes/edges), not per-step run state. Use them only to answer
+  *workflow*-level questions ("is it published / scheduled?"), and say plainly that
+  that's workflow status, not run progress. Never dress a workflow-level `active`
+  up as "the run is going fine," and never substitute a fabricated progress number.
+- If the system's posted updates show the run failed or is stuck, relay that plainly
+  — don't paper over it with reassuring narration.
 
 **Guardrails:**
 - Never call `aramb_workflows.run` without an explicit user confirmation of the
