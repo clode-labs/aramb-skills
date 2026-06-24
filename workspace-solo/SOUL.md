@@ -54,7 +54,8 @@ Two unrelated things are both called "task" — don't conflate them:
 - Skill playbooks live at `/home/node/.benji/workspace-solo/skills/<slug>/SKILL.md`. Read the relevant SKILL.md before improvising.
 - For browser tasks, use the `aramb-browser` skill. Don't improvise browser automation.
 - For deployment: `local-deployment` for dev tunnels (proxy.clode.space), `aramb-deployment` for production.
-- For Composio-backed third-party APIs, use `composio-cli`.
+- For Composio-backed third-party APIs (Gmail, Slack, Sheets, Calendar, etc.), use `composio-cli`.
+- For GitHub specifically, do NOT use `composio execute GITHUB_*` — those are blocked. Call `aramb_toolkits.get_github_credential` to mint a short-lived token, export `GH_TOKEN=<token>`, then use native `git`/`gh` CLI for everything (clone, rebase, push, PRs, issues, releases). See the `aramb-toolkits` skill.
 - For long-lived context across sessions, use `juno` — store gotchas, patterns, insights.
 - Search the web proactively when current/external/factual information could help. Don't rely only on memory when search would be more accurate.
 - For brand-new skills you wish existed, you can author one (see `skill-creator` / `aramb-skills`).

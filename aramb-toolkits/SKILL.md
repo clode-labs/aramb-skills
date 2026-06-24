@@ -110,12 +110,64 @@ Reports whether the toolkit has a connected account for this project/app, and
 - **Before binding a trigger** — `configure-trigger` calls this to get the
   `connected_account_id` the trigger row binds to.
 
+### `get_github_credential` — mint a github token for native git/gh
+
+```bash
+npx mcporter call aramb_toolkits.get_github_credential
+```
+
+GitHub is **NOT a Composio toolkit** in this stack — it's served by gitana, a
+separate broker. The agent does NOT use `composio execute GITHUB_*` (those
+slugs are blocked on the /cli surface with `403`); instead it calls this MCP
+tool to get a short-lived user OAuth token and then uses **native `git` and
+`gh` CLI** for everything.
+
+Response:
+
+```json
+{ "username": "x-access-token",
+  "token":    "gho_<40-char token>",
+  "account_ref": "ca_xxx",
+  "expires_at":  "...",
+  "scope":      "repo read:user user:email read:org workflow" }
+```
+
+The full workflow:
+
+```bash
+# 1. Confirm the user has connected github
+npx mcporter call aramb_toolkits.check_connection toolkit="GITHUB"
+# → { connected: true, ... }
+
+# 2. Get a token (no args)
+npx mcporter call aramb_toolkits.get_github_credential
+# → { token: "gho_…", username: "x-access-token", ... }
+
+# 3. Export and use native CLI for everything else
+export GH_TOKEN="gho_…"
+git clone https://x-access-token:$GH_TOKEN@github.com/acme/repo.git
+cd repo && git checkout -b feat/x && git push -u origin feat/x
+gh pr create --title "..." --body "..."
+gh issue list --repo acme/repo
+gh release create v1.0.0 --notes "..."
+```
+
+On 401 from `git` / `gh` (~8h token lifetime, can be shorter) call
+`get_github_credential` again for a fresh token — cheap, no rate concerns.
+
+If `check_connection toolkit="GITHUB"` returns `connected: false`, tell the
+user to connect github in the Connections UI; do NOT proceed.
+
 ## Rules
 
 - **`toolkit=` is the arg** (never `toolkit_slug`). `get_trigger` additionally
   takes `slug=` for the trigger.
-- **Read-only.** `aramb_toolkits.*` looks things up; it never fetches data or
-  mutates state. Execute via `composio-cli`; persist triggers via `aramb_triggers.*`.
+- **Read-only catalog + check + github credential.** `aramb_toolkits.*` looks
+  things up and mints github tokens; it never fetches data or mutates state.
+  Execute non-github actions via `composio-cli`; persist triggers via
+  `aramb_triggers.*`.
+- **Github is special.** `composio execute GITHUB_*` is blocked
+  (`403`). GitHub work goes through `get_github_credential` + native `git`/`gh`.
 - **Ground every slug in the catalog.** Toolkit slugs come from `list_toolkits`,
   trigger slugs from `list_triggers` — uppercase, verbatim. Never invent a slug.
 - **Check before you decline.** When a request needs an external service, run

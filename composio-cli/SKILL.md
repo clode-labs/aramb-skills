@@ -5,7 +5,22 @@ description: Help agents operate the Composio CLI to find the right tool, connec
 
 # Composio CLI
 
-## Default Workflow
+## ⚠️ GitHub is NOT a Composio toolkit
+
+Do NOT use `composio execute GITHUB_*` or `composio search "github..."`. GitHub
+lives in gitana — a different broker — and every `GITHUB_*` slug is rejected
+on the `/cli` surface with `403 github is not on /cli`. GitHub tools are also
+hidden from `composio search` results (no slugs to discover).
+
+To do GitHub work:
+1. Call `aramb_toolkits.get_github_credential` (MCP tool, no arguments) → returns `{username: "x-access-token", token, account_ref}`.
+2. Export the token: `export GH_TOKEN=<token>`.
+3. Use **native git / gh CLI** for everything: `git clone`, `git push`, `gh pr create`, `gh issue list`, `gh release create`, etc.
+4. On 401 from git/gh, call `aramb_toolkits.get_github_credential` again for a fresh token (~8h lifetime).
+
+See the `aramb-toolkits` skill for the full GitHub workflow.
+
+## Default Workflow (for non-GitHub toolkits)
 
 1. Start with `composio execute <slug>` whenever the slug is known.
 2. If several independent tool calls must happen at once, use `composio execute -p/--parallel` with repeated `<slug> -d <json>` groups.
@@ -18,23 +33,23 @@ description: Help agents operate the Composio CLI to find the right tool, connec
 Use `execute` when the tool slug is already known.
 
 ```bash
-composio execute GITHUB_GET_THE_AUTHENTICATED_USER -d '{}'
+composio execute GMAIL_GET_PROFILE -d '{}'
 ```
 
 Inspect required inputs without executing:
 ```bash
-composio execute GITHUB_CREATE_AN_ISSUE --get-schema
+composio execute GMAIL_SEND_EMAIL --get-schema
 ```
 
 Preview safely:
 ```bash
-composio execute GITHUB_CREATE_AN_ISSUE --skip-connection-check --dry-run -d '{ owner: "acme", repo: "app", title: "Bug report", body: "Steps to reproduce..." }'
+composio execute GMAIL_SEND_EMAIL --skip-connection-check --dry-run -d '{ recipient_email: "user@example.com", subject: "Hi", body: "Hello" }'
 ```
 
 Pass data from a file or stdin:
 ```bash
-composio execute GITHUB_CREATE_AN_ISSUE -d @issue.json
-cat issue.json | composio execute GITHUB_CREATE_AN_ISSUE -d -
+composio execute GMAIL_SEND_EMAIL -d @issue.json
+cat issue.json | composio execute GMAIL_SEND_EMAIL -d -
 ```
 
 Upload a local file:
@@ -48,7 +63,7 @@ Run independent tool calls in parallel:
 ```bash
 composio execute --parallel \
   GMAIL_SEND_EMAIL -d '{ recipient_email: "a@b.com", subject: "Hi" }' \
-  GITHUB_CREATE_AN_ISSUE -d '{ owner: "acme", repo: "app", title: "Bug" }'
+  GMAIL_SEND_EMAIL -d '{ recipient_email: "user@example.com", subject: "Hi", body: "Hello" }'
 ```
 
 Key flags:
@@ -65,13 +80,14 @@ Key flags:
 Use `search` only when the tool slug is not already known.
 
 ```bash
-composio search "create a github issue"
+composio search "send an email"
 composio search "send an email" --toolkits gmail
-composio search "send an email" "create a github issue"
-composio search "my emails" "my github issues" --toolkits gmail,github
+composio search "send an email" "create a slack message"
+composio search "list calendar events" "send an email" --toolkits googlecalendar,gmail
 ```
 
 - Batch related discovery work into one `search` invocation, then move back to `execute` once the correct slugs are known.
+- `composio search "<query>" --toolkits github` returns nothing — github is intentionally hidden (see the GitHub callout at the top).
 
 ## `link` - Connect An Account
 
@@ -92,8 +108,10 @@ Key flags:
 Use `proxy` when a toolkit supports a raw API operation that is easier than finding a dedicated tool slug.
 
 ```bash
-composio proxy https://api.github.com/user --toolkit github --method GET </dev/null
+composio proxy https://gmail.googleapis.com/gmail/v1/users/me/profile --toolkit gmail --method GET </dev/null
 ```
+
+> `composio proxy ... --toolkit github` is blocked — github isn't on the `/cli` surface. Use `aramb_toolkits.get_github_credential` then native `gh api /user`.
 
 ## `run` - Scripting, LLMs, and Programmatic Workflows
 
@@ -104,7 +122,7 @@ For programmatic calls, loops, output plumbing, or anything beyond a single tool
 Chain multiple tools:
 ```bash
 composio run '
-  const me = await execute("GITHUB_GET_THE_AUTHENTICATED_USER");
+  const me = await execute("GMAIL_GET_PROFILE");
   const emails = await execute("GMAIL_FETCH_EMAILS", { max_results: 1 });
   console.log({ login: me.data.login, fetchedEmails: !!emails.data });
 '
@@ -114,7 +132,7 @@ Fan out with Promise.all:
 ```bash
 composio run '
   const [me, emails] = await Promise.all([
-    execute("GITHUB_GET_THE_AUTHENTICATED_USER"),
+    execute("GMAIL_GET_PROFILE"),
     execute("GMAIL_FETCH_EMAILS", { max_results: 5 }),
   ]);
   console.log({ login: me.data.login, emailCount: emails.data.messages?.length });
