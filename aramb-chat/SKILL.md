@@ -34,6 +34,12 @@ Rules:
 
 ## Ask the user a question (blocking)
 
+> **CRITICAL — never use the built-in/native `AskUserQuestion` popup.** It renders
+> ONLY in the web UI and never reaches Slack (or any chat surface), so a Slack user
+> sees nothing and the run blocks forever on an answer they cannot give. ALWAYS ask
+> via `aramb_chat.ask_question` below — it routes to the user's actual surface
+> (Slack thread → interactive buttons, or web) and resumes the turn on their answer.
+
 ```bash
 # Free-form question (user types a custom answer)
 npx mcporter call aramb_chat.ask_question project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" question="Your question?"
