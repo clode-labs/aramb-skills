@@ -16,7 +16,14 @@ argument-hint: "[task or URL]"
 
 # Aramb Browser
 
-All tools: `npx mcporter call aramb-browser.<tool> [param=value ...]`
+All tools: `npx mcporter call aramb_browser.<tool> [param=value ...]`
+
+> **Heads-up — mcp server renamed.** The mcp server used to be
+> `aramb-browser` (hyphenated) and is now `aramb_browser` (underscored), to
+> match the rest of the `aramb_*` namespaces. The binary on disk is still
+> `aramb-browser`; only the mcp-server name changed. Always call
+> `aramb_browser.<tool>` — the hyphenated form is no longer registered, so a
+> `aramb-browser.<tool>` call will be rejected as an unknown server.
 
 ## Fetch hierarchy — reach for the browser LAST
 
@@ -80,7 +87,7 @@ Re-fire on every new attention-request even if you've already delivered the chip
 **Start every web task by listing.** Always:
 
 ```bash
-npx mcporter call aramb-browser.browser_list
+npx mcporter call aramb_browser.browser_list
 ```
 
 - Slug matches an existing browser → **reuse it**. `new_page browser=<app-slug>`, capture `target` from the footer, navigate.
@@ -107,7 +114,7 @@ Lifecycle tools (`browser_create`, `browser_list`, `browser_switch`, `browser_st
 Only if `browser_list` had no match for your slug:
 
 ```bash
-npx mcporter call aramb-browser.browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30
+npx mcporter call aramb_browser.browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30
 ```
 
 Steel is the default — it ships with residential proxy and managed captcha solving. `browser_type=chrome` is required.
@@ -127,8 +134,8 @@ When a steel session is solving a captcha, the Aramb viewer UI shows a "solving 
 Chain create + first navigate in one Bash call (shell `cwd` resets between mcporter calls; `&&` avoids drift):
 
 ```bash
-npx mcporter call aramb-browser.browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30 \
-  && npx mcporter call aramb-browser.navigate_page browser=<app-slug> url=https://example.com
+npx mcporter call aramb_browser.browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30 \
+  && npx mcporter call aramb_browser.navigate_page browser=<app-slug> url=https://example.com
 ```
 
 ### Captcha-protected page — wait, then ask
@@ -176,19 +183,19 @@ Only call `browser_context_create` + `browser_save_context` if the user confirms
 
 ```bash
 # List
-npx mcporter call aramb-browser.browser_context_list
+npx mcporter call aramb_browser.browser_context_list
 
 # Reserve a slot (required before first save)
-npx mcporter call aramb-browser.browser_context_create context_name=<name>
+npx mcporter call aramb_browser.browser_context_create context_name=<name>
 
 # Save current browser state into the slot
-npx mcporter call aramb-browser.browser_save_context browser=<app-slug> context_name=<name>
+npx mcporter call aramb_browser.browser_save_context browser=<app-slug> context_name=<name>
 
 # Apply a saved context onto a live browser
-npx mcporter call aramb-browser.browser_load_context browser=<app-slug> context_name=<name>
+npx mcporter call aramb_browser.browser_load_context browser=<app-slug> context_name=<name>
 
 # Delete (Redis record + S3 tarball)
-npx mcporter call aramb-browser.browser_context_destroy context_name=<name>
+npx mcporter call aramb_browser.browser_context_destroy context_name=<name>
 ```
 
 Naming: one context per app-slug per logical identity (e.g. `reddit-gather-a-login`). Reuse the same name; re-save (after user approval) only when state has materially changed.
@@ -218,7 +225,7 @@ Error behavior:
 
 ### Start a session
 ```bash
-npx mcporter call aramb-browser.browser_list
+npx mcporter call aramb_browser.browser_list
 # slug present → new_page browser=<app-slug>, capture target, navigate
 # slug absent  → browser_context_list, prompt user to load a saved context or skip,
 #                then browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30 [session_context=<value>]
@@ -233,28 +240,28 @@ npx mcporter call aramb_chat.deliver_artifacts \
 
 ### Scrape Reddit / social — browser, never `.json` curl
 ```bash
-npx mcporter call aramb-browser.navigate_page browser=<app-slug> target=<tid> \
+npx mcporter call aramb_browser.navigate_page browser=<app-slug> target=<tid> \
   url="https://old.reddit.com/r/<sub>/top/?t=month"
-npx mcporter call aramb-browser.evaluate_script browser=<app-slug> target=<tid> \
+npx mcporter call aramb_browser.evaluate_script browser=<app-slug> target=<tid> \
   function="() => Array.from(document.querySelectorAll('.thing.link')).map(el => ({title: el.querySelector('a.title')?.textContent?.trim(), url: el.querySelector('a.comments')?.href, score: el.querySelector('.score.unvoted')?.title}))"
 ```
 
 ### Search engine query — browser, not WebSearch
 ```bash
-npx mcporter call aramb-browser.navigate_page browser=<app-slug> target=<tid> \
+npx mcporter call aramb_browser.navigate_page browser=<app-slug> target=<tid> \
   url="https://duckduckgo.com/?q=<query>"
-npx mcporter call aramb-browser.evaluate_script browser=<app-slug> target=<tid> \
+npx mcporter call aramb_browser.evaluate_script browser=<app-slug> target=<tid> \
   function="() => Array.from(document.querySelectorAll('article')).map(a => ({title: a.querySelector('h2')?.innerText, url: a.querySelector('a')?.href}))"
 ```
 
 ### Parallel sub-agents — one browser, isolated tabs
 ```bash
 # Agent A
-npx mcporter call aramb-browser.new_page browser=<app-slug>      # footer → target-A
-npx mcporter call aramb-browser.navigate_page browser=<app-slug> target=<target-A> url=https://a.com
+npx mcporter call aramb_browser.new_page browser=<app-slug>      # footer → target-A
+npx mcporter call aramb_browser.navigate_page browser=<app-slug> target=<target-A> url=https://a.com
 # Agent B (no collision with A)
-npx mcporter call aramb-browser.new_page browser=<app-slug>      # footer → target-B
-npx mcporter call aramb-browser.navigate_page browser=<app-slug> target=<target-B> url=https://b.com
+npx mcporter call aramb_browser.new_page browser=<app-slug>      # footer → target-B
+npx mcporter call aramb_browser.navigate_page browser=<app-slug> target=<target-B> url=https://b.com
 ```
 
 ## Task
