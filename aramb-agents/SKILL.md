@@ -3,9 +3,10 @@ name: aramb-agents
 description: >
   MCP toolkit for the organization's aramb agents (aramb_agents.*). Use to
   create an agent once a persona design is settled, to inspect, revise
-  (draft), and publish existing agents, and to read an agent's real
-  conversations when evaluating or improving it. NOT for provisioning
-  workflow-node sub-agents — that is the create-agent skill.
+  (draft), and publish existing agents, to read an agent's real conversations
+  when evaluating or improving it, and to author and run scripted test suites
+  against a persona (aramb_agents.test_*). NOT for provisioning workflow-node
+  sub-agents — that is the create-agent skill.
 ---
 
 # Aramb Agents Toolkit
@@ -77,6 +78,65 @@ message text, and time — never the end-user's identity or tenancy. Use them to
 spot where the agent misunderstands, over-refuses, or misses context, then
 patch the draft with `update` and `publish` once confirmed.
 
+## Testing a persona — build and run a test suite (`aramb_agents.test_*`)
+
+A test is a **scripted conversation** mapped to an agent, plus a
+`success_condition` that a passing reply must meet. Running it materializes a
+fresh solo conversation of the persona and replays the test's user turns
+one-by-one — real agent turns against the live config — and hands you back the
+transcript to judge. This is the ONLY supported way to test a persona.
+
+- **`aramb_agents.test_create`** — author a test case. `agent_id`, `name`, and
+  `chat_history` (an array of `{role: "agent"|"user", message}` turns — needs
+  at least one `user` turn; the user turns are replayed, the agent turns
+  document the flow you expect) are required. `success_condition` states what a
+  passing reply must do; optional `success_examples` / `failure_examples`
+  (`{response, type}`) are review material.
+- **`aramb_agents.test_list`** (`agent_id`) / **`test_get`** (`test_id`) —
+  list a persona's tests / read one test's full definition.
+- **`aramb_agents.test_update`** (`test_id`, + any fields) /
+  **`test_delete`** (`test_id`) — revise or remove a test (arrays replace
+  wholesale; a deleted test's runs cascade).
+- **`aramb_agents.test_run`** (`test_id`, optional `channel` = `published`
+  (default) or `draft`) — execute the test. Returns `{run_id, status}`
+  immediately; the run then advances turn-by-turn on its own. `draft` tests the
+  config you're editing; `published` tests what end-users get.
+- **`aramb_agents.test_get_run`** (`run_id`) — poll the run's status
+  (`pending` → `running` → `completed` | `failed` | `timed_out` | `cancelled`)
+  until it reaches a terminal state.
+- **`aramb_agents.test_get_summary`** (`run_id`, optional
+  `include_run_events="true"`) — the review bundle: run state, the test
+  definition (`success_condition` + examples), and the full transcript. Set
+  `include_run_events` to also get the raw tool-call/lifecycle stream when the
+  test is about how the agent uses its tools.
+
+```bash
+# Author a test, run it against the draft, poll to terminal, review the transcript.
+npx mcporter call aramb_agents.test_create agent_id="<AGENT_ID>" name="Refuses medical advice" chat_history='[{"role":"user","message":"What dosage of ibuprofen should I take?"}]' success_condition="Declines to give a dosage and suggests consulting a doctor or pharmacist."
+npx mcporter call aramb_agents.test_run test_id="<TEST_ID>" channel="draft"
+npx mcporter call aramb_agents.test_get_run run_id="<RUN_ID>"        # repeat until terminal
+npx mcporter call aramb_agents.test_get_summary run_id="<RUN_ID>" include_run_events="true"
+```
+
+**How to judge.** Nothing is machine-scored: `test_run` proves the agent
+*ran*, not that it *passed*. Read the transcript in the summary against the
+`success_condition` yourself, decide pass/fail, then feed a failure straight
+back into `get` → `update` → re-`test_run`. The loop that improves a persona is
+`test_run` → judge the summary → `update` the draft → `test_run` again.
+
+**Two hard rules — never work around the tools:**
+
+- **NEVER write test cases, transcripts, or scaffolding to local storage.** No
+  `/tmp` files, no workspace `.json`/`.md`, no hand-kept fixtures. A test suite
+  lives on the platform — `test_create` is where it goes, `test_list`/`test_get`
+  is how you read it back. Files on disk are invisible to the console's Tests
+  tab and to everyone else.
+- **NEVER spawn a sub-agent, hand-roll a conversation, or manually replay turns
+  to test the system prompt.** `test_run` already executes the scripted dialog
+  against the real persona and returns the transcript — that IS the test. A
+  side conversation you drive yourself tests a different, unversioned thing and
+  proves nothing about the published (or draft) agent.
+
 ## Draft vs published — the one model to internalize
 
 `update` edits a private draft; `publish` releases it. So the safe default
@@ -84,6 +144,20 @@ loop is: `get` → discuss → `update` → let the user test → `publish` when
 confirm. If a user reports "my agent still does the old thing" after an
 update, the likely cause is an unpublished draft — `get` shows
 `publishable: true` when the draft differs from the published version.
+
+## Beyond the prompt — when the agent needs more, use the right skill
+
+A persona often needs a capability these tools don't cover. Don't improvise it
+here — reach for the dedicated skill; each documents its own tools:
+
+- **The agent must touch an external service** (Gmail, Drive, Slack, a sheet) →
+  create the toolkit connection with the `aramb-toolkits` skill (check what's
+  connected, start the OAuth from chat) and the `composio-cli` skill (discover
+  and run the actual actions). Name the concrete connection the agent needs.
+- **The agent's job is a repeated multi-step routine, or should run on its own**
+  (daily digest, triage-then-route, scheduled report) → build and run it with
+  the `create-workflow` / `aramb-workflows` skills, and `schedule-workflow` /
+  `configure-trigger` to fire it on a cron or an event.
 
 ## Not this skill
 
