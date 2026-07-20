@@ -145,6 +145,20 @@ confirm. If a user reports "my agent still does the old thing" after an
 update, the likely cause is an unpublished draft — `get` shows
 `publishable: true` when the draft differs from the published version.
 
+## Beyond the prompt — when the agent needs more, use the right skill
+
+A persona often needs a capability these tools don't cover. Don't improvise it
+here — reach for the dedicated skill; each documents its own tools:
+
+- **The agent must touch an external service** (Gmail, Drive, Slack, a sheet) →
+  create the toolkit connection with the `aramb-toolkits` skill (check what's
+  connected, start the OAuth from chat) and the `composio-cli` skill (discover
+  and run the actual actions). Name the concrete connection the agent needs.
+- **The agent's job is a repeated multi-step routine, or should run on its own**
+  (daily digest, triage-then-route, scheduled report) → build and run it with
+  the `create-workflow` / `aramb-workflows` skills, and `schedule-workflow` /
+  `configure-trigger` to fire it on a cron or an event.
+
 ## Not this skill
 
 - **Workflow-node sub-agents** (a persona to own one step of a workflow you
