@@ -60,7 +60,7 @@ will answer "none" when the project actually has workflows. Use `list project_id
 
 ```bash
 npx mcporter call aramb_workflows.create \
-  application_id="<APPLICATION_ID>" \
+  agent_id="<AGENT_ID>" \
   project_id="<PROJECT_ID>" \
   name="<workflow name>" \
   description="<workflow description>" \
@@ -71,7 +71,8 @@ npx mcporter call aramb_workflows.create \
   edges='[{"source":1,"target":2}]'
 ```
 
-- **`project_id` is required; `application_id` is optional/legacy.** Pass `project_id` alone to create a **project-scoped / appless** workflow — this is the norm. The workflow is keyed by its own lineage (`workflow_id`) and belongs to the project, not a channel-app.
+- **A workflow is an integral part of a single agent — pass `agent_id` on `create`.** A workflow is owned by exactly one agent and is discoverable and runnable ONLY by that agent; it is NOT a standalone, reusable-across-agents asset. When you are building a workflow for an agent, always pass `agent_id="<the agent it belongs to>"` — that one call creates the workflow AND stamps the ownership edge (create-and-link in one step). Never create an orphan/unlinked workflow while building for an agent. (To link a workflow that already exists to an agent, use `aramb_agents.attach_workflow` — but prefer create-with-`agent_id`.)
+- **`project_id` is required; `application_id` is optional/legacy.** Pass `project_id` (alongside `agent_id`) to create the workflow. The workflow is keyed by its own lineage (`workflow_id`) and belongs to its owning agent.
 - **`application_id` (optional, legacy app-bound)** — passing it binds the workflow to one application. App-bound workflows retain the old "at most one per application" behavior, so a second `create` with the same `application_id` fails (use `aramb_workflows.update` to modify it). Appless workflows have no such limit — a project can hold many.
 - Per-user **system** workflows (e.g. the discovery report) are appless workflows in the user's **private project**. They deliver output via **DM** (chil `chat.send_dm`), never a public channel-app post. `get` / `update` by `workflow_id` work identically for appless workflows. (Template imports of system workflows arrive pre-created — polish them via the `import-workflow` skill, don't `create` them.)
 - **Edges are top-level**, not per-node. Do NOT emit `dependencies` or `dependsOn` on nodes.
@@ -217,38 +218,27 @@ Delivery is persisted and retried with exponential backoff, so the same
 `Webhook-Id` may arrive more than once — receivers must be **idempotent on
 `Webhook-Id`**.
 
-## Publishing a workflow — `aramb_workflows.publish` (toolkit gate)
+## Publishing a workflow — rides on publishing the AGENT
 
-A workflow only runs (by schedule or manual run) once it is **published**.
-`aramb_workflows.create` publishes automatically **only when the workflow needs no
-third-party toolkit**. When the workflow depends on toolkits, `create` returns
-`"published": false` with a `requires_toolkits` list, and you must switch it on
-yourself once those toolkits are connected:
+A workflow is part of its owning agent, so it does NOT have a separate publish step
+of its own. **`aramb_workflows.create` leaves the workflow a DRAFT — it is NOT
+auto-published.** The builder TESTS the draft (via Preview / `aramb_workflows.run` —
+see below), and the workflow becomes a live, frozen version **automatically when the
+AGENT is published** (`aramb_agents.publish`). There is no "publish this workflow"
+action for you to perform as part of building.
 
-1. **Check connections.** For EACH slug in `requires_toolkits`, call
-   `aramb_toolkits.check_connection toolkit="<SLUG>"`.
-2. **If any is missing**, tell the user exactly which toolkit(s) to connect and
-   **stop**. Do NOT publish, and do NOT claim the workflow is live, scheduled, or
-   runnable. (brahmi cannot run a workflow whose toolkits aren't connected, and it
-   cannot verify the connection for you — that's why this gate is yours.)
-3. **Once all are connected**, publish:
-   ```bash
-   npx mcporter call aramb_workflows.publish workflow_id="<WORKFLOW_ID>"
-   ```
-   `aramb_workflows.publish` takes one param, **`workflow_id`** (required), and on
-   success returns `{ "workflow_id", "status": "active", "version", "published_at" }`.
-   A `status: "active"` result means it is now live — only then tell the user it's
-   ready, and offer to run it now or leave it on its schedule. (Idempotent if the
-   workflow is already active.)
-
-If the publish eval gate fails (e.g. a required toolkit isn't connected), the tool
-returns a **structured error naming the missing toolkit(s)** — relay those names to
-the user verbatim so they know exactly what to connect. Don't treat it as a generic
-failure, and don't claim the workflow is live.
-
-Never instruct the user to "publish from the Workflows tab" — publishing is this
-tool, and you (the agent) can call it directly. Never publish a toolkit-dependent
-workflow whose toolkits you have not confirmed connected.
+- **Do NOT call a workflow-publish tool as a build step.** Publishing is a property
+  of the agent: publish the agent and its workflow(s) freeze into the published
+  version alongside it. Never tell the user to "publish the workflow from the
+  Workflows tab" either — that step does not exist in this model.
+- **Test the draft with Preview.** While the workflow is a draft, the builder
+  validates it by running/previewing it — `aramb_workflows.run` works on the draft
+  (see "Running an existing workflow"). Iterate on the draft until it does what the
+  user wants; publishing the agent is what makes it live for end-users.
+- **Toolkit connections still matter for a run to succeed**, but they are no longer a
+  publish gate you operate. If a node needs a toolkit the user hasn't connected, the
+  run surfaces that — verify connections up front (`aramb_toolkits.check_connection`)
+  and tell the user which to connect, rather than calling any publish tool.
 
 ## Running an existing workflow (manual run)
 
@@ -273,8 +263,8 @@ State the matched workflow's **exact `name`** (note its `status`, and
 
 - **Multiple plausible matches** → list them and ask which one.
 - **No match** → say so and offer to list what exists. Never invent a `workflow_id`.
-- **Status not runnable** (e.g. `draft` / `review` / paused) → surface that in the
-  confirmation so the user knows it may not fire as-is.
+- **A `draft` workflow IS runnable** (run tests the draft) — only a paused workflow
+  won't fire as-is; surface that in the confirmation if so.
 
 ### 3. Run — only after explicit confirmation
 ```bash
@@ -289,12 +279,12 @@ npx mcporter call aramb_workflows.run \
 step (`<run_input>`) — include it only if the user supplied extra instructions for
 this run; omit it otherwise.
 
-**Auto-publish on run:** if the workflow is still a draft, `run` **publishes it
-first** (same "publishes on first run" semantics), then triggers — so a confirmed
-run on an unpublished-but-ready workflow still works without a separate
-`publish` call. That first publish runs the same toolkit gate, so if a required
-toolkit isn't connected the call comes back with the structured
-missing-toolkit error instead of a `run_id` (see step 4).
+**Running never blocks on publish.** `aramb_workflows.run` runs the **draft** if the
+agent is unpublished, or the **published version** if the agent has been published —
+either way the run just works, with no separate publish call. So during building the
+Architect can rely on `run` (Preview) to test the draft. If a node needs a toolkit
+the user hasn't connected, the run surfaces that (no `run_id`) — verify connections
+up front and tell the user which to connect (see step 4).
 
 ### 4. Report — only what the tool actually returned
 Read `aramb_workflows.run`'s result before you say anything:

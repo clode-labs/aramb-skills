@@ -28,6 +28,23 @@ The response tells you the id brahmi assigned.
 
 ## Non-negotiables — read these before you call `aramb_workflows.create`
 
+0. **The workflow belongs to exactly ONE agent — either create it with `agent_id`, or
+   attach it to an agent once the agent exists.** A workflow is an integral part of a
+   single agent: discoverable and runnable ONLY by that agent, never a standalone,
+   reusable-across-agents asset. **Two equally-valid orderings** get you there:
+   - **Agent-first (default):** the agent already exists (or you create it first), so
+     pass `agent_id="<that agent's id>"` on `aramb_workflows.create`. That one call
+     creates the workflow AND stamps the ownership edge (create-and-link in one step).
+   - **Workflow-first:** the builder wants to design and TEST the workflow before
+     committing to an agent. That's fine — build it, iterate and Preview it on its own,
+     then when they create (or pick) the agent, link it with
+     `aramb_agents.attach_workflow` (the `agent_id` gets stamped and the workflow is
+     re-filed under the agent's template project). Attach and create-with-`agent_id`
+     **converge on the same end state** — owned by and filed under the agent.
+   Don't leave a workflow **permanently** unattached: a workflow that ultimately belongs
+   to an agent must end up owned by one — via `agent_id` at create time, or
+   `aramb_agents.attach_workflow` once the agent exists.
+
 1. **Every `create` is a NEW, separate workflow. NEVER replace an existing one.**
    A project can hold many workflows side by side — `aramb_workflows.create` always
    adds a new one; it never touches what's already there. If the user says "create
@@ -38,22 +55,26 @@ The response tells you the id brahmi assigned.
    `update-workflow` skill, never this one. Silently replacing a user's workflow is
    a serious failure.
 
-2. **Created workflows publish automatically — UNLESS they need a toolkit the user
-   hasn't connected.** `aramb_workflows.create` saves the workflow project-scoped and,
-   when it depends on **no** third-party toolkit, publishes v1 in the same call
-   (response: `"published": true`) — runnable immediately, no UI step, and you must
-   NOT tell the user to "publish from the Workflows tab" (that step is gone).
-   **But** when the workflow's nodes require toolkits (Gmail, Google Sheets,
-   Composio-backed Slack, …), the response comes back `"published": false` with a
-   `requires_toolkits` list — the workflow is **NOT live yet**. Then you MUST:
-     1. For EACH slug in `requires_toolkits`, call `aramb_toolkits.check_connection`.
-     2. If any is not connected, tell the user plainly which toolkit(s) to connect,
-        and **wait** — do NOT publish, and do NOT say it's ready / scheduled / running.
-     3. Once the user has connected them and all check out, call
-        `aramb_workflows.publish` with the `workflow_id`. Only after publish succeeds
-        is the workflow live and runnable.
-   Read the `message` in the create response — it spells out exactly which toolkits to
-   verify. Never invent a "publish from the UI" step; publishing is `aramb_workflows.publish`.
+2. **The workflow is part of the agent you're building, and stays a DRAFT — do NOT
+   publish it as a build step.** `aramb_workflows.create` files the workflow under the
+   agent (via `agent_id`, see #0) and leaves it a **draft** — it is NOT auto-published.
+   The builder TESTS the draft via Preview (`aramb_workflows.run` works on the draft —
+   see the `aramb-workflows` run section), and the workflow freezes into its live
+   version **automatically when the AGENT is published** (`aramb_agents.publish`).
+   There is **no separate "publish this workflow" step** for you to perform — never
+   call a workflow-publish tool as part of building, and never tell the user to
+   "publish from the Workflows tab" (that step does not exist in this model).
+   Toolkit connections matter in **two** ways. (a) For a *run* to succeed — verify every
+   external system up front with `aramb_toolkits.check_connection` and tell the user
+   plainly which to connect. (b) **For the workflow to go LIVE at publish** — when the
+   agent is published, a workflow whose steps require third-party toolkits is published
+   ONLY if those toolkits are **CONNECTED**; otherwise it stays a draft and the publish
+   response reports it as blocked, naming the missing toolkits. So when a workflow you
+   built needs a toolkit, tell the builder which toolkits it requires and that they must
+   be CONNECTED for it to go live: "The workflow ships when you publish the agent — but
+   only once its toolkits are connected. Connect them on the **Integrations** page, then
+   click Publish." Never call a toolkit-using workflow "live" before its toolkits are
+   connected **and** the agent is published.
 
 3. **Never claim a workflow ran unless the run tool said so.** When the user asks to
    run a workflow, call `aramb_workflows.run` and read its result. If it returns an
@@ -623,9 +644,10 @@ exist or the workflow fails silently at run time. **Hard gate — no "save anywa
 
 Update progress: "Saving workflow to brahmi".
 
-Call `aramb_workflows.create` with `application_id` + `project_id` (both in your
-session metadata / dispatch block). Brahmi creates the workflow row + nodes
-atomically in a single transaction.
+Call `aramb_workflows.create` with `agent_id` (the agent this workflow belongs to)
++ `project_id` (both in your session metadata / dispatch block; `application_id` is
+optional/legacy). Brahmi creates the workflow row + nodes atomically in a single
+transaction, filed under the owning agent as a **draft** — no publish step.
 
 **Do not reach this step if the browser-login pre-check found a missing
 `<site>-login` slot** — that gate is a hard stop, not advisory.
@@ -645,6 +667,7 @@ atomically in a single transaction.
 
 And on the call itself:
 
+- **`agent_id`** — the id of the agent this workflow belongs to. Pass it in the **agent-first** flow — it creates-and-links the workflow to that agent in one call. Omit it only in the deliberate **workflow-first** flow (build/test standalone, then `aramb_agents.attach_workflow` links it once the agent exists). Either way the workflow must end up owned by an agent — don't leave it *permanently* orphaned.
 - **`default_node_settings`** — the workflow-wide defaults block. Emit it; don't leave it empty.
 - **`trigger_choice`** — OPTIONAL (`toolkit_event` | `cron` | `manual`). Pass it only if the user picked a firing condition in Section 4.5; omit it otherwise. The save does NOT depend on it.
 - **No `env_variables`** — omit the field entirely (the schema rejects a non-empty map).
@@ -688,7 +711,7 @@ The instruction body (top paragraph) is per-node business context. The `When don
 
 ```bash
 npx mcporter call aramb_workflows.create \
-  application_id="<application_id>" \
+  agent_id="<agent_id>" \
   project_id="<project_id>" \
   name="Descriptive Workflow Name" \
   description="What this workflow does in 1-2 sentences" \
@@ -812,6 +835,7 @@ could change, then stop — don't retry.
 
 ## Rules
 
+- **The workflow belongs to one agent — pass `agent_id` on `create`** (agent-first, create-and-link in one step), **or** attach it later with `aramb_agents.attach_workflow` (workflow-first); both converge on the same owned-and-filed end state, so never leave it *permanently* orphaned. It stays a **draft** and goes live automatically when that agent is published — **but a toolkit-using workflow only goes live once its toolkits are connected** (connect them on the **Integrations** page; see MUST rule #2). Do NOT call any workflow-publish tool as a build step, and test the draft via Preview / `aramb_workflows.run`.
 - Each node's `prompt` carries real business context baked in.
 - **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
 - **Always emit `default_node_settings`** with the full sensible-defaults block; never leave it empty.
