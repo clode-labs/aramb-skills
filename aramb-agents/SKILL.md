@@ -2,9 +2,10 @@
 name: aramb-agents
 description: >
   MCP toolkit for the organization's aramb agents (aramb_agents.*). Use to
-  create an agent once a persona design is settled, and to inspect, revise
-  (draft), and publish existing agents. NOT for provisioning workflow-node
-  sub-agents — that is the create-agent skill.
+  create an agent once a persona design is settled, to inspect, revise
+  (draft), and publish existing agents, and to read an agent's real
+  conversations when evaluating or improving it. NOT for provisioning
+  workflow-node sub-agents — that is the create-agent skill.
 ---
 
 # Aramb Agents Toolkit
@@ -39,6 +40,42 @@ published version.
   snapshots the draft as a new immutable version and makes it what end-users
   get. Treat this as a deliberate, user-confirmed step — draft freely,
   publish on an explicit "ship it".
+- **You need to see how the agent actually behaves with users** →
+  `aramb_agents.conversation_search` then `aramb_agents.conversation_get`.
+  Read real conversations before judging or revising a persona — ground the
+  change in what users actually said and how the agent replied, not a guess.
+
+## Reading conversations (evaluate → improve)
+
+To improve an agent from evidence, read its conversations, then feed what you
+learn back into the `get` → `update` → `publish` loop.
+
+- **`aramb_agents.conversation_search`** — list an agent's conversations,
+  most-recent-activity first. Optional `from`/`to` (RFC3339) window the
+  activity, `order` is `recent` (default) or `oldest`, `limit` defaults to 50
+  (max 200). Returns `{conversations: [{conversation_id, title, created_at,
+  last_message_at}], has_more}`.
+- **`aramb_agents.conversation_get`** — one conversation's messages, oldest
+  first. Optional `from`/`to` (RFC3339) window the messages (`to` is also the
+  backwards-paging cursor — pass the returned `next_before` to page older),
+  `order` is `asc` (default) or `desc`, `limit` defaults to 50 (max 200). Set
+  `include_run_events=true` to also get the agent's run/tool-event stream when
+  you need to review how it used its tools. Returns `{messages: [{role,
+  message_type, content, created_at}], has_more, next_before, run_events?}`.
+
+```bash
+# Find the agent's recent conversations, then read one transcript.
+npx mcporter call aramb_agents.conversation_search agent_id="<AGENT_ID>" order="recent" limit="20"
+npx mcporter call aramb_agents.conversation_get agent_id="<AGENT_ID>" conversation_id="<CONVERSATION_ID>"
+
+# Narrow to a time window, and pull tool usage when diagnosing a tool problem.
+npx mcporter call aramb_agents.conversation_get agent_id="<AGENT_ID>" conversation_id="<CONVERSATION_ID>" from="2026-07-01T00:00:00Z" to="2026-07-08T00:00:00Z" include_run_events="true"
+```
+
+These reads are transcript-only: they surface `role` (user / assistant),
+message text, and time — never the end-user's identity or tenancy. Use them to
+spot where the agent misunderstands, over-refuses, or misses context, then
+patch the draft with `update` and `publish` once confirmed.
 
 ## Draft vs published — the one model to internalize
 
