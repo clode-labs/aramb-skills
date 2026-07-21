@@ -53,14 +53,16 @@ confirm. If a user reports "my agent still does the old thing" after an
 update, the likely cause is an unpublished draft — `get` shows
 `publishable: true` when the draft differs from the published version.
 
-## Workflows are part of the agent
+## An agent can own workflows (an optional binding, not a rule for all workflows)
 
-An agent owns its workflows. A workflow is an integral part of a single agent —
-discoverable and runnable ONLY by that agent, never a standalone asset shared across
-agents. Build workflows **in service of the agent you are designing**, not as reusable
-stand-alone objects:
+Workflows are standalone objects by default and remain so — this section is only about
+the ones you deliberately bind to an agent. A **bound** workflow is owned by, and
+discoverable + runnable by, **exactly one agent**; binding does not turn every workflow
+into an agent-scoped thing, and standalone workflows are unaffected. When you are
+**designing an agent**, build the workflows it needs **bound to that agent** (rather than
+leaving them loose) so the agent can discover and run them:
 
-- A workflow ultimately belongs to **exactly one agent** — and there are **two
+- A **bound** workflow belongs to **exactly one agent** — and there are **two
   equally-valid orderings** to get there. **Agent-first:** create the agent, then
   create the workflow already linked to it by passing `agent_id` on
   `aramb_workflows.create` (create-and-link in one call). **Workflow-first:** if the

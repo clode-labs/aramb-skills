@@ -41,9 +41,10 @@ The response tells you the id brahmi assigned.
      `aramb_agents.attach_workflow` (the `agent_id` gets stamped and the workflow is
      re-filed under the agent's template project). Attach and create-with-`agent_id`
      **converge on the same end state** — owned by and filed under the agent.
-   Don't leave a workflow **permanently** unattached: a workflow that ultimately belongs
-   to an agent must end up owned by one — via `agent_id` at create time, or
-   `aramb_agents.attach_workflow` once the agent exists.
+   If a workflow is **meant for a specific agent**, don't leave it permanently unattached —
+   bind it via `agent_id` at create time, or `aramb_agents.attach_workflow` once the agent
+   exists. A workflow that is **not** tied to a particular agent is fine to leave standalone;
+   binding is only for the ones that belong to an agent.
 
 1. **Every `create` is a NEW, separate workflow. NEVER replace an existing one.**
    A project can hold many workflows side by side — `aramb_workflows.create` always
