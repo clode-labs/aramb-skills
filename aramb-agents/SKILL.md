@@ -198,20 +198,6 @@ leaving them loose) so the agent can discover and run them:
   `aramb_toolkits.check_connection` and tell the builder which toolkits to connect —
   never call a toolkit-using workflow "live" before its toolkits are connected **and**
   the agent is published.
-=======
-## Beyond the prompt — when the agent needs more, use the right skill
-
-A persona often needs a capability these tools don't cover. Don't improvise it
-here — reach for the dedicated skill; each documents its own tools:
-
-- **The agent must touch an external service** (Gmail, Drive, Slack, a sheet) →
-  create the toolkit connection with the `aramb-toolkits` skill (check what's
-  connected, start the OAuth from chat) and the `composio-cli` skill (discover
-  and run the actual actions). Name the concrete connection the agent needs.
-- **The agent's job is a repeated multi-step routine, or should run on its own**
-  (daily digest, triage-then-route, scheduled report) → build and run it with
-  the `create-workflow` / `aramb-workflows` skills, and `schedule-workflow` /
-  `configure-trigger` to fire it on a cron or an event.
 
 ## Not this skill
 
