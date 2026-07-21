@@ -428,7 +428,7 @@ The response includes:
 - `stateful_reset_reason` (only when reset)
 - `schedule_paused` + `schedule_paused_reason` (only when an enabled schedule was auto-paused due to env mismatch)
 
-The response `status` is always `"draft"` after a successful update — brahmi demotes every updated workflow back to draft so the user re-publishes deliberately.
+The response `status` is always `"draft"` after a successful update — an updated workflow returns to draft so the change ships deliberately. A workflow is part of its owning agent (whether it was created with `agent_id` or later attached via `aramb_agents.attach_workflow` — same end state) and has no publish step of its own: the draft goes live automatically when the **agent** is (re-)published (`aramb_agents.publish`) — **but only if the workflow's required toolkits are connected.** A workflow whose steps need third-party toolkits (Gmail, Slack…) is published with the agent ONLY once those toolkits are **CONNECTED**; otherwise it stays a draft and the publish response reports it as blocked, naming the missing toolkits. Test the draft via Preview (`aramb_workflows.run` works on the draft) in the meantime; never call a workflow-publish tool yourself.
 
 **Never retry `aramb_workflows.update`.** If the first call succeeds you're done. If it errors (bad payload, cycle in edges), close the task as failed (Path A) or tell the user the concise reason and stop (Path C) — don't retry silently. The original definition is intact on failure (the swap is atomic; rejection happens before it). Brahmi emits `workflow.update_failed` so the UI shows "Update failed, original kept".
 
@@ -442,11 +442,19 @@ The response `status` is always `"draft"` after a successful update — brahmi d
 
 If you only edited the graph (no settings touched), no settings line needed.
 
-**Status is now `draft` — re-publish required.** Every successful update demotes the
-workflow to `draft`, regardless of where it was before. The new definition is NOT
-live until the user re-publishes (brahmi auto-evaluates toolkit connections at
-publish time). Cron schedules do NOT fire from `draft`, so any scheduled workflow is
-effectively paused until republish. Always surface this.
+**Status is now `draft` — goes live when the AGENT is published.** Every successful
+update returns the workflow to `draft`, regardless of where it was before. The new
+definition is NOT live until the owning **agent** is (re-)published
+(`aramb_agents.publish`) — there is no separate workflow-publish step, and you must
+not call one. **And if this workflow's steps require third-party toolkits, it goes
+live at publish ONLY once those toolkits are CONNECTED** — otherwise it stays a draft
+and the publish response flags it as blocked with the missing toolkit names. So if the
+workflow needs a toolkit the user hasn't connected, tell them plainly to connect it on
+the **Integrations** page before publishing the agent (verify with
+`aramb_toolkits.check_connection`). The builder can Preview / `aramb_workflows.run` the
+draft to test it now. Cron schedules fire from the live (published) version, so a
+scheduled workflow runs the previous published definition until the agent is
+re-published. Always surface this.
 
 If `stateful_continuity` is `"reset"`: the workflow is `stateful=true` AND the new
 entry node uses a different agent than before. The next stateful run starts a fresh
@@ -465,7 +473,7 @@ the response:
 npx mcporter call aramb_tasks.update \
   task_id="<your task_id>" \
   status="done" \
-  outputs='{"workflow_id":"<workflow_id>","node_count":<number>,"summary":"Updated workflow: <one-line summary, in inheritance terms when settings were touched>. Status: draft (re-publish to put it live). Stateful chain: preserved | reset. Schedule: unchanged | paused."}'
+  outputs='{"workflow_id":"<workflow_id>","node_count":<number>,"summary":"Updated workflow: <one-line summary, in inheritance terms when settings were touched>. Status: draft (publish the agent to put it live). Stateful chain: preserved | reset. Schedule: unchanged | paused."}'
 ```
 
 If the user's request also contained a schedule-shaped phrase you didn't handle
@@ -489,7 +497,7 @@ npx mcporter call aramb_tasks.update \
 your reply text (brahmi saves it as the chat row):
 
 ```
-Updated workflow "<name>" — <one-line summary of what changed>. Status: draft (re-publish to put it live).
+Updated workflow "<name>" — <one-line summary of what changed>. Status: draft (goes live when you publish the agent).
 ```
 
 Include any side effects (stateful chain reset, schedule auto-paused) in the same
@@ -519,4 +527,4 @@ definition is intact.
 - Dependencies live ONLY in the top-level `edges` array. Never on nodes.
 - `edges` must be a DAG — no cycles.
 - `assigned_agent` should match existing agent names.
-- **Close out:** Path A — always `aramb_tasks.update` (`done` or `failed`), then STOP; never leave `in_progress`. Path C — confirm inline in your reply text (success or failure), always mention the `draft` re-publish step on success.
+- **Close out:** Path A — always `aramb_tasks.update` (`done` or `failed`), then STOP; never leave `in_progress`. Path C — confirm inline in your reply text (success or failure), always mention on success that the update is a `draft` that goes live when the agent is published (once its required toolkits are connected; no separate workflow-publish step).

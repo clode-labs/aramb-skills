@@ -24,13 +24,18 @@ published version.
 
 ## Which tool, when
 
-- **The design is settled and the user wants the agent to exist** →
+- **The design is settled and the user wants a NEW agent to exist** →
   `aramb_agents.create`. Create only AFTER the persona is agreed — name and
-  the full system prompt are required, and the agent is born published as v1.
-  Never create speculatively mid-brainstorm; iterate on the design in
-  conversation first.
+  the full system prompt are required. Never create speculatively mid-brainstorm;
+  iterate on the design in conversation first. **Only call `create` when there is
+  genuinely no agent yet in the conversation.**
+- **You are already operating on / within an existing agent** (an agent is already
+  in context, being edited or built out) → **`aramb_agents.update`, NOT `create`.**
+  When a change lands and there is already an agent you're working on, revise THAT
+  agent — do not spin up a brand-new one. A second agent for work that belongs on
+  the current one is a duplication bug.
 - **Before creating anything** → `aramb_agents.list`. If an agent with the
-  same purpose already exists, propose updating it instead of duplicating.
+  same purpose already exists, update it instead of duplicating.
 - **Before ANY revision** → `aramb_agents.get`. The stored draft is the
   source of truth, not this conversation — someone may have edited the agent
   elsewhere since you last saw it. Read, then patch.
@@ -158,6 +163,41 @@ here — reach for the dedicated skill; each documents its own tools:
   (daily digest, triage-then-route, scheduled report) → build and run it with
   the `create-workflow` / `aramb-workflows` skills, and `schedule-workflow` /
   `configure-trigger` to fire it on a cron or an event.
+
+## An agent can own workflows (an optional binding, not a rule for all workflows)
+
+Workflows are standalone objects by default and remain so — this section is only about
+the ones you deliberately bind to an agent. A **bound** workflow is owned by, and
+discoverable + runnable by, **exactly one agent**; binding does not turn every workflow
+into an agent-scoped thing, and standalone workflows are unaffected. When you are
+**designing an agent**, build the workflows it needs **bound to that agent** (rather than
+leaving them loose) so the agent can discover and run them:
+
+- A **bound** workflow belongs to **exactly one agent** — and there are **two
+  equally-valid orderings** to get there. **Agent-first:** create the agent, then
+  create the workflow already linked to it by passing `agent_id` on
+  `aramb_workflows.create` (create-and-link in one call). **Workflow-first:** if the
+  builder wants to design and TEST a workflow before committing to an agent, build it
+  on its own, iterate/preview it, then link it to the agent with
+  `aramb_agents.attach_workflow` once the agent exists (its `agent_id` gets stamped and
+  the workflow is re-filed under the agent's template project). Attach and
+  create-with-`agent_id` **converge on the same end state** — owned by and filed under
+  the agent. Don't leave a workflow **permanently** unattached. See the
+  `create-workflow` and `aramb-workflows` skills.
+- A workflow stays a **draft** on creation; the builder tests it via Preview. There
+  is **no separate "publish the workflow" step** — a workflow freezes into its live
+  version **automatically when you `aramb_agents.publish` the owning agent**. So
+  publishing the agent is what ships both the persona and its workflows together.
+- **Publishing a toolkit-using workflow is gated on its toolkits being connected.**
+  When you publish the agent, the backend publishes each bound workflow draft — BUT a
+  workflow whose steps require third-party toolkits (Gmail, Slack, Notion…) goes live
+  ONLY if those toolkits are actually **CONNECTED**. If a required toolkit isn't
+  connected, that workflow stays a draft and the publish response reports it as blocked,
+  naming the missing toolkits. So the go-live path for such a workflow is: connect its
+  toolkits on the **Integrations** page, then publish the agent. Verify up front with
+  `aramb_toolkits.check_connection` and tell the builder which toolkits to connect —
+  never call a toolkit-using workflow "live" before its toolkits are connected **and**
+  the agent is published.
 
 ## Not this skill
 
