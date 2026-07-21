@@ -114,6 +114,13 @@ has a knowledge base, add one test only its KB can pass.
   (default) or `draft`) — execute the test. Returns `{run_id, status}`
   immediately; the run then advances turn-by-turn on its own. `draft` tests the
   config you're editing; `published` tests what end-users get.
+- **`aramb_agents.test_list_runs`** (`agent_id`; optional `test_id`, `sort`) —
+  list an agent's runs so you can find one to inspect **without already holding a
+  run id**. `agent_id` is required; narrow to a single test with `test_id`;
+  `sort` is `recent` (default, newest first) or `oldest`. Returns
+  `{runs: [{run_id, test_id, status, current_step, …}]}`. This is the
+  run-discovery entry point — **start here** when asked to evaluate or summarize
+  an agent's recent runs, then feed a `run_id` into `test_get_summary`.
 - **`aramb_agents.test_get_run`** (`run_id`) — poll the run's status
   (`pending` → `running` → `completed` | `failed` | `timed_out` | `cancelled`)
   until it reaches a terminal state.
