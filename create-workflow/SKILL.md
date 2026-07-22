@@ -5,9 +5,10 @@ description: >
   channels: (1) task dispatch — the master consolidates the application's user
   tasks into a reusable workflow; (2) chat dispatch — author from the user's
   explicit description or the work done so far in this conversation (the master in
-  team mode, or the solo agent in solo mode). Each node gets its own dedicated
-  agent for its role, provisioned via create-agent the SAME way in solo and team —
-  mode does not affect provisioning, only close-out (chat vs tasks).
+  team mode, or the solo agent in solo mode). Each node gets an agent for its role
+  the SAME way in solo and team — reuse an existing agent, or author the sub-agent's
+  full spec INLINE on the workflow via `agent_specs`; mode affects only close-out
+  (chat vs tasks), never how nodes get their agents.
   Use when: asked to create a workflow from prior tasks, "build a workflow
   that…", "create a workflow based on the work done so far in this chat", or told
   to use the create-workflow skill. NOT for: editing an existing workflow (use
@@ -104,10 +105,11 @@ Check your own tool list:
   the work directly in-session and close out in chat.
 
 **That is the ONLY difference between the modes** — close-out channel (tasks vs
-chat). Both modes have the `create-agent` skill and the full MCP surface
-(toolkits, triggers, browser). **Provisioning agents works IDENTICALLY in both
-modes** — solo vs team does not enter into the persona decision at all. See
-"Per-node persona — decided by the work" below.
+chat). Both modes have the full MCP surface (toolkits, triggers, browser) and
+author per-role sub-agents the same way — INLINE on the workflow via `agent_specs`.
+**Assigning a node's agent works IDENTICALLY in both modes** — solo vs team does
+not enter into the persona decision at all. See "Per-node persona — decided by the
+work" below.
 
 ### Axis 2 — Task dispatch or chat dispatch? → decides spec source + close-out
 
@@ -128,39 +130,51 @@ dispatch.)
 
 ### Per-node persona — decided by the work (both modes)
 
-**Every node gets its own dedicated agent suited to that node's role — and this
-is decided IDENTICALLY whether you are solo or master. Mode does NOT affect
-provisioning at all.** A workflow node is a distinct unit of work; give it an
-agent that owns that work.
+**Every node gets an agent suited to that node's role — and this is decided
+IDENTICALLY whether you are solo or master. Mode does NOT affect this at all.** A
+workflow node is a distinct unit of work; give it an agent that owns that work.
 
-For each node, assign a dedicated agent for its role:
+For each node, assign an agent for its role in ONE of two ways:
 
 - **Reuse an existing agent if one already fits the role** — e.g. a roster
   persona that's already provisioned (`developer` for code / clone / implement,
   `backend-tester` / `frontend-tester` / `integration-tester` / `checker` for
-  verify / review, `aramb-deployer` / `local-deployer` for deploys), or an agent
-  you already created earlier in this same workflow.
-- **Otherwise provision a bespoke agent via the `create-agent` skill**, named for
-  its role (e.g. `issue-triager`, `fix-implementer`, `qa-tester`, `pr-author`), to
-  the **template-grade bar**: a real `SOUL.md` / `IDENTITY.md` / `AGENTS.md` —
-  what-good-looks-like, tool routing, failure modes, an explicit output schema,
-  not a one-line persona. The `import-workflow` skill's `<agents>` →
-  `create-agent` mapping (`name` / `identity` / `soul` / `agentsDoc` /
-  `defaultModel` / `defaultBackend` / `defaultThinking`) is the reference for the
-  depth expected.
+  verify / review, `aramb-deployer` / `local-deployer` for deploys). Set the
+  node's `assigned_agent` to that agent's name.
+- **Otherwise author the sub-agent's FULL spec INLINE in the workflow's
+  `agent_specs` array** and reference it by `name` from the node's
+  `assigned_agent`. Name it for its role (`issue-triager`, `fix-implementer`,
+  `qa-tester`, `pr-author`) and write it to the **template-grade bar**: a real
+  `identity` / `soul` / `agentsDoc` — who it is, how it thinks, its operating
+  playbook with tool routing, failure modes, and an explicit output schema — not a
+  one-line persona. The `TemplateAgent` shape is
+  `name` / `displayName` / `identity` / `soul` / `agentsDoc` / `skills` /
+  `defaultModel` / `defaultBackend` / `defaultThinking` (see the `aramb-workflows`
+  skill's `agent_specs` field + "Multi-agent workflow" example for the full
+  contract).
+
+**The specs travel WITH the workflow.** They ride on the same `aramb_workflows.create`
+(or `update`) call — one `agent_specs` array alongside `nodes` + `edges` — and brahmi
+provisions them **deterministically at claim/run**. You do NOT route bespoke node
+agents through a separate agent-creation flow: the Architect never uses the
+benji-CLI `create-agent` runtime path, and this skill does not either. A node whose
+`assigned_agent` names neither an existing roster agent nor an `agent_specs` entry
+**falls back to the main agent** — so only mint a spec for a role that is genuinely
+distinct.
 
 **Do NOT branch this decision on solo vs team.** Solo is NOT limited to a bare
-`"solo"` persona — that was the old, wrong behavior. Both modes provision the same
-way; the *only* thing solo vs team changes is close-out (solo replies in chat,
+`"solo"` persona — that was the old, wrong behavior. Both modes author specs the
+same way; the *only* thing solo vs team changes is close-out (solo replies in chat,
 master creates/closes tasks). The reuse-if-exists step naturally means master
-often reuses roster personas while solo provisions fresh ones — but that's an
+often reuses roster personas while solo authors fresh inline specs — but that's an
 artifact of which agents already exist, not a rule keyed on mode.
 
-**Bare `"solo"` (or any single shared agent) is the EXCEPTION**, used only for a
-trivial single-node workflow or a pure-glue / orchestration node with no real role
-of its own. A multi-step workflow where each node does distinct work (triage →
-implement → test → PR) gets a **distinct dedicated agent per node** — never
-collapse every node onto one `"solo"`.
+**An empty `agent_specs` (all nodes → the main agent) is the EXCEPTION for a
+single-role workflow** — a trivial single-node workflow, or one whose nodes are all
+the same pure-glue / orchestration role. A multi-step workflow where each node does
+distinct work (triage → implement → test → PR) gets a **distinct spec per role**
+in `agent_specs`, each referenced by a node's `assigned_agent` — never collapse
+every node onto one shared agent.
 
 Everything else — node schema, `required_toolkits`, per-step `toolkit`, the
 closing-instruction template, `default_node_settings`, the no-placeholders /
@@ -356,10 +370,10 @@ assistant text as the chat row — no MCP call needed):
 
 Study the spec (the user tasks, the explicit description, or the conversation
 work). Understand: what each step accomplishes, how steps depend on each other,
-**which dedicated agent each node needs (one per node, by its role — decided
-identically in solo and team: reuse a fitting existing agent, else provision a
-bespoke one via `create-agent`; see "Per-node persona — decided by the work")**,
-and what inputs/outputs flow between steps.
+**which agent each node needs (by its role — decided identically in solo and team:
+reuse a fitting existing agent, else author a bespoke sub-agent spec INLINE in the
+workflow's `agent_specs`; see "Per-node persona — decided by the work")**, and what
+inputs/outputs flow between steps.
 
 For chat dispatch this is also the **merge / generalize / split** pass: combine
 adjacent same-agent calls into one node where it makes the workflow cleaner;
@@ -373,8 +387,8 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **Merge or split** steps where it makes the workflow cleaner. Not every source task becomes a node.
 - **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what actually worked but keep the concrete subject matter.
 - **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape.
-- **`assigned_agent` per node** — one dedicated agent per node, by its role, decided IDENTICALLY in solo and team (see "Per-node persona — decided by the work"). For each node: reuse an existing agent that fits the role (a roster persona — `developer` / `*-tester` / `checker` / `*-deployer` — or one you already created in this workflow), otherwise **provision a bespoke agent via `create-agent`** named for its role (`issue-triager`, `fix-implementer`, `qa-tester`, `pr-author`, …) to the template-grade bar. In task dispatch, you may default to the source task's persona. Bare `"solo"` (or any single shared agent) only for a trivial single-node / pure-glue workflow. Do NOT branch on solo vs team.
-- **Do NOT pick a different model per node.** Model/effort/thinking come from the single workflow-wide `default_node_settings` (or, for a bespoke agent, its `defaultModel`); per-node `settings` stays `{}` (inherit). Never stamp `model` on individual nodes — no per-step Haiku/Opus/Sonnet juggling.
+- **`assigned_agent` per node** — one agent per role, decided IDENTICALLY in solo and team (see "Per-node persona — decided by the work"). For each node: reuse an existing agent that fits the role (a roster persona — `developer` / `*-tester` / `checker` / `*-deployer`), otherwise **author a bespoke sub-agent spec INLINE in the workflow's `agent_specs`** named for its role (`issue-triager`, `fix-implementer`, `qa-tester`, `pr-author`, …) to the template-grade bar, and set the node's `assigned_agent` to that spec's `name`. In task dispatch, you may default to the source task's persona. A single-role workflow keeps `agent_specs` empty (all nodes → the main agent) — only for a trivial single-node / pure-glue workflow. Do NOT branch on solo vs team.
+- **Do NOT pick a different model per node.** Model/effort/thinking come from the single workflow-wide `default_node_settings` (or, for an inline sub-agent, its `defaultModel`); per-node `settings` stays `{}` (inherit). Never stamp `model` on individual nodes — no per-step Haiku/Opus/Sonnet juggling.
 - **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase and **grounded via `aramb_toolkits.list_toolkits`** (see "Ground the slugs"), not guessed from prose. Brahmi snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
 - **Carry a singular `toolkit` per node that has any toolkits — MANDATORY when `required_toolkits` is non-empty.** It is the node's *primary* toolkit (the one a trigger would bind to). Invariant: `toolkit ∈ required_toolkits`. Single-toolkit node → `toolkit` equals the one slug. Multi-toolkit node → pick the slug the node's job is "about" (the action it exists to perform, not an incidental read). Omit `toolkit` (or `null`) only when `required_toolkits` is `[]`. Brahmi rejects a `toolkit` that isn't in `required_toolkits`.
 - **Per-node toolkit CHOICE — Composio connection vs `aramb-browser`.** For each node that touches an external surface, decide *how* it acts: does the **Composio toolkit** cover the action, or do you need **`aramb-browser`** (drive a logged-in website directly)? Composio is the default when it has the action; reach for `aramb-browser` when Composio's coverage of that service is limited (e.g. Composio LinkedIn is read-thin → a "post to LinkedIn" or "comment on a profile" node needs `aramb-browser`, and trips the browser-login pre-check below). **Shortcut: if the work was already performed** (you can see it in the session or the task outputs), reuse whatever actually served the purpose — the user already chose the path that worked; don't second-guess it.
@@ -658,7 +672,7 @@ transaction, filed under the owning agent as a **draft** — no publish step.
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
 - `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
-- `assigned_agent` — one dedicated agent per node by its role, decided identically in solo and team: reuse a fitting existing agent (roster persona / one you already created), else **provision a bespoke agent via `create-agent`** named for its role. Bare `"solo"` only for a trivial single-node / glue workflow. Never `null` or empty, and never collapse a multi-step workflow onto one agent.
+- `assigned_agent` — one agent per role, decided identically in solo and team: reuse a fitting existing roster agent, else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs`. Never `null` or empty, and never collapse a multi-step workflow onto one agent. (A node whose `assigned_agent` matches no roster agent and no spec falls back to the main agent — fine for a single-role workflow with empty `agent_specs`, wrong when the role is genuinely distinct.)
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits`** — grounded via `aramb_toolkits.list_toolkits`; copied from the source task (task dispatch) or inferred-then-grounded (chat dispatch). `[]` for orchestration / file-only nodes; never omit.
 - **`toolkit`** — the node's primary toolkit slug; MUST be a member of `required_toolkits`. Omit (or `null`) only when `required_toolkits` is `[]`.
@@ -669,6 +683,7 @@ transaction, filed under the owning agent as a **draft** — no publish step.
 And on the call itself:
 
 - **`agent_id`** — the id of the agent this workflow belongs to. Pass it in the **agent-first** flow — it creates-and-links the workflow to that agent in one call. Omit it only in the deliberate **workflow-first** flow (build/test standalone, then `aramb_agents.attach_workflow` links it once the agent exists). Either way the workflow must end up owned by an agent — don't leave it *permanently* orphaned.
+- **`agent_specs`** — the top-level inline sub-agent array (one `TemplateAgent` per genuinely-distinct role a node references via `assigned_agent`). Pass it in the SAME call as `nodes`/`edges` when the workflow is multi-role; pass `'[]'` (or omit) for a single-role workflow where every node runs as the main agent. Each spec: `name` (unique, matched by a node's `assigned_agent`) + `identity`/`soul`/`agentsDoc` to the template-grade bar + optional `skills`/`defaultModel`/`defaultBackend`/`defaultThinking`. See the `aramb-workflows` skill's `agent_specs` field.
 - **`default_node_settings`** — the workflow-wide defaults block. Emit it; don't leave it empty.
 - **`trigger_choice`** — OPTIONAL (`toolkit_event` | `cron` | `manual`). Pass it only if the user picked a firing condition in Section 4.5; omit it otherwise. The save does NOT depend on it.
 - **No `env_variables`** — omit the field entirely (the schema rejects a non-empty map).
@@ -730,24 +745,26 @@ npx mcporter call aramb_workflows.create \
 ```
 
 **Solo mode** differs only in close-out (chat, not `aramb_tasks.update`) and
-`source_task_id` being omitted. **Each node still gets its own dedicated,
-role-named bespoke agent — provision them via `create-agent` BEFORE the save**,
-then stamp each agent's `name` on its node. The skeleton shows the per-node
-provisioning (not all-`"solo"`):
+`source_task_id` being omitted. **Each node still gets an agent for its role — for
+roles with no fitting roster agent, author the sub-agent's full spec INLINE in the
+`agent_specs` array on this SAME `aramb_workflows.create` call**, then set each
+node's `assigned_agent` to the matching spec `name`. No separate provisioning step,
+no `create-agent` — the specs travel with the workflow:
 
 ```bash
-  # First provision one agent per node via the create-agent skill, e.g.:
-  #   create-agent name="calendar-fetcher"  (SOUL/IDENTITY/AGENTS to template-grade bar)
-  #   create-agent name="agenda-summarizer"
-  #   create-agent name="digest-emailer"
   nodes='[
     {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<reads <run_input> + closing template>", "assigned_agent": "calendar-fetcher",  "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "toolkit": "GOOGLECALENDAR", "settings": {}},
     {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>",            "assigned_agent": "agenda-summarizer", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "settings": {}},
     {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>",            "assigned_agent": "digest-emailer",    "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "toolkit": "GMAIL", "settings": {"approval_mode":"manual"}}
+  ]' \
+  agent_specs='[
+    {"name":"calendar-fetcher","displayName":"Calendar Fetcher","identity":"<who this sub-agent is>","soul":"<how it thinks/behaves>","agentsDoc":"<its operating playbook — tool routing, failure modes, output schema>","skills":[],"defaultModel":"","defaultBackend":"claude-sdk","defaultThinking":"medium"},
+    {"name":"agenda-summarizer","displayName":"Agenda Summarizer","identity":"<...>","soul":"<...>","agentsDoc":"<...>","skills":[],"defaultModel":"","defaultBackend":"claude-sdk","defaultThinking":"medium"},
+    {"name":"digest-emailer","displayName":"Digest Emailer","identity":"<...>","soul":"<...>","agentsDoc":"<...>","skills":[],"defaultModel":"","defaultBackend":"claude-sdk","defaultThinking":"medium"}
   ]'
 ```
 
-(Bare `"solo"` would only be right for a trivial **single-node** workflow. A multi-step workflow gets a distinct provisioned agent per node, the same way team mode gives each node its own persona.)
+Author each spec's `identity` / `soul` / `agentsDoc` to the template-grade bar (see the `aramb-workflows` skill's "Multi-agent workflow" example for a fully-written spec). An **empty `agent_specs` (`'[]'`)** would only be right for a trivial **single-node / single-role** workflow, where every node runs as the main agent. A multi-step workflow whose nodes are distinct roles gets a distinct inline spec per role — the same way team mode reuses a distinct roster persona per node.
 
 In both examples, node 3 carries `settings.approval_mode = "manual"` because it sends an external-facing message — exactly the per-node manual-approval heuristic. Nodes 1 and 2 keep `settings: {}` and inherit the workflow defaults.
 
@@ -841,7 +858,8 @@ could change, then stop — don't retry.
 - **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
 - **Always emit `default_node_settings`** with the full sensible-defaults block; never leave it empty.
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
-- **`assigned_agent`** — one dedicated agent per node, by its role, decided IDENTICALLY in solo and team (mode never enters the decision). For each node: reuse a fitting existing agent (roster persona `developer` / `*-tester` / `checker` / `*-deployer`, or one you already created in this workflow), else **provision a bespoke agent via `create-agent`** named for its role, to the template-grade bar. Bare `"solo"` only for a trivial single-node / glue workflow; never collapse a multi-step workflow onto one agent.
+- **`assigned_agent`** — one agent per role, decided IDENTICALLY in solo and team (mode never enters the decision). For each node: reuse a fitting existing roster agent (`developer` / `*-tester` / `checker` / `*-deployer`), else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs` (identity/soul/agentsDoc to the template-grade bar) on the same `create` call — never the benji-CLI `create-agent` runtime flow. Empty `agent_specs` (all nodes → the main agent) only for a trivial single-node / single-role workflow; never collapse a genuinely multi-role workflow onto one agent.
+- **`agent_specs`** — the top-level inline sub-agent array; one `TemplateAgent` (`name` + `identity`/`soul`/`agentsDoc` + optional `skills`/`defaultModel`/`defaultBackend`/`defaultThinking`) per genuinely-distinct role referenced by a node's `assigned_agent`. Passed in the SAME `create`/`update` call as `nodes`/`edges`; `'[]'` (or omit) for a single-role workflow. Provisioned deterministically at claim/run — the specs travel WITH the workflow.
 - **`source_task_id`** — task dispatch: copy the literal `task_id` UUID from `aramb_tasks.list` (omit only for invented glue nodes). Chat dispatch: omit (or `null`) — solo has no source tasks.
 - **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls, grounded via `aramb_toolkits.list_toolkits`; `[]` when it touches no third-party service; never omit.
 - **`toolkit` per node** is the primary slug for trigger-binding; it MUST be a member of `required_toolkits`; omit (or `null`) only when `required_toolkits` is `[]`.
