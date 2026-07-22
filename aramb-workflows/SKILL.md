@@ -80,6 +80,41 @@ npx mcporter call aramb_workflows.create \
 - **Edges are top-level**, not per-node. Do NOT emit `dependencies` or `dependsOn` on nodes.
 - **Never invent or bind hidden toolkits.** Set a node's `toolkit` / `required_toolkits` only to toolkits the workspace actually exposes. Platform-internal/hidden toolkits (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) are REJECTED by `aramb_workflows.create`/`update` — never bind them. For Slack/Discord/Teams messaging deliverables, deliver via chil `chat.send_dm` (no toolkit).
 - `template_slug` (optional) is forwarded verbatim from a dispatched `<template-import slug="...">` block when this call originates from template import.
+- **`agent_specs` (optional, top-level array) — inline sub-agent definitions carried WITH the workflow.** When a workflow's nodes are genuinely different roles, author each distinct role's FULL sub-agent spec here and reference it from a node by setting that node's `assigned_agent` to the spec's `name`. brahmi stores these on `workflows.agent_specs` and provisions them **deterministically at claim/run** — you do NOT route bespoke node agents through any separate agent-creation flow. Each entry is a `TemplateAgent`:
+  - `name` (REQUIRED, unique) — the role identifier a node's `assigned_agent` references.
+  - `displayName` — human label.
+  - `identity` — who this sub-agent is (like an agent `IDENTITY.md`).
+  - `soul` — how it thinks/behaves (like a `SOUL.md`).
+  - `agentsDoc` — its operating playbook (like an `AGENTS.md`).
+  - `skills` (optional) — registry skill ids, e.g. `["clode-labs/aramb-skills/<slug>"]`.
+  - `defaultModel` (optional; `""` = inherit workflow default), `defaultBackend` (e.g. `"claude-sdk"`), `defaultThinking` (e.g. `"medium"`).
+
+  **A node whose `assigned_agent` has no matching spec (and is not an existing roster agent) falls back to the main agent** — so only mint specs for roles that are genuinely distinct. A **single-role workflow keeps `agent_specs` empty (or omitted)** — every node runs as the main agent. See "Multi-agent workflow" below for a worked example.
+
+### Multi-agent workflow — nodes + edges + `agent_specs` in one call
+
+When the nodes do genuinely different work, pass `agent_specs` alongside `nodes` and `edges` in the **same** `aramb_workflows.create` call. Each node's `assigned_agent` names a spec; the spec carries that role's full identity/soul/agentsDoc:
+
+```bash
+npx mcporter call aramb_workflows.create \
+  agent_id="<AGENT_ID>" \
+  project_id="<PROJECT_ID>" \
+  name="Blog Post Pipeline" \
+  description="Research an outline, draft the sections, then copy-edit into a publishable post." \
+  nodes='[
+    {"unique_id":1,"name":"Research & outline","prompt":"Read <run_input> for the topic and angle. Research the topic (web search / browser) and produce a structured outline (H2/H3 headings + one-line intent per section). Save it to .planning/outline.md and, in your summary, state the topic and section count so the drafter can act on it.\n\nWhen done — record your output for the next step:\n  npx mcporter call aramb_workflows.update_step project_id=\"<your Project ID>\" step_id=\"<your Workflow Run Step ID>\" status=\"done\" outputs='"'"'{\"summary\":\"Outline for <topic>: N sections.\",\"files\":[\".planning/outline.md\"]}'"'"'","assigned_agent":"outline-writer","acceptance_criteria":"outline.md written with headings + per-section intent","required_toolkits":[]},
+    {"unique_id":2,"name":"Draft sections","prompt":"Read your parent step summary + .planning/outline.md. Write full prose for every section, on-topic and in the requested voice, to .planning/draft.md. Summarize word count and any gaps.\n\nWhen done — record your output for the next step:\n  npx mcporter call aramb_workflows.update_step project_id=\"<your Project ID>\" step_id=\"<your Workflow Run Step ID>\" status=\"done\" outputs='"'"'{\"summary\":\"Draft written: ~M words across N sections.\",\"files\":[\".planning/draft.md\"]}'"'"'","assigned_agent":"section-drafter","acceptance_criteria":"draft.md covers every outlined section","required_toolkits":[]},
+    {"unique_id":3,"name":"Copy-edit & polish","prompt":"Read .planning/draft.md. Tighten prose, fix grammar/flow, enforce a consistent voice, and produce the final publishable post at .planning/final.md. Summarize what you changed.\n\nWhen done — record your output for the next step:\n  npx mcporter call aramb_workflows.update_step project_id=\"<your Project ID>\" step_id=\"<your Workflow Run Step ID>\" status=\"done\" outputs='"'"'{\"summary\":\"Final post polished and saved.\",\"files\":[\".planning/final.md\"]}'"'"'","assigned_agent":"copy-editor","acceptance_criteria":"final.md is a clean, publishable post","required_toolkits":[]}
+  ]' \
+  edges='[{"source":1,"target":2},{"source":2,"target":3}]' \
+  agent_specs='[
+    {"name":"outline-writer","displayName":"Outline Writer","identity":"A content strategist who turns a raw topic into a rigorous, reader-first outline.","soul":"You think in structure. Before any prose exists you decide what the reader must learn and in what order. You research first and never invent facts; every section earns its place. You are decisive about scope — you cut sections that do not serve the core question.","agentsDoc":"1. Read <run_input> for topic, angle, and audience. 2. Research with web search / browser; capture 3-5 credible sources. 3. Produce H2/H3 headings with a one-line intent under each. 4. Write the outline to .planning/outline.md. 5. In outputs.summary, state the topic and section count. Never draft full prose — that is the drafter's job.","skills":["clode-labs/aramb-skills/aramb-browser"],"defaultModel":"","defaultBackend":"claude-sdk","defaultThinking":"medium"},
+    {"name":"section-drafter","displayName":"Section Drafter","identity":"A fast, on-voice writer who turns an approved outline into full draft prose.","soul":"You expand structure into readable prose without drifting off-outline. You match the requested voice and audience, keep claims grounded in the outline research, and flag anything you could not substantiate rather than bluffing. You write to be edited — clear over clever.","agentsDoc":"1. Read the parent summary and .planning/outline.md. 2. Draft every section in order; do not add or drop sections. 3. Keep the requested voice; mark unresolved gaps inline as TODO. 4. Save to .planning/draft.md. 5. Report word count and any gaps in outputs.summary. Do not final-polish — the copy-editor owns that pass.","skills":[],"defaultModel":"","defaultBackend":"claude-sdk","defaultThinking":"medium"},
+    {"name":"copy-editor","displayName":"Copy Editor","identity":"A meticulous editor who turns a rough draft into a clean, publishable post.","soul":"You protect the reader. You cut filler, fix grammar and flow, enforce one consistent voice, and never change the author's meaning while doing it. You leave the piece tighter than you found it and say exactly what you changed.","agentsDoc":"1. Read .planning/draft.md. 2. Edit for grammar, flow, concision, and voice consistency; preserve meaning. 3. Resolve or surface any TODO/gap left by the drafter. 4. Save the final post to .planning/final.md. 5. Summarize the substantive changes in outputs.summary. Do not re-research or re-outline.","skills":[],"defaultModel":"","defaultBackend":"claude-sdk","defaultThinking":"medium"}
+  ]'
+```
+
+Each of the three nodes names a distinct spec via `assigned_agent`; the three `agent_specs` entries carry those roles' full identity/soul/agentsDoc and travel with the workflow. Had this been a single-role workflow (e.g. a one-node digest), `agent_specs` would be `'[]'` and every node would run as the main agent.
 
 ### Bake the fetch tool into each evaluator node prompt
 
@@ -120,6 +155,7 @@ npx mcporter call aramb_workflows.update \
 - The full new node+edge set is provided — no incremental edits.
 - If the new entry node's `assigned_agent` differs from the previously recorded one, the stateful chain is reset (returned as `stateful_continuity="reset"` with a `stateful_reset_reason`).
 - Optional fields: `name`, `description`, `env_variables` — omit to keep current.
+- **`agent_specs` (optional)** — same top-level inline sub-agent array as on `create` (see the `agent_specs` field + "Multi-agent workflow" example above). Pass the full replacement array when the roles change (add / rename a spec, edit a spec's identity/soul/agentsDoc); omit to keep the current specs. A node's `assigned_agent` must match a spec `name` (or an existing roster agent) or it falls back to the main agent.
 
 ## Consolidate from tasks (chat-driven)
 
