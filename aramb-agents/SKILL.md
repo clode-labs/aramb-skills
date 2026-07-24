@@ -151,6 +151,53 @@ back into `get` → `update` → re-`test_run`. The loop that improves a persona
   side conversation you drive yourself tests a different, unversioned thing and
   proves nothing about the published (or draft) agent.
 
+## Knowledge Base — list / add / remove docs (`aramb_agents.kb_*`)
+
+An agent can carry a **Knowledge Base**: documents the persona draws on at
+runtime. You are no longer limited to pointing the user at the console — for the
+text/markdown docs you author yourself, manage the KB directly with these verbs.
+They are fenced to the calling agent's organization like every other
+`aramb_agents` call.
+
+- **`aramb_agents.kb_list`** (`agent_id`) — list the agent's KB documents. Returns
+  `{documents: [{doc_id, filename, folder, content_type, size, created_at}]}`. Call
+  this first to find a `doc_id` before `kb_remove`, or to pick which docs should
+  travel into a template.
+- **`aramb_agents.kb_add`** (`agent_id`, `filename`, `content`, optional `folder`) —
+  add a KB document from **inline text**. Only `.txt` and `.md` filenames are
+  accepted: the content is passed inline as text, so binary formats (PDF, DOCX, …)
+  are **NOT** supported through this verb. Use it for KB docs the Architect itself
+  authors (markdown / plain text). For a PDF, DOCX, or any binary document, tell the
+  user to upload it via the console (**Knowledge Base → Add document**).
+- **`aramb_agents.kb_remove`** (`agent_id`, `doc_id`) — remove one KB document by the
+  `doc_id` from `kb_list`. Idempotent — an unknown `doc_id` still succeeds. The doc
+  drops from the agent's containers on the next sync.
+
+```bash
+# List the KB, author a new markdown doc inline, then remove one by id.
+npx mcporter call aramb_agents.kb_list agent_id="<AGENT_ID>"
+npx mcporter call aramb_agents.kb_add agent_id="<AGENT_ID>" filename="refund-policy.md" content="# Refund policy\n\nRefunds are honored within 30 days of purchase." folder="policies"
+npx mcporter call aramb_agents.kb_remove agent_id="<AGENT_ID>" doc_id="<DOC_ID>"
+```
+
+## Export the agent as a reusable template (`aramb_agents.export_template`)
+
+- **`aramb_agents.export_template`** (`agent_id`, `slug`, `name`, optional
+  `description`, `category`, `tags`, `publish_first`, `include_knowledge_doc_ids`) —
+  export the agent into the shared catalog as a reusable template.
+  `publish_first` defaults **true** — it publishes the agent's current draft before
+  exporting, so the template captures a live version. `include_knowledge_doc_ids` (a
+  comma-separated list of `doc_id`s from `kb_list`) chooses which KB docs travel into
+  the template; omit it and the template carries **no** knowledge.
+
+```bash
+npx mcporter call aramb_agents.export_template agent_id="<AGENT_ID>" slug="support-triage" name="Support Triage Agent" description="Triages inbound support and routes to the right queue." category="support" tags="support,triage" publish_first=true include_knowledge_doc_ids="<DOC_ID_1>,<DOC_ID_2>"
+```
+
+**This is an outward, irreversible action** — the template goes into the shared
+catalog and cannot be pulled back. **Confirm with the user before calling it**,
+including which KB docs (if any) should travel with it.
+
 ## Draft vs published — the one model to internalize
 
 `update` edits a private draft; `publish` releases it. So the safe default

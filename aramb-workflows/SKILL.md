@@ -74,6 +74,7 @@ npx mcporter call aramb_workflows.create \
 - **Workflows are standalone by default; `agent_id` is an OPTIONAL binding — not a requirement.** A workflow exists in its own right (project-scoped or app-bound) exactly as it always has — creating one without `agent_id` is fully supported and is the right thing when the workflow isn't tied to a specific agent. Passing `agent_id="<agent>"` on `create` is an **additive** binding: that one call creates the workflow AND stamps the ownership edge (create-and-link in one step), after which the workflow is filed under the agent and discoverable + runnable **by that agent**. The binding constrains the *bound* workflow (one owning agent); it does NOT demote or replace standalone workflows.
   - **When you are building a workflow FOR an agent (the Architect flow), prefer binding** — pass `agent_id` so it's owned and discoverable by the agent you're building. Otherwise, omit it and create a plain standalone workflow.
   - To bind a workflow that already exists to an agent, use `aramb_agents.attach_workflow`. To keep one standalone, just don't pass `agent_id`.
+- **`instruction` and `enabled` (both optional, top-level) — wire the workflow to its owning agent's invocation behavior** (the console **Tools ▸ Workflows** tab). `instruction` is free-text on HOW and WHEN the owning agent should invoke this workflow and what input to pass — surfaced **verbatim** in the agent's "## Your workflows" prompt injection. `enabled` (`true`/`false`) is a per-agent toggle: `false` hides the bound workflow from the owning agent; `true` (or omitted) surfaces it. On `update` these are **merged, not clobbering** — see the note under "Update an existing workflow".
 - **`project_id` is required; `application_id` is optional/legacy.** Pass `project_id` (alongside `agent_id`) to create the workflow. The workflow is keyed by its own lineage (`workflow_id`) and belongs to its owning agent.
 - **`application_id` (optional, legacy app-bound)** — passing it binds the workflow to one application. App-bound workflows retain the old "at most one per application" behavior, so a second `create` with the same `application_id` fails (use `aramb_workflows.update` to modify it). Appless workflows have no such limit — a project can hold many.
 - Per-user **system** workflows (e.g. the discovery report) are appless workflows in the user's **private project**. They deliver output via **DM** (chil `chat.send_dm`), never a public channel-app post. `get` / `update` by `workflow_id` work identically for appless workflows. (Template imports of system workflows arrive pre-created — polish them via the `import-workflow` skill, don't `create` them.)
@@ -156,6 +157,15 @@ npx mcporter call aramb_workflows.update \
 - If the new entry node's `assigned_agent` differs from the previously recorded one, the stateful chain is reset (returned as `stateful_continuity="reset"` with a `stateful_reset_reason`).
 - Optional fields: `name`, `description`, `env_variables` — omit to keep current.
 - **`agent_specs` (optional)** — same top-level inline sub-agent array as on `create` (see the `agent_specs` field + "Multi-agent workflow" example above). Pass the full replacement array when the roles change (add / rename a spec, edit a spec's identity/soul/agentsDoc); omit to keep the current specs. A node's `assigned_agent` must match a spec `name` (or an existing roster agent) or it falls back to the main agent.
+- **`instruction` and `enabled` (both optional) — the owning-agent invocation wiring** (same as on `create`; console **Tools ▸ Workflows** tab). Both are **merged, not clobbering**: passing `instruction` alone does NOT wipe `input_schema` or `enabled`, and passing `enabled` alone does NOT wipe `instruction` or `input_schema` (this fixes a prior bug where an update cleared them). Omit either to keep its current value.
+
+```bash
+# Set an invocation instruction on an existing workflow — merges, so nodes/edges/input_schema stay intact:
+npx mcporter call aramb_workflows.update \
+  workflow_id="<WORKFLOW_ID>" \
+  instruction="Run whenever the user gives a topic; pass the topic as input." \
+  enabled=true
+```
 
 ## Consolidate from tasks (chat-driven)
 
