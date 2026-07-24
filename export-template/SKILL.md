@@ -2,58 +2,82 @@
 name: export-template
 description: >
   Package an agent as a reusable template for OTHER orgs before calling
-  aramb_agents.export_template. Three passes, in order: (1) VARIABILIZE — find
-  every value specific to THIS org (company, product, competitors, URLs, emails,
-  internal jargon) and replace it with a {{placeholder}}, authoring a matching
-  wizard question for each so importers supply their own; (2) EXPORT-SAFETY SCAN
-  — screen for anything unsafe to hand a stranger (secrets, real internal
-  endpoints, PII, private data); (3) COMPLETENESS — verify every sub-agent spec,
-  the main persona's soul + agents doc, every workflow node/edge and every
-  toolkit is packaged with nothing dropped. Only then export.
+  aramb_agents.export_template. NON-DESTRUCTIVE: you never rewrite the live
+  agent. Three passes, in order: (1) ORGANIZE — read the whole agent and verify
+  nothing is dropped or unauthored; (2) PARAMETRIZE — find every value specific
+  to THIS org and build a variabilization MAP ({"Aramb":"{{company_name}}", …})
+  plus one wizard question per placeholder, WITHOUT editing the agent; (3)
+  DANGER-SCAN — screen for anything unsafe to hand a stranger (secrets, internal
+  endpoints, PII, private data). Then export once, passing the map + wizard;
+  brahmi applies them to the exported template only.
 ---
 
-# Export as a template — make it reusable, safe, and complete
+# Export as a template — reusable, safe, complete, and NON-DESTRUCTIVE
 
 A published agent is tuned for the org that built it. A **template** is that
 agent handed to strangers: another company clicks "use this template" and gets
-their own copy. So an export is not a save — it is a translation. If you export
-it as-is, three things go wrong, and you have seen all three:
+their own copy. So an export is a translation, not a save.
 
-- The importer's agent still says it works for **your** company, watches **your**
-  competitors, emails **your** address — because those values were hard-coded.
-- The template leaks something that should never leave the org — a real internal
-  URL, a token, a customer's data baked into the prompt.
-- The template ships **broken** — the sub-agents a workflow references were never
-  authored, so on import every node collapses onto the main agent and the
-  multi-agent design is silently lost.
+The one rule that governs everything below: **you do not modify the user's
+agent.** The old approach wrote `{{placeholders}}` back into the live agent via
+`aramb_agents.update` / `aramb_workflows.update` — that polluted the user's
+working agent (it would literally say `{{company_name}}` instead of "Aramb") and
+was so long a tool-chain it ran out of time before exporting. Never do that.
 
-This skill is the gate that prevents all three. Run all three passes, in order,
-every time, before `aramb_agents.export_template`.
+Instead you **ORGANIZE** the agent, **describe** how to parametrize it as a
+`variabilization_map` + `wizard`, and hand both to `aramb_agents.export_template`.
+brahmi applies the map to the **exported template envelope only** — the live agent
+stays exactly as the user built and tested it. That is the whole point of this
+skill: the exported template is reusable and safe, and the user's agent is
+untouched.
 
-## First, read the WHOLE agent
+## First, read the WHOLE agent (read-only)
 
-You cannot variabilize or vet what you haven't read. Gather every layer (same
-surfaces as `safe-publish`):
+You cannot organize, parametrize, or vet what you haven't read. Gather every
+layer — reads only, no writes:
 
 1. `aramb_agents.get` → the persona: `name`, `system_prompt`, `soul`,
    `agents_doc`, `greeting`.
 2. For every workflow bound to the agent, `aramb_workflows.get` → each node's
-   `prompt` / `acceptance_criteria`, and every `agent_specs` entry's
+   `name` / `prompt` / `acceptance_criteria`, and every `agent_specs` entry's
    `identity` / `soul` / `agentsDoc`.
 3. `aramb_agents.kb_list` → the Knowledge Base docs (decide which, if any,
    travel via `include_knowledge_doc_ids`).
 
-Hold the full picture before you change anything.
+Hold the full picture before you describe a single change.
 
-## Pass 1 — VARIABILIZE (the reusability pass)
+## Pass 1 — ORGANIZE (the nothing-dropped pass)
 
-Find every value that is true for THIS org but would be wrong for the next one,
-and turn it into a `{{placeholder}}`. Then author a wizard question for each so
-the importer fills it in.
+Confirm the agent is coherent and complete so the export carries everything —
+you are auditing, not editing.
 
-**What is variable** (replace it):
+- **Main persona** — `system_prompt` present; `soul` and `agents_doc` authored if
+  the agent's behavior depends on them (a domain agent usually needs both). If
+  they're empty because the agent leans on the platform default, confirm that's
+  deliberate — don't ship an accidental blank.
+- **Sub-agents — the one that silently breaks.** For every workflow, list the
+  agents its nodes reference in `assigned_agent`, then confirm EACH one is a
+  fully-authored entry in that workflow's `agent_specs` — real `identity`, `soul`,
+  `agentsDoc`. A node whose `assigned_agent` names an agent NOT declared in
+  `agent_specs` collapses onto the main agent on import and the multi-agent design
+  is lost. If a spec is genuinely missing, that is the ONE case where you fix the
+  agent — author the spec with `aramb_workflows.update` so the design survives —
+  because a missing spec is a defect in the agent itself, not a template concern.
+  (Adding `{{placeholders}}` is NEVER such a fix — that is Pass 2, envelope-only.)
+- **Workflow graph** — every node has a stable id; every edge's source/target
+  reference real nodes; the node→agent references resolve.
+- **Toolkits** — every toolkit a node needs is declared on that node.
 
-- Company / product / brand name ("Clode", "the marketplace").
+## Pass 2 — PARAMETRIZE (the reusability pass — describe, don't rewrite)
+
+Find every value that is true for THIS org but wrong for the next, and record it
+in a **variabilization map** you build IN YOUR HEAD / in the call — a mapping of
+each literal value to the `{{placeholder}}` it should become. You do NOT write
+these placeholders into the agent.
+
+**What is variable** (map it):
+
+- Company / product / brand name ("Aramb", "the marketplace").
 - The specific customers, competitors, or accounts named ("ElevenLabs",
   "Acme Corp").
 - Value proposition / positioning / what-we-sell specifics.
@@ -62,118 +86,116 @@ the importer fills it in.
 - Any number, region, or policy that is this org's choice, not a universal law.
 
 **What is NOT variable** (leave it): the agent's *method* — its role, its
-reasoning, its quality bar, its workflow structure, the generic instructions
-that make it good at the job. You are extracting the org, not gutting the craft.
+reasoning, its quality bar, its workflow structure, the generic instructions that
+make it good at the job. You are extracting the org, not gutting the craft. Also
+leave **structural identifiers** alone — the sub-agent role names and each node's
+`assigned_agent` — brahmi never variabilizes those, so node→agent references keep
+resolving.
 
-**How:**
+**How — two arguments, zero mutations:**
 
-1. Rewrite each org-specific value as `{{SNAKE_CASE}}` — everywhere it appears:
-   the `system_prompt`, `soul`, `agents_doc`, greeting, every node `prompt`, and
-   every `agent_specs` `identity`/`soul`/`agentsDoc`. Use the SAME placeholder
-   name for the same concept across all of them (one `{{company_name}}`, not
-   three spellings). Write these back with `aramb_agents.update` (persona) and
-   `aramb_workflows.update` (`agent_specs` + nodes).
-2. For EACH distinct placeholder, author one wizard question — `key` (the
-   placeholder name without braces), `label` (the question the importer sees),
-   `required`, optional `description`. Pass them as the `wizard` array to
-   `aramb_agents.export_template`. On import, each answer is substituted for its
-   `{{key}}` everywhere it appears.
+1. **`variabilization_map`** — an object mapping each org-specific LITERAL value to
+   its `{{placeholder}}`. Use the SAME placeholder for the same concept
+   everywhere (one `{{company_name}}`, not three spellings). brahmi replaces each
+   literal across the persona (`name`, `system_prompt`, `soul`, `agents_doc`,
+   `greeting`), every node (`name`, `prompt`, `acceptance_criteria`), and every
+   sub-agent spec (`identity`, `soul`, `agentsDoc`) — in the EXPORTED TEMPLATE
+   ONLY.
 
-The rule: **every `{{placeholder}}` in the template has a matching wizard
-question, and every wizard question maps to a real placeholder.** A placeholder
-with no question can never be filled (the importer's agent ships with a literal
-`{{company_name}}` in its prompt); a question with no placeholder is dead. This
-is the exact failure that ships a template with someone else's company hard-coded
-— do not repeat it.
+   ```
+   variabilization_map={
+     "Aramb": "{{company_name}}",
+     "ElevenLabs": "{{competitors}}",
+     "#competitor-watch": "{{alert_channel}}"
+   }
+   ```
 
-Example wizard argument:
+2. **`wizard`** — one question per DISTINCT placeholder so the importer supplies
+   their own value: `key` (the placeholder name without braces), `label`,
+   `required`, optional `description`.
 
-```
-wizard=[
-  {"key":"company_name","label":"What's your company called?","required":true},
-  {"key":"company_description","label":"What does your company do?","required":true},
-  {"key":"competitors","label":"Which competitors should it watch?","required":true},
-  {"key":"alert_channel","label":"Where should alerts go (Slack channel / PagerDuty)?","required":false}
-]
-```
+   ```
+   wizard=[
+     {"key":"company_name","label":"What's your company called?","required":true},
+     {"key":"competitors","label":"Which competitors should it watch?","required":true},
+     {"key":"alert_channel","label":"Where should alerts go (Slack channel)?","required":false}
+   ]
+   ```
 
-## Pass 2 — EXPORT-SAFETY SCAN (the leakage pass)
+The contract: **every placeholder in the map has a matching wizard question, and
+every wizard question maps to a placeholder in the map.** A placeholder with no
+question can never be filled; a question with no placeholder is dead. This pairing
+is what stops a template shipping the author's org hard-coded.
 
-`safe-publish` screens for *malicious* content before an agent goes live to your
-own users. Export is a different threat: coherent, benign content that is simply
-**not yours to share**. Screen every layer you gathered for:
+**Use substring-safe literals.** brahmi replaces each literal by plain substring
+match, so a short or common literal will match INSIDE unrelated words —
+`"Meta" → "{{competitors}}"` would corrupt "Metadata" into "{{competitors}}data".
+Map the most specific form that identifies the org value (the full proper noun,
+the whole channel/email/URL), not a short fragment of it. If a value only appears
+as part of a longer word, leave it — over-variabilizing corrupts the template's
+prose. Every map value must be a single `{{placeholder}}` token (brahmi rejects a
+bare, unbraced value — the importer could never fill it).
+
+## Pass 3 — DANGER-SCAN (the leakage pass)
+
+Export is a different threat from publish: coherent, benign content that is simply
+**not yours to share**. Screen every layer you read for:
 
 - **Secrets** — API keys, tokens, passwords, connection strings, signing secrets
-  pasted into a prompt, node, or KB doc. NEVER ship. Strip them.
-- **Real internal endpoints** — private hostnames, internal service URLs,
-  admin panels, non-public API bases. Replace with a `{{placeholder}}` or remove.
+  pasted into a prompt, node, or KB doc. NEVER ship. Flag them to the user; they
+  must be removed from the agent (a secret in a prompt is a defect regardless of
+  export).
+- **Real internal endpoints** — private hostnames, internal service URLs, admin
+  panels, non-public API bases. Map them to a `{{placeholder}}` (Pass 2) so the
+  importer supplies their own.
 - **PII / customer data** — real people's names, emails, phone numbers, account
-  IDs, or a customer list baked into the content. Remove or variabilize.
-- **Private org knowledge** — a KB doc or prompt that embeds confidential
-  strategy, unreleased plans, or contract terms. Do NOT include it in
+  IDs, or a customer list baked into content. Map it or leave it out.
+- **Private org knowledge** — a KB doc or prompt embedding confidential strategy,
+  unreleased plans, or contract terms. Do NOT include it in
   `include_knowledge_doc_ids`; flag it to the user.
 
-Judge by "would I be comfortable handing this to a competitor?" If no, it does
-not go in the template. When in doubt, variabilize it (Pass 1) or drop it —
-never ship it.
+Judge by "would I be comfortable handing this to a competitor?" If no, either map
+it (Pass 2) or drop it — never ship it.
 
-## Pass 3 — COMPLETENESS (the nothing-dropped pass)
+## Then export — one call
 
-Walk the template envelope and confirm every part is really there. The export
-value-copies bound workflows automatically, so completeness is mostly about
-making sure nothing was left empty or unbound:
-
-- **Main persona** — `system_prompt` present; `soul` and `agents_doc` authored
-  if the agent's behavior depends on them (a domain agent usually needs both).
-  If they're empty because the agent leans on the platform default, that's a
-  deliberate choice — confirm it, don't ship an accidental blank.
-- **Sub-agents — the one you keep getting wrong.** For every workflow, list the
-  agents its nodes reference in `assigned_agent`, then confirm EACH one is a
-  fully-authored entry in that workflow's `agent_specs` — with a real `identity`,
-  `soul`, and `agentsDoc`. A node whose `assigned_agent` names an agent that is
-  **not declared in `agent_specs`** is the silent-collapse bug: on import it
-  falls back to the main agent and the multi-agent design is gone. If any spec is
-  missing or empty, author it with `aramb_workflows.update` BEFORE exporting.
-- **Workflow graph** — every node has a stable id; every edge's source and
-  target reference real nodes (no dangling edges); the node→agent references all
-  resolve (previous bullet).
-- **Toolkits** — every toolkit a node needs is declared on that node; the
-  importer will be prompted to connect them.
-- **Knowledge** — if the agent's competence depends on KB docs, pass their
-  `doc_id`s in `include_knowledge_doc_ids` (and only after Pass 2 cleared them).
-  Omit and the template carries no knowledge.
-
-If a completeness check fails, FIX it (author the missing spec, bind the
-workflow, declare the toolkit) and re-walk — do not export a lossy template.
-
-## Then export
-
-Only after all three passes:
+Only after all three passes, export once. brahmi variabilizes the envelope from
+your map, attaches your wizard, and freezes the snapshot — your live agent is not
+touched:
 
 ```bash
 npx mcporter call aramb_agents.export_template \
   agent_id="<AGENT_ID>" slug="<slug>" name="<Name>" \
   description="<one-liner>" category="<category>" tags="a,b" \
   publish_first=true \
+  variabilization_map='{"Aramb":"{{company_name}}","ElevenLabs":"{{competitors}}"}' \
   wizard='[{"key":"company_name","label":"What'\''s your company called?","required":true}, ...]' \
   include_knowledge_doc_ids="<DOC_ID_1>,<DOC_ID_2>"
 ```
 
-`publish_first=true` freezes the just-variabilized draft, then exports the
-snapshot. Re-exporting the same agent refreshes the living template in place.
+`publish_first=true` freezes the current published snapshot, then exports it with
+your map applied to the template. Re-exporting the same agent refreshes the living
+template in place.
 
 ## Rules
 
-- **All three passes, in order, every export.** Variabilize → safety-scan →
-  completeness. Skipping one ships the bug it prevents.
-- **Every placeholder has a wizard question; every question has a placeholder.**
-  This is the contract that stops a template carrying the author's org.
+- **Never rewrite the live agent to variabilize.** No `aramb_agents.update` /
+  `aramb_workflows.update` to insert `{{placeholders}}`. Variabilization is
+  envelope-only, expressed as `variabilization_map` + `wizard`. The ONLY edit you
+  ever make is authoring a genuinely-missing sub-agent spec in Pass 1 — never a
+  placeholder.
+- **All three passes, in order, every export.** Organize → parametrize →
+  danger-scan. Skipping one ships the bug it prevents.
+- **Every placeholder in the map has a wizard question; every question has a
+  placeholder.** This pairing is the contract that stops a template carrying the
+  author's org.
 - **Never ship a secret, a real internal endpoint, PII, or private knowledge** —
-  strip or variabilize; when unsure, leave it out.
-- **Never export a workflow whose nodes reference undeclared sub-agents** —
-  author the `agent_specs` first, or the multi-agent design collapses on import.
+  map it or leave it out; when unsure, leave it out.
+- **Never export a workflow whose nodes reference undeclared sub-agents** — author
+  the `agent_specs` first (the one allowed edit), or the multi-agent design
+  collapses on import.
 - **Export is outward and irreversible** — the template enters the shared catalog
-  and cannot be pulled back. Confirm the slug/name and the KB opt-in with the
-  user before the call (`aramb-agents` skill → export section).
+  and cannot be pulled back. Confirm the slug/name and the KB opt-in with the user
+  before the call (`aramb-agents` skill → export section).
 - **Surface findings in plain, user-safe language** (SOUL.md → Confidentiality) —
   name the content concern, never leak ids, tokens, or internal service names.
