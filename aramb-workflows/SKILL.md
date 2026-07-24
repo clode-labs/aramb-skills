@@ -21,16 +21,33 @@ exist, query **by project** (`list project_id=…`), not by application.
 - Do NOT use `--output` — it is not supported by mcporter call.
 - Workflow run step updates use `update_step` with an explicit `step_id` (rendered into your dispatch User Message). There is no session-implicit variant.
 
-## Find a project's workflows — start here
+## Find workflows — `list` by agent OR by project
 
-To answer "what workflows exist / are there any workflows?" enumerate **by
-project**:
+`aramb_workflows.list` takes **one** of two optional keys — pick by what you're
+looking for:
 
-```bash
-npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"
-```
+- **`agent_id` — the workflows you built FOR an agent.** A workflow bound to an
+  agent is filed under that agent's **template project**, NOT the agent's chat
+  project. So if you created a workflow for an agent and then list by the agent's
+  chat `project_id`, you get **zero results** — that is the wrong lookup. To find
+  an agent's own workflows, list by `agent_id` (keyed on `workflows.agent_id`,
+  org-fenced, wherever they live):
 
-Returns BOTH appless and app-bound workflows for the project, wrapped as
+  ```bash
+  npx mcporter call aramb_workflows.list agent_id="<AGENT_ID>"
+  ```
+
+- **`project_id` — a project's workflows.** To answer "what workflows exist in
+  this project?" enumerate by project:
+
+  ```bash
+  npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"
+  ```
+
+If you pass **both**, `agent_id` wins (the project_id is ignored). If you pass
+**neither**, it's an error (`project_id` is required in that case) — supply one.
+
+Both return BOTH appless and app-bound workflows, wrapped as
 `{ "workflows": [ … ], "count": N }`. Read the `workflows` array — `count: 0`
 (empty array) means genuinely no workflows. Each row:
 
