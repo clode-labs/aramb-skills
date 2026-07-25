@@ -15,13 +15,16 @@ description: >
 
 Publishing makes an agent live for end-users. Once it ships, whatever it was
 told to do it will do — to real people, at scale, in your organization's name.
-So the last step before `aramb_agents.publish` is always this scan. It is not
-optional and it is not the builder's honor system: **you** read the full spec
-and decide whether it is safe to ship.
+So the last step before `aramb_agents.publish` is **one quick read-through** of
+the whole spec: you skim every layer once and publish unless something is
+clearly malicious or harmful. It's a single pass, not an audit — don't turn
+publish into a ceremony. Escalate to the detailed screening below **only** when
+something actually looks off.
 
-Run it on EVERY publish — a first publish and every re-publish — because a draft
-edit, an added KB doc, or an imported template can introduce harmful content
-after an earlier clean pass.
+Do the pass on every publish — first publish and re-publish — since a draft edit,
+an added KB doc, or an imported template can introduce harmful content after an
+earlier clean pass. But keep it fast: read once, block the clearly-harmful, ship
+the rest.
 
 ## What to gather — the WHOLE spec, not just the prompt
 
