@@ -53,6 +53,44 @@ published version.
 - **You want to prove a change with a repeatable, scripted test** → author and
   run a multi-turn test suite (the **agent-tests** skill).
 
+## Authoring the persona — system prompt, soul, AND agents doc
+
+`aramb_agents.create` / `update` carry the whole persona, not just one prompt
+field. For a real domain agent, author its **soul** and (when its operating flow
+is non-trivial) its **agents doc** — leaving them empty ships the platform's
+domain-neutral defaults, which is rarely what a purpose-built agent wants.
+
+- **`system_prompt`** (required on create) — the agent's full persona / system
+  prompt, verbatim. `system_prompt_mode`: `replace` (default) sends it as the
+  entire system prompt; `append` keeps the runtime preset.
+- **`soul`** — the agent's **SOUL.md**: who it is, its personality and
+  behavioural voice, its disposition and boundaries. Delivered to the container
+  as a file. Empty ⇒ platform default (domain-neutral). Author this for any
+  agent with a real character — a warm support triager, a terse ops bot, a
+  careful medical-intake screener read very differently, and the soul is where
+  that lives.
+- **`agents_doc`** — the agent's **AGENTS.md**: its operational playbook — how it
+  works, the order it does things, when to reach for which tool, how it handles
+  edge cases. Delivered as a file. Empty ⇒ platform default. Author this when the
+  agent's job is more than one-shot Q&A (a multi-step routine, tool sequencing,
+  hand-off rules).
+
+Both are **snake_case** on the main persona (`soul`, `agents_doc`). Do not confuse
+them with the workflow **sub-agent** shape inside `agent_specs`, which uses
+camelCase `soul` / `agentsDoc` (create-agent / aramb-workflows skills) — those
+author a workflow node's sub-agent, these author the product agent itself.
+
+```bash
+# Author the main persona with a soul and an operating playbook, not just a prompt.
+npx mcporter call aramb_agents.create name="Support Triage" \
+  system_prompt="You triage inbound support and route each ticket to the right queue…" \
+  soul="You are calm and concise. You never guess a policy — you check the KB or say you'll find out…" \
+  agents_doc="1. Read the ticket. 2. Classify: billing / bug / how-to. 3. If billing, check the refund-policy KB before replying. 4. Route with a one-line rationale…"
+
+# Patch just the soul later — partial merge, other fields untouched.
+npx mcporter call aramb_agents.update agent_id="<AGENT_ID>" soul="You are warmer now — open with a short acknowledgement before triaging…"
+```
+
 ## Evaluate and test — separate skills
 
 Two capabilities that used to live here now have their own skills. Both are
@@ -68,6 +106,53 @@ self-contained playbook:
 
 Both feed the same `get` → `update` → `publish` loop below: read a conversation
 or run a test, judge it, patch the draft, publish when confirmed.
+
+## Knowledge Base — list / add / remove docs (`aramb_agents.kb_*`)
+
+An agent can carry a **Knowledge Base**: documents the persona draws on at
+runtime. You are no longer limited to pointing the user at the console — for the
+text/markdown docs you author yourself, manage the KB directly with these verbs.
+They are fenced to the calling agent's organization like every other
+`aramb_agents` call.
+
+- **`aramb_agents.kb_list`** (`agent_id`) — list the agent's KB documents. Returns
+  `{documents: [{doc_id, filename, folder, content_type, size, created_at}]}`. Call
+  this first to find a `doc_id` before `kb_remove`, or to pick which docs should
+  travel into a template.
+- **`aramb_agents.kb_add`** (`agent_id`, `filename`, `content`, optional `folder`) —
+  add a KB document from **inline text**. Only `.txt` and `.md` filenames are
+  accepted: the content is passed inline as text, so binary formats (PDF, DOCX, …)
+  are **NOT** supported through this verb. Use it for KB docs the Architect itself
+  authors (markdown / plain text). For a PDF, DOCX, or any binary document, tell the
+  user to upload it via the console (**Knowledge Base → Add document**).
+- **`aramb_agents.kb_remove`** (`agent_id`, `doc_id`) — remove one KB document by the
+  `doc_id` from `kb_list`. Idempotent — an unknown `doc_id` still succeeds. The doc
+  drops from the agent's containers on the next sync.
+
+```bash
+# List the KB, author a new markdown doc inline, then remove one by id.
+npx mcporter call aramb_agents.kb_list agent_id="<AGENT_ID>"
+npx mcporter call aramb_agents.kb_add agent_id="<AGENT_ID>" filename="refund-policy.md" content="# Refund policy\n\nRefunds are honored within 30 days of purchase." folder="policies"
+npx mcporter call aramb_agents.kb_remove agent_id="<AGENT_ID>" doc_id="<DOC_ID>"
+```
+
+## Export the agent as a reusable template (`aramb_agents.export_template`)
+
+- **`aramb_agents.export_template`** (`agent_id`, `slug`, `name`, optional
+  `description`, `category`, `tags`, `publish_first`, `include_knowledge_doc_ids`) —
+  export the agent into the shared catalog as a reusable template.
+  `publish_first` defaults **true** — it publishes the agent's current draft before
+  exporting, so the template captures a live version. `include_knowledge_doc_ids` (a
+  comma-separated list of `doc_id`s from `kb_list`) chooses which KB docs travel into
+  the template; omit it and the template carries **no** knowledge.
+
+```bash
+npx mcporter call aramb_agents.export_template agent_id="<AGENT_ID>" slug="support-triage" name="Support Triage Agent" description="Triages inbound support and routes to the right queue." category="support" tags="support,triage" publish_first=true include_knowledge_doc_ids="<DOC_ID_1>,<DOC_ID_2>"
+```
+
+**This is an outward, irreversible action** — the template goes into the shared
+catalog and cannot be pulled back. **Confirm with the user before calling it**,
+including which KB docs (if any) should travel with it.
 
 ## Draft vs published — the one model to internalize
 
