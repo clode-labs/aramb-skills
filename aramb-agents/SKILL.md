@@ -189,6 +189,17 @@ exported template (only the ports do).
 - **`aramb_agents.unbind_toolkit`** (`agent_id`, `toolkit_slug`) — drop the binding
   for that port. The port stays required; it just becomes unbound again.
 
+**Surface the options — don't silently pick when there's a choice.** A single
+clearly-best connection auto-binds on its own, so `list_required_toolkits` already
+reads `bound: true` and you need do nothing. But when a port is still unbound with
+**two or more** candidates (`candidate_count ≥ 2` — e.g. the user connected two
+Gmail accounts), the system deliberately does **not** guess. Call
+`list_connections` (`agent_id`), **show the user the named options for that
+toolkit** (their account labels), and ask which one to bind before calling
+`bind_toolkit` — never bind one of several accounts on the user's behalf without
+asking. The user can also re-bind later, so present this as a choice, not a
+one-way door.
+
 When there is **no** connection to bind (a port with `candidate_count: 0`), you
 cannot conjure one — a connection is created only by a **human completing OAuth**.
 Use **`aramb_toolkits.request_connection`** (`toolkit_slug`, optional `agent_id`)
