@@ -130,6 +130,39 @@ github, two gmail accounts) and you need to pick one. Then pass the chosen
 
 Omit `toolkit=` to list every connection in the project.
 
+**Binding-candidates variant — `list_connections agent_id="…"`.** Pass `agent_id=`
+instead of `toolkit=` to get the connections an agent may **bind** to its required
+toolkits: the agent's own agent-scoped connections plus the private/org connections
+in scope. Each row carries a `connection_id`, `toolkit_slug`, an account label, an
+`origin` (`agent` / `pool` / `org`) and a `bound` flag. This is the source of the
+`connection_id` you hand to `aramb_agents.bind_toolkit` when authoring an agent
+(see the **aramb-agents** skill). Agent-scoped connections belonging to *other*
+agents are not returned.
+
+```bash
+npx mcporter call aramb_toolkits.list_connections agent_id="<AGENT_ID>"
+```
+
+### `request_connection` — get a connect URL a human completes (the ONLY way to create a connection)
+
+```bash
+npx mcporter call aramb_toolkits.request_connection toolkit_slug="GMAIL" agent_id="<AGENT_ID>"
+```
+
+Returns `{connect_url}` — a URL a **human** opens to complete OAuth. This is the
+**only** way a connection is ever created: no verb creates a connection headlessly,
+so an agent can never conjure one on its own. Share the `connect_url` in chat and
+wait for the user to finish before treating the connection as real.
+
+- **`agent_id` present** ⇒ the new connection is tagged to that agent (agent-scoped)
+  and **auto-bound** to it on the OAuth callback — it lands already bound.
+- **`agent_id` omitted** ⇒ the connection is created as a private pool connection
+  (not bound to any agent).
+
+`request_connection` is the author-side counterpart to `connect_toolkit`: reach for
+it while authoring an agent whose required toolkit has no bindable connection yet
+(`aramb_agents.list_required_toolkits` shows `candidate_count: 0`).
+
 ### `connect_toolkit` — start a new connection (OAuth) from chat
 
 ```bash
