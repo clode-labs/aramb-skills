@@ -32,6 +32,17 @@ There are two distinct surfaces. Pick the right one for the job:
 | Anything github — clone, push, PRs, issues | `aramb_toolkits.get_github_credential` + native `git`/`gh` | **this skill** |
 | Persist an event trigger on a workflow | `aramb_triggers.*` (write) | **`configure-trigger`** |
 
+**Availability — not every persona gets every tool below.** The **agent-builder
+(Architect)** persona is advertised `list_toolkits` only: `connect_toolkit`,
+`request_connection`, `get_github_credential` (and the connection-state reads) are
+deliberately withheld from it, because a connection brokered during authoring is
+scoped to the builder's own project — which never executes — so the user would
+authorize an account the agent can never see. There, the builder declares
+`required_toolkits` and the **user** connects each account on the agent's Tools
+page in the console. Everything below stays valid for ordinary runtime agents.
+If a tool documented here is not in your tool list, that is why: say so plainly
+and point the user at the Tools page rather than improvising a link.
+
 **`aramb_toolkits` CANNOT fetch data for non-github toolkits.** `check_connection`
 tells you a toolkit is connected; it does NOT read emails or create issues.
 Execution for non-github is the `composio-cli` skill (`composio execute
