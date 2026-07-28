@@ -162,85 +162,36 @@ confirm. If a user reports "my agent still does the old thing" after an
 update, the likely cause is an unpublished draft — `get` shows
 `publishable: true` when the draft differs from the published version.
 
-## Per-agent toolkit binding — pin the exact connection an agent uses (`aramb_agents.bind_toolkit`)
+## Required toolkits — connect the accounts an agent needs (`aramb_toolkits.request_connection`)
 
 An agent's persona declares the toolkits it needs (its **required toolkits** /
-ports — GMAIL, SLACK, GOOGLESHEETS…). Declaring a port is not enough to run: at
-author-time you **bind** each port to a specific, already-existing **connection**
-(a real connected account) so the agent invokes the toolkit through exactly that
-account instead of guessing among whatever is in scope. Binding is author-side
-state — it is **not** part of the published persona and does not travel in an
-exported template (only the ports do).
+ports — GMAIL, SLACK, GOOGLESHEETS…). Declaring a port is not enough to run: each
+required toolkit needs a **connected account** (a real account a human authorized
+via OAuth) before the agent can use it. You do **not** pick or pin the exact
+account by hand — which single account an agent uses for a toolkit is resolved
+automatically at the agent level. Your job is to make sure each required toolkit
+is **connected**.
 
-- **`aramb_agents.list_required_toolkits`** (`agent_id`) → `[{toolkit_slug, bound,
-  candidate_count}]`. The gate. Call it to see every port the agent needs, whether
-  each is already **bound**, and how many bindable connections exist for it. **Run
-  this and confirm every port is `bound: true` before you offer to run the agent or
-  tell the user it's ready** — an unbound port means the agent cannot use that
-  toolkit yet.
-- **`aramb_toolkits.list_connections`** (`agent_id`) — the bindable **candidates**
-  for this agent: its agent-scoped connections plus the private/org connections in
-  scope, each with a `connection_id`, `toolkit_slug`, account label and `bound`
-  flag. This is where you get the `connection_id` to bind. (Documented in the
-  **aramb-toolkits** skill.)
-- **`aramb_agents.bind_toolkit`** (`agent_id`, `toolkit_slug`, `connection_id`) —
-  bind one port to one connection. Pass a `connection_id` from
-  `list_connections`; the slug must be one of the agent's required toolkits.
-- **`aramb_agents.unbind_toolkit`** (`agent_id`, `toolkit_slug`) — drop the binding
-  for that port. The port stays required; it just becomes unbound again.
-
-**Surface the options — don't silently pick when there's a choice.** A single
-clearly-best connection auto-binds on its own, so `list_required_toolkits` already
-reads `bound: true` and you need do nothing. But when a port is still unbound with
-**two or more** candidates (`candidate_count ≥ 2` — e.g. the user connected two
-Gmail accounts), the system deliberately does **not** guess. Call
-`list_connections` (`agent_id`), **show the user the named options for that
-toolkit** (their account labels), and ask which one to bind before calling
-`bind_toolkit` — never bind one of several accounts on the user's behalf without
-asking. The user can also re-bind later, so present this as a choice, not a
-one-way door.
-
-When there is **no** connection to bind (a port with `candidate_count: 0`), you
-cannot conjure one — a connection is created only by a **human completing OAuth**.
-Use **`aramb_toolkits.request_connection`** (`toolkit_slug`, optional `agent_id`)
-to get a `connect_url`, surface it to the user (a connect card / chat link), and
-wait for them to finish. Passing `agent_id` makes the new connection agent-scoped
-and auto-bound on the OAuth callback, so it lands already bound to this agent.
+When a required toolkit has **no** connection yet, you cannot conjure one — a
+connection is created only by a **human completing OAuth**. Use
+**`aramb_toolkits.request_connection`** (`toolkit_slug`, optional `agent_id`) to
+get a `connect_url`, surface it to the user (a connect card / chat link), and wait
+for them to finish. Passing `agent_id` tags the new connection to this agent.
 **You can NEVER create a connection headlessly** — every connection comes back
 through that human-completed URL.
 
 ```bash
-# 1. Check what the agent needs and what's already bound.
-npx mcporter call aramb_agents.list_required_toolkits agent_id="<AGENT_ID>"
-# → [{toolkit_slug:"GMAIL", bound:false, candidate_count:1}, ...]
-
-# 2. See the bindable connections for this agent, grab a connection_id.
-npx mcporter call aramb_toolkits.list_connections agent_id="<AGENT_ID>"
-
-# 3. Bind the port to that connection.
-npx mcporter call aramb_agents.bind_toolkit agent_id="<AGENT_ID>" toolkit_slug="GMAIL" connection_id="<CONNECTION_ID>"
-
-# If candidate_count is 0, ask a human to connect it — you cannot create it yourself.
+# Ask a human to connect the toolkit — you cannot create it yourself.
 npx mcporter call aramb_toolkits.request_connection toolkit_slug="GMAIL" agent_id="<AGENT_ID>"
-# → { connect_url: "https://…" }  — share it, wait for completion, then it's auto-bound.
+# → { connect_url: "https://…" }  — share it, wait for the user to complete it.
 ```
 
 **Truthfulness — do not get ahead of the tool result.** Never tell the user a
-toolkit is connected or bound until the tool result actually confirms it. After
+toolkit is connected until the tool result actually confirms it. After
 `request_connection` the connection does not exist until the human finishes the
 URL — say "I've sent a link to connect Gmail; it'll be ready once you complete it",
-not "Gmail is connected". Re-check with `list_required_toolkits` and only then
-report a port as bound. This is the same truthfulness rule that governs the rest
+not "Gmail is connected". This is the same truthfulness rule that governs the rest
 of this skill (never claim a state you haven't observed).
-
-**Binding teaches the agent what the toolkit is FOR.** Binding a toolkit does more
-than wire access — it makes the agent aware of the toolkit's actual capabilities
-(what each action does: fetch / search / send / label email, etc.) so it reaches
-for the right action instead of guessing or refusing. So a bound agent should
-neither say "I can't read email" when Gmail is bound, nor hold a wrong model of
-the tool ("Gmail only lets me send"). If the agent under-uses or misuses a bound
-toolkit, the port likely isn't actually bound — verify with
-`list_required_toolkits`.
 
 ## Beyond the prompt — when the agent needs more, use the right skill
 
