@@ -187,7 +187,7 @@ agent's **Tools** page. A run is gated until every required toolkit has a
 connected account.
 
 **You cannot connect a toolkit, and the connect tools are not in your tool list.**
-`aramb_toolkits.connect_toolkit` / `request_connection` / `get_github_credential`
+`aramb_toolkits.connect_toolkit` / `get_github_credential`
 are deliberately not advertised to the agent-builder persona. The reason is not
 politeness — a connection you brokered would be scoped to the **builder's own
 project**, which never executes, so the account the user authorized would be

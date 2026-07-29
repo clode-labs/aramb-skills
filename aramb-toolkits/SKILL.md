@@ -34,7 +34,7 @@ There are two distinct surfaces. Pick the right one for the job:
 
 **Availability — not every persona gets every tool below.** The **agent-builder
 (Architect)** persona is advertised `list_toolkits` only: `connect_toolkit`,
-`request_connection`, `get_github_credential` (and the connection-state reads) are
+`get_github_credential` (and the connection-state reads) are
 deliberately withheld from it, because a connection brokered during authoring is
 scoped to the builder's own project — which never executes — so the user would
 authorize an account the agent can never see. There, the builder declares
@@ -153,41 +153,53 @@ are not returned.
 npx mcporter call aramb_toolkits.list_connections agent_id="<AGENT_ID>"
 ```
 
-### `request_connection` — get a connect URL a human completes (the ONLY way to create a connection)
+### `connect_toolkit` — the ONE way to connect an account
 
 ```bash
-npx mcporter call aramb_toolkits.request_connection toolkit_slug="GMAIL" agent_id="<AGENT_ID>"
+# reuse an account the user already authorized here — no OAuth
+npx mcporter call aramb_toolkits.connect_toolkit toolkit="GMAIL" existing_connection_id="<connection_id>"
+
+# or start a fresh authorization
+npx mcporter call aramb_toolkits.connect_toolkit toolkit="GMAIL"
 ```
 
-Returns `{connect_url}` — a URL a **human** opens to complete OAuth. This is the
-**only** way a connection is ever created: no verb creates a connection headlessly,
-so an agent can never conjure one on its own. Share the `connect_url` in chat and
-wait for the user to finish before treating the connection as real.
+This is the **only** connect verb. (`request_connection` was a second one; it is
+gone. If you have it in an older tool list, it now just forwards here.)
 
-- **`agent_id` present** ⇒ the new connection is tagged to that agent (agent-scoped).
-- **`agent_id` omitted** ⇒ the connection is created as a private pool connection.
+**Always try reuse first.** Call `list_connections` — if an account for the
+toolkit is already authorized, pass its `connection_id` as
+`existing_connection_id` and the user authorizes nothing. Only omit it when there
+is genuinely no account to reuse.
 
-`request_connection` is the author-side counterpart to `connect_toolkit`: reach for
-it while authoring an agent whose required toolkit isn't connected yet.
+Creating a new one returns `{connect_url}` — a URL a **human** opens to complete
+OAuth. No verb creates a connection headlessly, so you can never conjure one on
+your own. Share the `connect_url` in chat (plain text or via
+`aramb_chat.alert_user`), then poll `check_connection` until it flips to `ACTIVE`.
+**Never claim the toolkit is connected before `check_connection` confirms it.**
 
-### `connect_toolkit` — start a new connection (OAuth) from chat
+Args: `toolkit=` (required, ground the slug via `list_toolkits`). Optional
+`existing_connection_id=`, `alias=` for naming a non-default account (e.g.
+`"work"`), `callback_url=`.
 
-```bash
-npx mcporter call aramb_toolkits.connect_toolkit toolkit="github"
-```
+**There is no scope or level to choose, and you must not go looking for one.**
+The account is connected for THIS conversation's own project — that is the only
+project your run executes in, and it is exactly where a run looks. It is never
+shared with anyone else.
 
-Initiates the OAuth flow for a toolkit and returns a `redirect_url` the user
-must complete in a browser. Share the URL in chat (plain text or via
-`aramb_chat.alert_user`), then poll `check_connection` until status flips to
-`ACTIVE`.
+If a connection exists and is ACTIVE but a run still reports the toolkit missing,
+the fix is NOT to widen scope — a wider scope is visibility-only and changes
+nothing about what a run resolves. Re-run `connect_toolkit` with
+`existing_connection_id` so the account is actually linked for this conversation,
+and if it still fails, say so plainly rather than improvising.
 
-Args: `toolkit=` (required, e.g. `"github"`, `"gmail"`). Optional `alias=`
-for naming a non-default account (e.g. `"work"`), `share="all_projects"` to
-make the connection org-wide instead of project-only.
+**Do not reason about which project a workflow "lives in".** A workflow's
+definition is stored on a template project that never runs; it tells you nothing
+about where toolkits resolve. Resolution always follows the runtime project of
+the run itself, which is already the one you are connecting for.
 
 When to call: `check_connection` returns `connected: false` AND the user is
-asking you to do something that needs the toolkit. Don't pre-emptively
-connect things the user didn't ask for.
+asking for something that needs the toolkit. Don't pre-emptively connect things
+the user didn't ask for.
 
 ### `get_github_credential` — mint a github token for native git/gh
 
