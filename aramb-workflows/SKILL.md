@@ -107,7 +107,7 @@ npx mcporter call aramb_workflows.create \
   - `skills` (optional) — registry skill ids, e.g. `["clode-labs/aramb-skills/<slug>"]`.
   - `defaultModel` (optional; `""` = inherit workflow default), `defaultBackend` (e.g. `"claude-sdk"`), `defaultThinking` (e.g. `"medium"`).
 
-  **A node whose `assigned_agent` has no matching spec (and is not an existing roster agent) falls back to the main agent** — so only mint specs for roles that are genuinely distinct. A **single-role workflow keeps `agent_specs` empty (or omitted)** — every node runs as the main agent. See "Multi-agent workflow" below for a worked example.
+  **A node whose `assigned_agent` has no matching spec (and is not an existing roster agent) is a DANGLING reference** — brahmi rejects it at author time for an agent-bound workflow; there is no "main agent" to fall back to. Minting a distinct spec per genuinely-distinct role is the DEFAULT. A **single-role workflow may keep `agent_specs` empty (or omitted)** — then every node names **the agent you are building**, by its routing name (`aramb_agents.get` → `benji_agent_id`, e.g. `inbox-digest-5248d2e7`). Never `"main"` (not a routing token) and never `"master"`/`"solo"` (platform infra agents — the team orchestrator and the solo runtime, never the agent you built). See "Multi-agent workflow" below for a worked example.
 
 ### Multi-agent workflow — nodes + edges + `agent_specs` in one call
 
@@ -132,7 +132,7 @@ npx mcporter call aramb_workflows.create \
   ]'
 ```
 
-Each of the three nodes names a distinct spec via `assigned_agent`; the three `agent_specs` entries carry those roles' full identity/soul/agentsDoc and travel with the workflow. Had this been a single-role workflow (e.g. a one-node digest), `agent_specs` would be `'[]'` and every node would run as the main agent.
+Each of the three nodes names a distinct spec via `assigned_agent`; the three `agent_specs` entries carry those roles' full identity/soul/agentsDoc and travel with the workflow. Had this been a single-role workflow (e.g. a one-node digest), `agent_specs` would be `'[]'` and every node would name the agent you are building via its `benji_agent_id`.
 
 ### Bake the fetch tool into each evaluator node prompt
 
@@ -173,7 +173,7 @@ npx mcporter call aramb_workflows.update \
 - The full new node+edge set is provided — no incremental edits.
 - If the new entry node's `assigned_agent` differs from the previously recorded one, the stateful chain is reset (returned as `stateful_continuity="reset"` with a `stateful_reset_reason`).
 - Optional fields: `name`, `description`, `env_variables` — omit to keep current.
-- **`agent_specs` (optional)** — same top-level inline sub-agent array as on `create` (see the `agent_specs` field + "Multi-agent workflow" example above). Pass the full replacement array when the roles change (add / rename a spec, edit a spec's identity/soul/agentsDoc); omit to keep the current specs. A node's `assigned_agent` must match a spec `name` (or an existing roster agent) or it falls back to the main agent.
+- **`agent_specs` (optional)** — same top-level inline sub-agent array as on `create` (see the `agent_specs` field + "Multi-agent workflow" example above). Pass the full replacement array when the roles change (add / rename a spec, edit a spec's identity/soul/agentsDoc); omit to keep the current specs. A node's `assigned_agent` must match a spec `name`, an existing roster agent, or the agent you are building (its `benji_agent_id`) — anything else dangles and is rejected.
 - **`instruction` and `enabled` (both optional) — the owning-agent invocation wiring** (same as on `create`; console **Tools ▸ Workflows** tab). Both are **merged, not clobbering**: passing `instruction` alone does NOT wipe `input_schema` or `enabled`, and passing `enabled` alone does NOT wipe `instruction` or `input_schema` (this fixes a prior bug where an update cleared them). Omit either to keep its current value.
 
 ```bash
