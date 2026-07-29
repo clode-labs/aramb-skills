@@ -55,13 +55,12 @@ Rules:
 `environment` on URL entries (`"local"` for tunnels you exposed from this container, `"deployed"` for hosted infra) is preserved on the chip for context.
 
 ## Git
-All git work routes through the `aramb-toolkits` skill, NOT through `aramb_chat`
-and NOT through `composio execute GITHUB_*` (blocked). Read that skill for the
-full workflow; the short version:
+All git work routes through the `aramb-toolkits` skill, NOT through `aramb_chat`.
+Read that skill for the full workflow; the short version:
 1. `npx mcporter call aramb_toolkits.check_connection toolkit="GITHUB"` — confirm a github account is connected.
-2. If `connected: false` → `npx mcporter call aramb_toolkits.connect_toolkit toolkit="github"` and share the `redirect_url` with the user.
-3. Once connected → `npx mcporter call aramb_toolkits.get_github_credential` → export `GH_TOKEN=<token>`.
-4. Use native `git clone https://x-access-token:$GH_TOKEN@github.com/<owner>/<repo>.git`, `git push`, `gh pr create`, `gh issue list`, etc. Re-call `get_github_credential` on any `401`.
+2. If `connected: false` → `npx mcporter call aramb_toolkits.connect toolkit="github"` and share the `redirect_url` with the user.
+3. Once connected → `npx mcporter call aramb_toolkits.execute --json '{"tool":"GITHUB_GET_GIT_CREDENTIAL"}'` → export `GH_TOKEN=<token>` (from `result.token`).
+4. Use native `git clone https://x-access-token:$GH_TOKEN@github.com/<owner>/<repo>.git`, `git push`, `gh pr create`, `gh issue list`, etc. Re-call `aramb_toolkits.execute --json '{"tool":"GITHUB_GET_GIT_CREDENTIAL"}'` on any `401`.
 
 ## Workflows
 

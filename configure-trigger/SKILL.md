@@ -23,7 +23,8 @@ with one, mutate with the other.
 > `get_trigger`, `check_connection` — arg is `toolkit=`, never `toolkit_slug`)
 > is documented canonically in the `aramb-toolkits` skill.** This skill just uses
 > those calls in its flow; read `aramb-toolkits` for the full arg reference. For
-> the actual data fetch / action (not trigger wiring), that's `composio-cli`.
+> the actual data fetch / action (not trigger wiring), that's
+> `aramb_toolkits.execute` (same skill).
 
 > **Schedules are NOT triggers.** A wall-clock cadence ("daily at 9am", "every
 > Monday", a cron expression) is a *schedule* and lives on different storage with
