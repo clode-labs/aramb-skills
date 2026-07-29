@@ -159,8 +159,10 @@ provisions them **deterministically at claim/run**. You do NOT route bespoke nod
 agents through a separate agent-creation flow: the Architect never uses the
 benji-CLI `create-agent` runtime path, and this skill does not either. A node whose
 `assigned_agent` names neither an existing roster agent nor an `agent_specs` entry
-**falls back to the main agent** — so only mint a spec for a role that is genuinely
-distinct.
+is a **dangling reference**: brahmi rejects it at author time for an agent-bound
+workflow, and there is no "main agent" to fall back to. Every node must name either an
+`agent_specs` entry, an existing roster agent, or the agent you are building (by its
+routing name — see below).
 
 **Do NOT branch this decision on solo vs team.** Solo is NOT limited to a bare
 `"solo"` persona — that was the old, wrong behavior. Both modes author specs the
@@ -169,12 +171,21 @@ master creates/closes tasks). The reuse-if-exists step naturally means master
 often reuses roster personas while solo authors fresh inline specs — but that's an
 artifact of which agents already exist, not a rule keyed on mode.
 
-**An empty `agent_specs` (all nodes → the main agent) is the EXCEPTION for a
-single-role workflow** — a trivial single-node workflow, or one whose nodes are all
-the same pure-glue / orchestration role. A multi-step workflow where each node does
-distinct work (triage → implement → test → PR) gets a **distinct spec per role**
-in `agent_specs`, each referenced by a node's `assigned_agent` — never collapse
-every node onto one shared agent.
+**Authoring a spec per role is the DEFAULT; an empty `agent_specs` is the EXCEPTION.**
+Reach for the exception only for a trivial single-node workflow, or one whose nodes are
+all the same pure-glue / orchestration role. A multi-step workflow where each node does
+distinct work (fetch → classify → draft → send, or triage → implement → test → PR) gets
+a **distinct spec per role** in `agent_specs` — each a full template-grade persona with
+its own `identity` / `soul` / `agentsDoc` — referenced by that node's `assigned_agent`.
+Never collapse every node onto one shared agent because it was quicker to write.
+
+**When a node really is the agent itself, name THE AGENT YOU ARE BUILDING — by its
+routing name.** Read it from `aramb_agents.get` → `benji_agent_id` (e.g.
+`inbox-digest-5248d2e7`) and put that exact string in `assigned_agent`. There is **no
+`"main"` agent** — it is not a routing token, and writing it either dangles or silently
+dispatches to an unrelated base agent, so the agent you built never runs its own
+workflow. `"master"` and `"solo"` are platform INFRA agents (team orchestrator / solo
+runtime); they are never the agent you are building, so do not reach for them either.
 
 Everything else — node schema, `required_toolkits`, per-step `toolkit`, the
 closing-instruction template, `default_node_settings`, the no-placeholders /
@@ -185,6 +196,7 @@ identical across every combination.
 
 1. **Every node in `aramb_workflows.create` MUST carry `required_toolkits`.** Copy the array from each source task's `required_toolkits` (task dispatch) or infer it from the action the node performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service.
    - **Failure mode:** Omitting `required_toolkits` means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. Empty array `[]` is correct when the node touches no third-party service — never omit the field.
+   - **Declaring is the whole job — you do not connect the accounts.** As the workflow's author you never start OAuth, never mint or paste an authorization link, and never claim a toolkit is connected. The **user** connects each account in the console (agent **Tools** page / Integrations), on their own runtime project — the only project execution resolves against; an account authorized through the builder would land on a project that never runs. A workflow whose toolkits aren't connected yet is a perfectly good deliverable: it simply stays gated until the user connects them, which is exactly what the declaration is for. (This is about toolkit *accounts* only — it is no reason to avoid authoring a workflow when the job genuinely needs one.)
 2. **Every node that touches a third-party service MUST carry a singular `toolkit`** — its *primary* toolkit slug, used for trigger-binding. The invariant brahmi enforces: **`toolkit` MUST be a member of that node's `required_toolkits`.** A Gmail-fetch node is `toolkit:"GMAIL", required_toolkits:["GMAIL"]`; a node that reads Drive then writes Sheets is `toolkit:"GOOGLESHEETS", required_toolkits:["GOOGLEDRIVE","GOOGLESHEETS"]` (pick the one the trigger would bind to — usually the action the workflow is "about"). Omit `toolkit` (or pass `null`) only when `required_toolkits` is `[]`. The brahmi MCP schema rejects a `toolkit` that isn't in `required_toolkits`.
 3. **Ground every toolkit + trigger slug in the real catalog — never hallucinate.** Before drafting, call `aramb_toolkits.list_toolkits` to confirm the exact uppercase slugs (and, when the workflow will be event-triggered, `aramb_toolkits.list_triggers("<TOOLKIT>")` for trigger slugs). Do NOT infer slugs from prose. See "Ground the slugs" below. **Never invent a toolkit binding, and never bind a platform-internal/hidden toolkit** (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) — `aramb_workflows.create` rejects those. For Slack/Discord/Teams messaging deliverables, deliver via chil `chat.send_dm` (no toolkit). See the `aramb-workflows` skill.
 4. **No placeholder syntax in any node `prompt`.** No `{{env.KEY}}`, no `{{input.KEY}}`, no template substitution of any kind. There is no substitution layer — a literal `{{env.FOO}}` reaches the agent as the literal string `{{env.FOO}}`. The brahmi MCP schema **rejects** any prompt matching `{{ env.… }}`. Write what the agent should do with the context that arrives in `<run_input>` instead (see "Run input — the only per-run channel" below).
@@ -387,7 +399,7 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **Merge or split** steps where it makes the workflow cleaner. Not every source task becomes a node.
 - **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what actually worked but keep the concrete subject matter.
 - **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape.
-- **`assigned_agent` per node** — one agent per role, decided IDENTICALLY in solo and team (see "Per-node persona — decided by the work"). For each node: reuse an existing agent that fits the role (a roster persona — `developer` / `*-tester` / `checker` / `*-deployer`), otherwise **author a bespoke sub-agent spec INLINE in the workflow's `agent_specs`** named for its role (`issue-triager`, `fix-implementer`, `qa-tester`, `pr-author`, …) to the template-grade bar, and set the node's `assigned_agent` to that spec's `name`. In task dispatch, you may default to the source task's persona. A single-role workflow keeps `agent_specs` empty (all nodes → the main agent) — only for a trivial single-node / pure-glue workflow. Do NOT branch on solo vs team.
+- **`assigned_agent` per node** — one agent per role, decided IDENTICALLY in solo and team (see "Per-node persona — decided by the work"). For each node: reuse an existing agent that fits the role (a roster persona — `developer` / `*-tester` / `checker` / `*-deployer`), otherwise **author a bespoke sub-agent spec INLINE in the workflow's `agent_specs`** named for its role (`issue-triager`, `fix-implementer`, `qa-tester`, `pr-author`, …) to the template-grade bar, and set the node's `assigned_agent` to that spec's `name`. In task dispatch, you may default to the source task's persona. Authoring a spec per distinct role is the DEFAULT. A single-role workflow may keep `agent_specs` empty and point every node at **the agent you are building**, using its routing name from `aramb_agents.get` → `benji_agent_id` (never `"main"` — no such agent — and never `"master"`/`"solo"`, which are infra agents) — only for a trivial single-node / pure-glue workflow. Do NOT branch on solo vs team.
 - **Do NOT pick a different model per node.** Model/effort/thinking come from the single workflow-wide `default_node_settings` (or, for an inline sub-agent, its `defaultModel`); per-node `settings` stays `{}` (inherit). Never stamp `model` on individual nodes — no per-step Haiku/Opus/Sonnet juggling.
 - **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase and **grounded via `aramb_toolkits.list_toolkits`** (see "Ground the slugs"), not guessed from prose. Brahmi snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
 - **Carry a singular `toolkit` per node that has any toolkits — MANDATORY when `required_toolkits` is non-empty.** It is the node's *primary* toolkit (the one a trigger would bind to). Invariant: `toolkit ∈ required_toolkits`. Single-toolkit node → `toolkit` equals the one slug. Multi-toolkit node → pick the slug the node's job is "about" (the action it exists to perform, not an incidental read). Omit `toolkit` (or `null`) only when `required_toolkits` is `[]`. Brahmi rejects a `toolkit` that isn't in `required_toolkits`.
@@ -672,7 +684,7 @@ transaction, filed under the owning agent as a **draft** — no publish step.
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
 - `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
-- `assigned_agent` — one agent per role, decided identically in solo and team: reuse a fitting existing roster agent, else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs`. Never `null` or empty, and never collapse a multi-step workflow onto one agent. (A node whose `assigned_agent` matches no roster agent and no spec falls back to the main agent — fine for a single-role workflow with empty `agent_specs`, wrong when the role is genuinely distinct.)
+- `assigned_agent` — one agent per role, decided identically in solo and team: reuse a fitting existing roster agent, else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs`. Never `null` or empty, and never collapse a multi-step workflow onto one agent. (A node whose `assigned_agent` matches no roster agent and no spec is a dangling reference — brahmi rejects it for an agent-bound workflow. For a genuinely single-role workflow, name the agent you are building via its `benji_agent_id`; never `"main"`, `"master"` or `"solo"`.)
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits`** — grounded via `aramb_toolkits.list_toolkits`; copied from the source task (task dispatch) or inferred-then-grounded (chat dispatch). `[]` for orchestration / file-only nodes; never omit.
 - **`toolkit`** — the node's primary toolkit slug; MUST be a member of `required_toolkits`. Omit (or `null`) only when `required_toolkits` is `[]`.
@@ -683,7 +695,7 @@ transaction, filed under the owning agent as a **draft** — no publish step.
 And on the call itself:
 
 - **`agent_id`** — the id of the agent this workflow belongs to. Pass it in the **agent-first** flow — it creates-and-links the workflow to that agent in one call. Omit it only in the deliberate **workflow-first** flow (build/test standalone, then `aramb_agents.attach_workflow` links it once the agent exists). Either way the workflow must end up owned by an agent — don't leave it *permanently* orphaned.
-- **`agent_specs`** — the top-level inline sub-agent array (one `TemplateAgent` per genuinely-distinct role a node references via `assigned_agent`). Pass it in the SAME call as `nodes`/`edges` when the workflow is multi-role; pass `'[]'` (or omit) for a single-role workflow where every node runs as the main agent. Each spec: `name` (unique, matched by a node's `assigned_agent`) + `identity`/`soul`/`agentsDoc` to the template-grade bar + optional `skills`/`defaultModel`/`defaultBackend`/`defaultThinking`. See the `aramb-workflows` skill's `agent_specs` field.
+- **`agent_specs`** — the top-level inline sub-agent array (one `TemplateAgent` per genuinely-distinct role a node references via `assigned_agent`). Pass it in the SAME call as `nodes`/`edges` when the workflow is multi-role; pass `'[]'` (or omit) for a single-role workflow where every node runs as the agent you are building (its `benji_agent_id` from `aramb_agents.get`). Each spec: `name` (unique, matched by a node's `assigned_agent`) + `identity`/`soul`/`agentsDoc` to the template-grade bar + optional `skills`/`defaultModel`/`defaultBackend`/`defaultThinking`. See the `aramb-workflows` skill's `agent_specs` field.
 - **`default_node_settings`** — the workflow-wide defaults block. Emit it; don't leave it empty.
 - **`trigger_choice`** — OPTIONAL (`toolkit_event` | `cron` | `manual`). Pass it only if the user picked a firing condition in Section 4.5; omit it otherwise. The save does NOT depend on it.
 - **No `env_variables`** — omit the field entirely (the schema rejects a non-empty map).
@@ -764,7 +776,7 @@ no `create-agent` — the specs travel with the workflow:
   ]'
 ```
 
-Author each spec's `identity` / `soul` / `agentsDoc` to the template-grade bar (see the `aramb-workflows` skill's "Multi-agent workflow" example for a fully-written spec). An **empty `agent_specs` (`'[]'`)** would only be right for a trivial **single-node / single-role** workflow, where every node runs as the main agent. A multi-step workflow whose nodes are distinct roles gets a distinct inline spec per role — the same way team mode reuses a distinct roster persona per node.
+Author each spec's `identity` / `soul` / `agentsDoc` to the template-grade bar (see the `aramb-workflows` skill's "Multi-agent workflow" example for a fully-written spec). An **empty `agent_specs` (`'[]'`)** would only be right for a trivial **single-node / single-role** workflow, where every node runs as the agent you are building (its `benji_agent_id` from `aramb_agents.get`). A multi-step workflow whose nodes are distinct roles gets a distinct inline spec per role — the same way team mode reuses a distinct roster persona per node.
 
 In both examples, node 3 carries `settings.approval_mode = "manual"` because it sends an external-facing message — exactly the per-node manual-approval heuristic. Nodes 1 and 2 keep `settings: {}` and inherit the workflow defaults.
 
@@ -858,7 +870,7 @@ could change, then stop — don't retry.
 - **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
 - **Always emit `default_node_settings`** with the full sensible-defaults block; never leave it empty.
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
-- **`assigned_agent`** — one agent per role, decided IDENTICALLY in solo and team (mode never enters the decision). For each node: reuse a fitting existing roster agent (`developer` / `*-tester` / `checker` / `*-deployer`), else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs` (identity/soul/agentsDoc to the template-grade bar) on the same `create` call — never the benji-CLI `create-agent` runtime flow. Empty `agent_specs` (all nodes → the main agent) only for a trivial single-node / single-role workflow; never collapse a genuinely multi-role workflow onto one agent.
+- **`assigned_agent`** — one agent per role, decided IDENTICALLY in solo and team (mode never enters the decision). For each node: reuse a fitting existing roster agent (`developer` / `*-tester` / `checker` / `*-deployer`), else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs` (identity/soul/agentsDoc to the template-grade bar) on the same `create` call — never the benji-CLI `create-agent` runtime flow. Empty `agent_specs` (all nodes → the agent you are building, named by its `benji_agent_id`; never `"main"`/`"master"`/`"solo"`) only for a trivial single-node / single-role workflow; never collapse a genuinely multi-role workflow onto one agent.
 - **`agent_specs`** — the top-level inline sub-agent array; one `TemplateAgent` (`name` + `identity`/`soul`/`agentsDoc` + optional `skills`/`defaultModel`/`defaultBackend`/`defaultThinking`) per genuinely-distinct role referenced by a node's `assigned_agent`. Passed in the SAME `create`/`update` call as `nodes`/`edges`; `'[]'` (or omit) for a single-role workflow. Provisioned deterministically at claim/run — the specs travel WITH the workflow.
 - **`source_task_id`** — task dispatch: copy the literal `task_id` UUID from `aramb_tasks.list` (omit only for invented glue nodes). Chat dispatch: omit (or `null`) — solo has no source tasks.
 - **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls, grounded via `aramb_toolkits.list_toolkits`; `[]` when it touches no third-party service; never omit.

@@ -162,6 +162,49 @@ confirm. If a user reports "my agent still does the old thing" after an
 update, the likely cause is an unpublished draft — `get` shows
 `publishable: true` when the draft differs from the published version.
 
+## Required toolkits — you DECLARE them, the USER connects them
+
+An agent's persona declares the toolkits it needs (its **required toolkits** /
+ports — GMAIL, SLACK, GOOGLESHEETS…) via `required_toolkits` on
+`aramb_agents.create` / `update`. Declaring a port is not enough to run: each
+required toolkit needs a **connected account** (a real account a human authorized
+via OAuth) before the agent can use it. You do **not** pick or pin the exact
+account — which account an agent uses for a toolkit is resolved automatically from
+the account the user connected on their own runtime project.
+
+**Your half of the contract is the declaration, and only the declaration:**
+
+```bash
+# Ground every slug against the real catalog first — never invent one.
+npx mcporter call aramb_toolkits.list_toolkits
+
+# Then declare them on the agent.
+npx mcporter call aramb_agents.update agent_id="<AGENT_ID>" required_toolkits='["GMAIL"]'
+```
+
+Then tell the user to connect each account themselves, in the console, on the
+agent's **Tools** page. A run is gated until every required toolkit has a
+connected account.
+
+**You cannot connect a toolkit, and the connect tools are not in your tool list.**
+`aramb_toolkits.connect_toolkit` / `get_github_credential`
+are deliberately not advertised to the agent-builder persona. The reason is not
+politeness — a connection you brokered would be scoped to the **builder's own
+project**, which never executes, so the account the user authorized would be
+invisible at run time. The user connecting from the console lands it on their
+runtime project, which is the only place execution looks.
+
+So: never mint or paste an authorization link (never a raw `connect.composio.dev`
+URL), never start OAuth, never inspect connection state, and never say a toolkit
+is connected. If the user asks you to connect one, say plainly that you declare it
+and they connect it on the Tools page.
+
+**Truthfulness — do not get ahead of the tool result.** Never tell the user a
+toolkit is connected: you have no way to observe that. Say "I've declared Gmail as
+a required toolkit — connect your account on the agent's Tools page and it'll be
+ready", not "Gmail is connected". This is the same truthfulness rule that governs
+the rest of this skill (never claim a state you haven't observed).
+
 ## Beyond the prompt — when the agent needs more, use the right skill
 
 A persona often needs a capability these tools don't cover. Don't improvise it
