@@ -480,9 +480,7 @@ github work (after the closing-instruction template):
    `aramb_toolkits.get_github_credential` for a fresh token. Cheap, no rate
    concerns.
 5. NEVER use `composio execute GITHUB_*` — those slugs are hard-blocked at
-   the proxy with `403`. Also do NOT use `aramb_chat.list_linked_repos`,
-   `aramb_chat.clone_repo`, or `aramb_chat.git_token` — those don't exist
-   on this surface anymore.
+   the proxy with `403`.
 ```
 
 Emit this block on every node that touches github — there is no "API-only"
