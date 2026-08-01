@@ -12,6 +12,12 @@ description: >
 
 # Import Workflow
 
+> **Two sources, one skill.** The `<template-import>` block reaches you from either
+> a **workflow-template** gallery import OR an **agent-template** import's post-import
+> "review and tailor" turn (brahmi attaches the block on that turn too, pointing at
+> the un-edited imported workflow). Both mean the same thing: a draft already exists —
+> `get` it and `update` it, never `create`. The trigger (block present) is unchanged.
+
 A template import is a **two-phase** flow and brahmi has already done phase one
 before you were dispatched:
 

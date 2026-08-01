@@ -103,6 +103,19 @@ Decision tree:
 
    Use the workflow_id from THIS response — never a remembered one.
 
+   **Look up the AGENT's workflow too, not only the application's.** A workflow the
+   agent owns — most importantly an **imported agent-template** workflow — lives in
+   the agent's template project and may not be bound to this `application_id`, so an
+   `application_id`-only lookup misses it and you'd wrongly conclude "no workflow
+   exists" and create a duplicate. This is exactly the post-import "review and tailor"
+   turn. If the turn carries a `<template-import>` block (see "Workflow
+   template-import routing" — brahmi now attaches one on the agent-template review
+   turn as well), route to `import-workflow` and **adopt** the named `workflow_id`;
+   never `create_from_tasks`. Even without the block, if the agent already owns an
+   un-edited imported workflow, update it rather than authoring a second — brahmi's
+   guard will auto-adopt a stray `create` in that state, but routing to update up
+   front is cleaner.
+
    Likewise, before claiming "an update is already in flight" or "task X is still running", call `aramb_tasks.list status="in_progress"` and confirm. If the task is `done`, treat the user's new prompt as a fresh request, not a refinement.
 
 2. **No workflow exists yet** → call:
