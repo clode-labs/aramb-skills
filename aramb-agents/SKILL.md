@@ -13,14 +13,14 @@ description: >
 
 The `aramb_agents.*` tools manage the organization's **product agents** — the
 personas end-users chat with. Each agent carries a versioned config (name,
-system prompt, greeting, mode, skills, disabled tools) with a **single mutable
+system prompt, greeting, mode, skills, disabled tools, conversation starters) with a **single mutable
 draft** and **immutable published versions**; end-users always get the
 published version.
 
 ## CRITICAL: mcporter syntax rules
 - ALL arguments MUST use `key="value"` format.
 - Do NOT use `--output` — it is not supported by mcporter call.
-- Array arguments (`skills`, `disabled_tools`) take a JSON array string, e.g. `skills='["skill-a","skill-b"]'`.
+- Array arguments (`skills`, `disabled_tools`, `conversation_starters`) take a JSON array string, e.g. `skills='["skill-a","skill-b"]'` or `conversation_starters='["Draft a launch email","Summarize this PDF","What can you do?"]'`.
 
 ## Which tool, when
 
@@ -74,6 +74,13 @@ domain-neutral defaults, which is rarely what a purpose-built agent wants.
   edge cases. Delivered as a file. Empty ⇒ platform default. Author this when the
   agent's job is more than one-shot Q&A (a multi-step routine, tool sequencing,
   hand-off rules).
+- **`conversation_starters`** — a JSON array of short suggested prompts shown on
+  the agent's chat **Preview** page; clicking one populates the composer (it does
+  not auto-send). Author **at least 3**, each specific to what THIS agent actually
+  does well — not generic filler — so a first-time user can see the agent's range
+  at a glance. Empty ⇒ none shown; the product caps them at 6, so keep to ~3-5
+  strong ones. Pass as a JSON array string, e.g.
+  `conversation_starters='["Draft a launch email","Summarize this PDF","What can you do?"]'`.
 
 Both are **snake_case** on the main persona (`soul`, `agents_doc`). Do not confuse
 them with the workflow **sub-agent** shape inside `agent_specs`, which uses
