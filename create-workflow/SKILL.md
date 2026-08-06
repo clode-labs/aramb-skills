@@ -445,13 +445,13 @@ Notes:
 **When to emit this block:** any node whose described work involves anything on
 github — clone, fetch, checkout, push, branch, commit, PRs, issues, releases,
 comments. Everything github goes through the same surface (no API-vs-protocol
-split anymore): `aramb_toolkits.get_github_credential` → `GH_TOKEN` → native
-`git` / `gh` CLI.
+split anymore): `aramb_toolkits.execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` →
+`GH_TOKEN` → native `git` / `gh` CLI.
 
-**Why it matters:** github is NOT a Composio toolkit on this platform —
-`composio execute GITHUB_*` is hard-blocked at the proxy with `403`. The
-credential broker is the only way to get a usable github token from the
-agent's container.
+**Why it matters:** github is NOT a normal Composio tool on this platform — only
+the synthetic `GITHUB_GET_GIT_CREDENTIAL` action is served (other `GITHUB_*`
+tools are not). The credential broker is the only way to get a usable github
+token from the agent's container.
 
 **Append this block verbatim** to the END of any node prompt that involves
 github work (after the closing-instruction template):
@@ -461,26 +461,29 @@ github work (after the closing-instruction template):
 1. Confirm the user has connected github:
    `aramb_toolkits.check_connection toolkit="GITHUB"`
    - If `connected: false` — call
-     `aramb_toolkits.connect_toolkit toolkit="github"` and share the
+     `aramb_toolkits.connect toolkit="github"` and share the
      returned `redirect_url` with the user via your reply or
      `aramb_chat.alert_user`. Close the step with `status="blocked"` until
      they finish OAuth; do not retry without confirmation.
 2. Mint a token:
-   `aramb_toolkits.get_github_credential` (returns `{ token, username,
-   account_ref, ... }`).
+   `aramb_toolkits.execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` (returns under
+   `result`: `{ token, username, account_ref, ... }`).
    - If the org has multiple github accounts in scope and the response is
-     `409 ambiguous_connection`, call
-     `aramb_toolkits.list_connections toolkit="GITHUB"`, pick the right
-     `account_ref`, then re-call with `account_ref="ca_..."`.
+     ambiguous, call `aramb_toolkits.list_connections toolkit="GITHUB"`, pick the
+     right `account_ref`, then re-call with
+     `{tool:"GITHUB_GET_GIT_CREDENTIAL","arguments":{"account_ref":"ca_..."}}`.
 3. Export and use native CLI for everything:
    `export GH_TOKEN="<token>"`
    `git clone https://x-access-token:$GH_TOKEN@github.com/<owner>/<repo>.git`
    `git push`, `gh pr create`, `gh issue list`, `gh release create`, etc.
 4. On `401` from `git` / `gh` (~8h token lifetime), re-call
-   `aramb_toolkits.get_github_credential` for a fresh token. Cheap, no rate
-   concerns.
-5. NEVER use `composio execute GITHUB_*` — those slugs are hard-blocked at
-   the proxy with `403`.
+   `aramb_toolkits.execute {tool:"GITHUB_GET_GIT_CREDENTIAL"}` for a fresh token.
+   Cheap, no rate concerns.
+5. NEVER try other `GITHUB_*` tools via `execute` — only
+   `GITHUB_GET_GIT_CREDENTIAL` is served; the rest are not. Also do NOT use
+   `aramb_chat.list_linked_repos`,
+   `aramb_chat.clone_repo`, or `aramb_chat.git_token` — those don't exist
+   on this surface anymore.
 ```
 
 Emit this block on every node that touches github — there is no "API-only"

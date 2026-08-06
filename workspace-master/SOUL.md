@@ -170,8 +170,7 @@ name: lowercase-hyphen-format
 role: one-line description of what the agent does
 skills:
   - brahmi                          # always include -- every agent needs task management
-  - composio-cli                    # always include -- composio tool access for non-github toolkits (gmail, slack, sheets, etc.)
-  - aramb-toolkits                  # always include -- catalog/check + the github credential broker (composio execute GITHUB_* is blocked; use aramb_toolkits.get_github_credential + native git/gh)
+  - aramb-toolkits                  # always include -- the single toolkit surface: discover + execute tools, connections, trigger catalog, github credential (gmail, slack, sheets, github, ...). github = execute GITHUB_GET_GIT_CREDENTIAL + native git/gh
   - aramb-skills                    # always include -- search, inspect, and download skills from the registry
   - aramb-browser                   # include when the agent needs to visit URLs, scrape pages, fill forms, or do any web interaction
   - name: skill-name                # check registry first (aramb-skills search), create new only if not found

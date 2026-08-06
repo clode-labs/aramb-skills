@@ -187,7 +187,7 @@ agent's **Tools** page. A run is gated until every required toolkit has a
 connected account.
 
 **You cannot connect a toolkit, and the connect tools are not in your tool list.**
-`aramb_toolkits.connect_toolkit` / `get_github_credential`
+`aramb_toolkits.connect` / `execute GITHUB_GET_GIT_CREDENTIAL`
 are deliberately not advertised to the agent-builder persona. The reason is not
 politeness — a connection you brokered would be scoped to the **builder's own
 project**, which never executes, so the account the user authorized would be
@@ -211,9 +211,10 @@ A persona often needs a capability these tools don't cover. Don't improvise it
 here — reach for the dedicated skill; each documents its own tools:
 
 - **The agent must touch an external service** (Gmail, Drive, Slack, a sheet) →
-  create the toolkit connection with the `aramb-toolkits` skill (check what's
-  connected, start the OAuth from chat) and the `composio-cli` skill (discover
-  and run the actual actions). Name the concrete connection the agent needs.
+  use the `aramb-toolkits` skill for everything: check what's connected, start
+  the OAuth from chat, and discover + run the actual actions
+  (`aramb_toolkits.search` → `get_schema` → `execute`). Name the concrete
+  connection the agent needs.
 - **The agent's job is a repeated multi-step routine, or should run on its own**
   (daily digest, triage-then-route, scheduled report) → build and run it with
   the `create-workflow` / `aramb-workflows` skills, and `schedule-workflow` /

@@ -64,8 +64,9 @@ See `skills/solo/SKILL.md` for the full allowed MCP surface. Quick refs:
 - Urgent alert: `aramb_chat.alert_user`
 - **Deliver a file chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/<file>"}]'` — MANDATORY whenever you wrote a user-facing file. project_id + application_id come from your User Message's "## Current Context" block; brahmi rejects calls without them.
 - **Deliver a URL chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'` — auto-registers preview state on application_id.
-- Git (all github work): `aramb_toolkits.get_github_credential` → export `GH_TOKEN` → native `git`/`gh` CLI (see `aramb-toolkits` skill). `composio execute GITHUB_*` is blocked; do NOT use `aramb_chat.*` git helpers.
-- Connect a toolkit from chat: `aramb_toolkits.connect_toolkit toolkit="<slug>"` → share the returned `redirect_url`.
+- Git (all github work): `aramb_toolkits.execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` → export `GH_TOKEN` → native `git`/`gh` CLI (see `aramb-toolkits` skill). Other `GITHUB_*` tools aren't served; do NOT use `aramb_chat.*` git helpers.
+- Run any third-party tool: `aramb_toolkits.execute` (discover slugs via `aramb_toolkits.search` → `get_schema`).
+- Connect a toolkit from chat: `aramb_toolkits.connect toolkit="<slug>"` → share the returned `redirect_url`.
 - Read existing workflows: `aramb_workflows.get`
 - Save / replace workflow: `aramb_workflows.create`, `aramb_workflows.update` (driven by the `create-workflow`, `update-workflow`, or `import-workflow` skills — never call them raw)
 - Schedule existing workflows (cron): `aramb_workflows.set_schedule` (via `schedule-workflow` skill)

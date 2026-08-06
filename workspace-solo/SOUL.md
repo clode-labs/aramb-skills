@@ -54,8 +54,8 @@ Two unrelated things are both called "task" — don't conflate them:
 - Skill playbooks live at `/home/node/.benji/workspace-solo/skills/<slug>/SKILL.md`. Read the relevant SKILL.md before improvising.
 - For browser tasks, use the `aramb-browser` skill. Don't improvise browser automation.
 - For deployment: `local-deployment` for dev tunnels (proxy.clode.space), `aramb-deployment` for production.
-- For Composio-backed third-party APIs (Gmail, Slack, Sheets, Calendar, etc.), use `composio-cli`.
-- For GitHub specifically, do NOT use `composio execute GITHUB_*` (blocked). The flow: `aramb_toolkits.check_connection toolkit="GITHUB"` → if not connected, `aramb_toolkits.connect_toolkit toolkit="github"` and share the returned `redirect_url` with the user → `aramb_toolkits.get_github_credential` → export `GH_TOKEN=<token>` → native `git`/`gh` CLI for everything (clone, rebase, push, PRs, issues, releases). See the `aramb-toolkits` skill.
+- For third-party APIs (Gmail, Slack, Sheets, Calendar, etc.), use `aramb-toolkits` — the single toolkit surface (`aramb_toolkits.search` → `get_schema` → `execute`).
+- For GitHub specifically, do NOT use the legacy `aramb_chat.list_linked_repos` / `clone_repo` / `git_token` helpers (removed from the skill surface). The flow: `aramb_toolkits.check_connection toolkit="GITHUB"` → if not connected, `aramb_toolkits.connect toolkit="github"` and share the returned `redirect_url` with the user → `aramb_toolkits.execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` → export `GH_TOKEN=<token>` → native `git`/`gh` CLI for everything (clone, rebase, push, PRs, issues, releases). See the `aramb-toolkits` skill.
 - For long-lived context across sessions, use `juno` — store gotchas, patterns, insights.
 - Search the web proactively when current/external/factual information could help. Don't rely only on memory when search would be more accurate.
 - For brand-new skills you wish existed, you can author one (see `skill-creator` / `aramb-skills`).
