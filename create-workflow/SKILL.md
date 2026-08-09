@@ -57,6 +57,20 @@ The response tells you the id brahmi assigned.
    `update-workflow` skill, never this one. Silently replacing a user's workflow is
    a serious failure.
 
+   **One carve-out — a freshly imported agent-template workflow.** If the agent you
+   are building already owns an **un-edited imported** workflow (`source_kind =
+   agent_template`, `source_reference = <template-slug>`, untouched since import),
+   do NOT author a second workflow to "review and tailor" the import — that draft IS
+   the workflow. Adopt it: fetch it and edit it in place via `update-workflow` /
+   `import-workflow`. This is the ONE case where an existing workflow means "update,
+   not create", and it is narrow: it applies only while the imported workflow is
+   still un-edited. brahmi enforces it — a `create` in this exact state is
+   transparently **auto-adopted into an update** of the imported workflow and the
+   response returns that existing workflow's id with `"status":"adopted_import"`.
+   Treat that response as success, not an error, and do not retry with `create`.
+   Once the import has been tailored (or for any other pre-existing workflow), the
+   "always create a new one" rule above stands unchanged.
+
 2. **The workflow is part of the agent you're building, and stays a DRAFT — do NOT
    publish it as a build step.** `aramb_workflows.create` files the workflow under the
    agent (via `agent_id`, see #0) and leaves it a **draft** — it is NOT auto-published.
