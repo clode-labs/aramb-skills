@@ -74,13 +74,16 @@ domain-neutral defaults, which is rarely what a purpose-built agent wants.
   edge cases. Delivered as a file. Empty ⇒ platform default. Author this when the
   agent's job is more than one-shot Q&A (a multi-step routine, tool sequencing,
   hand-off rules).
-- **`conversation_starters`** — a JSON array of short suggested prompts shown on
-  the agent's chat **Preview** page; clicking one populates the composer (it does
-  not auto-send). Author **at least 3**, each specific to what THIS agent actually
-  does well — not generic filler — so a first-time user can see the agent's range
-  at a glance. Empty ⇒ none shown; the product caps them at 6, so keep to ~3-5
-  strong ones. Pass as a JSON array string, e.g.
+- **`conversation_starters`** — the agent's **opener**: a JSON array of **exactly 3**
+  short, concrete, task-shaped prompts shown as clickable **pills** on a new
+  conversation; clicking one **sends it as the user's first message**. Each specific
+  to what THIS agent actually does well — not generic filler — so a first-time user
+  sees the agent's range at a glance. **Author 3 — never more.** (The platform cap at
+  save is 6, each ≤200 chars; 3 is the authoring rule, not the ceiling.)
+  Prefer these over a greeting — they show what the agent can do and **cost no model
+  call**. Empty ⇒ none shown. Pass as a JSON array string, e.g.
   `conversation_starters='["Draft a launch email","Summarize this PDF","What can you do?"]'`.
+  See **The opener** below for the full model.
 
 Both are **snake_case** on the main persona (`soul`, `agents_doc`). Do not confuse
 them with the workflow **sub-agent** shape inside `agent_specs`, which uses
@@ -96,6 +99,51 @@ npx mcporter call aramb_agents.create name="Support Triage" \
 
 # Patch just the soul later — partial merge, other fields untouched.
 npx mcporter call aramb_agents.update agent_id="<AGENT_ID>" soul="You are warmer now — open with a short acknowledgement before triaging…"
+```
+
+## The opener — starters beat a greeting, and both are free
+
+A new conversation opens with **either** conversation starters **or** a greeting —
+never both — and neither costs a model call. Getting this right is the difference
+between a first-time user seeing what the agent can do and burning credits before
+they've asked anything.
+
+- **Conversation starters are the PREFERRED opener.** They render as clickable
+  pills on a new conversation; clicking one **sends it as the user's first
+  message**. Author **exactly 3** short, concrete, **task-shaped** examples of what to
+  ask this agent — the console's own hint is *"Add at least 3 to guide new
+  conversations."*, so 3 is both the floor that guides a new user and the ceiling that
+  keeps the empty state scannable. **Do not author 4 or more**, even though the
+  platform accepts up to 6. Caps enforced at save time: **max 6, each ≤200
+  characters** — stay within them or the tool rejects the payload.
+- **The greeting is a canned literal rendered by the chat surface**, shown only
+  when the agent has **no** starters. It is **not** a prompt instruction and **not**
+  model output, so it cannot adapt to context — do **not** write greetings like
+  *"Welcome back, I see you were working on…"*; the surface renders a fixed string.
+  Empty greeting ⇒ brahmi's default is used.
+- **Neither an opener nor a resume costs a model call.** Showing the pills, showing
+  the canned greeting, and resuming an existing conversation are all rendered by the
+  surface with **zero** model calls. This is the whole point of the opener model: a
+  user should never spend credits before their conversation actually starts.
+- Starters and greeting are **mutually exclusive at render time** — when starters
+  exist the surface shows pills and **no** greeting text. So an agent with good
+  starters does not need a clever greeting; put the effort into the starters.
+
+### Propose starters when you draft a product agent
+
+When you **create or update a product agent**, propose starters derived from the
+agent's actual job and confirm them with the user the same way you settle the system
+prompt — don't leave them empty. Keep each one **concrete and task-shaped**, not
+*"Ask me anything"* and not *"Hello"*. For a spending assistant, for example:
+
+- *"Summarise my August spending"*
+- *"How much did I spend on Food & Dining?"*
+- *"What did I spend at Amazon last month?"*
+
+Pass them as a JSON array string (the mcporter array form):
+
+```
+conversation_starters='["Summarise my August spending","How much did I spend on Food & Dining?","What did I spend at Amazon last month?"]'
 ```
 
 ## Evaluate and test — separate skills
