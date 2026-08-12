@@ -74,11 +74,12 @@ domain-neutral defaults, which is rarely what a purpose-built agent wants.
   edge cases. Delivered as a file. Empty ⇒ platform default. Author this when the
   agent's job is more than one-shot Q&A (a multi-step routine, tool sequencing,
   hand-off rules).
-- **`conversation_starters`** — the agent's **opener**: a JSON array of 3–6 short,
-  concrete, task-shaped prompts shown as clickable **pills** on a new conversation;
-  clicking one **sends it as the user's first message**. Each specific to what THIS
-  agent actually does well — not generic filler — so a first-time user sees the
-  agent's range at a glance. **Caps (enforced at save): max 6, each ≤200 chars.**
+- **`conversation_starters`** — the agent's **opener**: a JSON array of **exactly 3**
+  short, concrete, task-shaped prompts shown as clickable **pills** on a new
+  conversation; clicking one **sends it as the user's first message**. Each specific
+  to what THIS agent actually does well — not generic filler — so a first-time user
+  sees the agent's range at a glance. **Author 3 — never more.** (The platform cap at
+  save is 6, each ≤200 chars; 3 is the authoring rule, not the ceiling.)
   Prefer these over a greeting — they show what the agent can do and **cost no model
   call**. Empty ⇒ none shown. Pass as a JSON array string, e.g.
   `conversation_starters='["Draft a launch email","Summarize this PDF","What can you do?"]'`.
@@ -109,10 +110,12 @@ they've asked anything.
 
 - **Conversation starters are the PREFERRED opener.** They render as clickable
   pills on a new conversation; clicking one **sends it as the user's first
-  message**. Author **3–6** short, concrete, **task-shaped** examples of what to ask
-  this agent — the console's own hint is *"Add at least 3 to guide new
-  conversations."* Caps are enforced at save time: **max 6, each ≤200 characters** —
-  stay within them or the tool rejects the payload.
+  message**. Author **exactly 3** short, concrete, **task-shaped** examples of what to
+  ask this agent — the console's own hint is *"Add at least 3 to guide new
+  conversations."*, so 3 is both the floor that guides a new user and the ceiling that
+  keeps the empty state scannable. **Do not author 4 or more**, even though the
+  platform accepts up to 6. Caps enforced at save time: **max 6, each ≤200
+  characters** — stay within them or the tool rejects the payload.
 - **The greeting is a canned literal rendered by the chat surface**, shown only
   when the agent has **no** starters. It is **not** a prompt instruction and **not**
   model output, so it cannot adapt to context — do **not** write greetings like
@@ -140,7 +143,7 @@ prompt — don't leave them empty. Keep each one **concrete and task-shaped**, n
 Pass them as a JSON array string (the mcporter array form):
 
 ```
-conversation_starters='["Summarise my August spending","How much did I spend on Food & Dining?"]'
+conversation_starters='["Summarise my August spending","How much did I spend on Food & Dining?","What did I spend at Amazon last month?"]'
 ```
 
 ## Evaluate and test — separate skills
