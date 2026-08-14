@@ -209,6 +209,37 @@ npx mcporter call aramb_agents.export_template agent_id="<AGENT_ID>" slug="suppo
 catalog and cannot be pulled back. **Confirm with the user before calling it**,
 including which KB docs (if any) should travel with it.
 
+### External MCP servers travel with the template automatically
+
+If the agent has connected external MCP servers (Configure › Tools › MCP), the
+export **templatizes them for you**: each server's URL and header values are
+variabilized into `{{placeholders}}`, and any secret header (a value referencing a
+Vault secret) is preserved as an `{{env.<name>}}` reference — never the secret
+itself. The importer/hirer supplies their **own** URL, headers and secret values on
+setup. You do **not** list MCP URL/header literals in `variabilization_map`; that
+happens automatically.
+
+Two optional controls:
+
+- **`aramb_agents.list_mcp_connections`** (`agent_id`) — list the agent's connected
+  MCP servers so you know their names. Returns `{mcp_connections: [{name,
+  display_name, enabled}]}` — names + arm state only (URL/headers/secrets live in
+  toolkit-proxy and are never returned).
+- **`mcp_required`** on `export_template` — an object marking each server required or
+  optional, e.g. `mcp_required='{"echo_server": true, "scratch_mcp": false}'`. A
+  server you omit defaults to **required**. `true` = the importer must connect it to
+  use the template; `false` = optional.
+
+```bash
+# See which MCP servers the agent has, then mark one optional on export.
+npx mcporter call aramb_agents.list_mcp_connections agent_id="<AGENT_ID>"
+npx mcporter call aramb_agents.export_template agent_id="<AGENT_ID>" slug="support-triage" name="Support Triage Agent" mcp_required='{"echo_server": true}'
+```
+
+Like required toolkits, this is a **declaration the importer fulfils**: the template
+names the servers and their shape, the user connects their own on the imported
+agent's Tools page. You never carry a secret into a template.
+
 ## Draft vs published — the one model to internalize
 
 `update` edits a private draft; `publish` releases it. So the safe default
