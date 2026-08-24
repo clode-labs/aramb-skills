@@ -19,9 +19,9 @@ description: >
 # Create Workflow
 
 Construct a brand-new workflow and save it with `aramb_workflows.create`. **The
-workflow does NOT exist yet** — brahmi creates the row + nodes atomically on that
+workflow does NOT exist yet** — the platform creates the row + nodes atomically on that
 one call. Don't ask for a `workflow_id`; you don't have one and don't need one.
-The response tells you the id brahmi assigned.
+The response tells you the id the platform assigned.
 
 > **If asked to UPDATE an existing workflow, use the `update-workflow` skill. If
 > polishing a template-import draft, use `import-workflow`.** This skill only
@@ -83,7 +83,7 @@ The response tells you the id brahmi assigned.
    error (e.g. "not published", wrong id), report THAT — do not say "it's running",
    and never substitute a different workflow to make the action appear to succeed.
    Run exactly the workflow the user named; if you can't, say why. **And once a run
-   starts, hand off to it — brahmi posts real progress and the final result to the
+   starts, hand off to it — the platform posts real progress and the final result to the
    conversation automatically, so never narrate fabricated progress ("4/382 scored,
    working through the rest…") you can't verify.** The conversation thread is the
    source of truth for run progress; `aramb_workflows.get` / `list` report only the
@@ -113,18 +113,18 @@ work" below.
 
 ### Axis 2 — Task dispatch or chat dispatch? → decides spec source + close-out
 
-- **Task dispatch:** brahmi gave you a "Your task id" block (`application_id`,
+- **Task dispatch:** the platform gave you a "Your task id" block (`application_id`,
   `project_id`, `task_id`). Spec source = the application's **user tasks**
   (`aramb_tasks.list`, ALL statuses — see step 1); each node may carry a
   `source_task_id`. Close out via `aramb_tasks.update`. (Only the master is ever
   task-dispatched.)
 - **Chat dispatch:** no `task_id` — an ordinary chat turn. Spec source = the
   user's explicit description, or the work done so far in THIS conversation. Close
-  out by **replying in chat** (brahmi persists your final assistant text).
+  out by **replying in chat** (the platform persists your final assistant text).
 
 **The axes cross.** The **master can be in chat dispatch** — you just chatted
 "build a workflow" to it; that's still team mode (you route through tasks and
-close via `aramb_tasks.update`). (The brahmi `task_id` is NOT Claude's built-in
+close via `aramb_tasks.update`). (The platform `task_id` is NOT Claude's built-in
 `TaskCreate` — unrelated; a `TaskCreate` entry does not make this a task
 dispatch.)
 
@@ -154,12 +154,12 @@ For each node, assign an agent for its role in ONE of two ways:
   contract).
 
 **The specs travel WITH the workflow.** They ride on the same `aramb_workflows.create`
-(or `update`) call — one `agent_specs` array alongside `nodes` + `edges` — and brahmi
+(or `update`) call — one `agent_specs` array alongside `nodes` + `edges` — and the platform
 provisions them **deterministically at claim/run**. You do NOT route bespoke node
 agents through a separate agent-creation flow: the Architect never uses the
-benji-CLI `create-agent` runtime path, and this skill does not either. A node whose
+agent-runtime `create-agent` path, and this skill does not either. A node whose
 `assigned_agent` names neither an existing roster agent nor an `agent_specs` entry
-is a **dangling reference**: brahmi rejects it at author time for an agent-bound
+is a **dangling reference**: the platform rejects it at author time for an agent-bound
 workflow, and there is no "main agent" to fall back to. Every node must name either an
 `agent_specs` entry, an existing roster agent, or the agent you are building (by its
 routing name — see below).
@@ -197,20 +197,20 @@ identical across every combination.
 1. **Every node in `aramb_workflows.create` MUST carry `required_toolkits`.** Copy the array from each source task's `required_toolkits` (task dispatch) or infer it from the action the node performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service.
    - **Failure mode:** Omitting `required_toolkits` means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. Empty array `[]` is correct when the node touches no third-party service — never omit the field.
    - **Declaring is the whole job — you do not connect the accounts.** As the workflow's author you never start OAuth, never mint or paste an authorization link, and never claim a toolkit is connected. The **user** connects each account in the console (agent **Tools** page / Integrations), on their own runtime project — the only project execution resolves against; an account authorized through the builder would land on a project that never runs. A workflow whose toolkits aren't connected yet is a perfectly good deliverable: it simply stays gated until the user connects them, which is exactly what the declaration is for. (This is about toolkit *accounts* only — it is no reason to avoid authoring a workflow when the job genuinely needs one.)
-2. **Every node that touches a third-party service MUST carry a singular `toolkit`** — its *primary* toolkit slug, used for trigger-binding. The invariant brahmi enforces: **`toolkit` MUST be a member of that node's `required_toolkits`.** A Gmail-fetch node is `toolkit:"GMAIL", required_toolkits:["GMAIL"]`; a node that reads Drive then writes Sheets is `toolkit:"GOOGLESHEETS", required_toolkits:["GOOGLEDRIVE","GOOGLESHEETS"]` (pick the one the trigger would bind to — usually the action the workflow is "about"). Omit `toolkit` (or pass `null`) only when `required_toolkits` is `[]`. The brahmi MCP schema rejects a `toolkit` that isn't in `required_toolkits`.
-3. **Ground every toolkit + trigger slug in the real catalog — never hallucinate.** Before drafting, call `aramb_toolkits.list_toolkits` to confirm the exact uppercase slugs (and, when the workflow will be event-triggered, `aramb_toolkits.list_triggers("<TOOLKIT>")` for trigger slugs). Do NOT infer slugs from prose. See "Ground the slugs" below. **Never invent a toolkit binding, and never bind a platform-internal/hidden toolkit** (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) — `aramb_workflows.create` rejects those. For Slack/Discord/Teams messaging deliverables, deliver via chil `chat.send_dm` (no toolkit). See the `aramb-workflows` skill.
-4. **No placeholder syntax in any node `prompt`.** No `{{env.KEY}}`, no `{{input.KEY}}`, no template substitution of any kind. There is no substitution layer — a literal `{{env.FOO}}` reaches the agent as the literal string `{{env.FOO}}`. The brahmi MCP schema **rejects** any prompt matching `{{ env.… }}`. Write what the agent should do with the context that arrives in `<run_input>` instead (see "Run input — the only per-run channel" below).
-5. **Do NOT declare `env_variables`.** Omit the field from the `aramb_workflows.create` call entirely. The column has no runtime path in v2 — declaring entries reads as "I wired up your API_KEY" when nothing consumes it. The brahmi MCP schema rejects a non-empty `env_variables` map. Secrets/credentials are connected through the Composio account, not declared on the workflow.
+2. **Every node that touches a third-party service MUST carry a singular `toolkit`** — its *primary* toolkit slug, used for trigger-binding. The invariant the platform enforces: **`toolkit` MUST be a member of that node's `required_toolkits`.** A Gmail-fetch node is `toolkit:"GMAIL", required_toolkits:["GMAIL"]`; a node that reads Drive then writes Sheets is `toolkit:"GOOGLESHEETS", required_toolkits:["GOOGLEDRIVE","GOOGLESHEETS"]` (pick the one the trigger would bind to — usually the action the workflow is "about"). Omit `toolkit` (or pass `null`) only when `required_toolkits` is `[]`. The platform's MCP schema rejects a `toolkit` that isn't in `required_toolkits`.
+3. **Ground every toolkit + trigger slug in the real catalog — never hallucinate.** Before drafting, call `aramb_toolkits.list_toolkits` to confirm the exact uppercase slugs (and, when the workflow will be event-triggered, `aramb_toolkits.list_triggers("<TOOLKIT>")` for trigger slugs). Do NOT infer slugs from prose. See "Ground the slugs" below. **Never invent a toolkit binding, and never bind a platform-internal/hidden toolkit** (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) — `aramb_workflows.create` rejects those. For Slack/Discord/Teams messaging deliverables, deliver via the chat toolkit's `chat.send_dm` (no toolkit). See the `aramb-workflows` skill.
+4. **No placeholder syntax in any node `prompt`.** No `{{env.KEY}}`, no `{{input.KEY}}`, no template substitution of any kind. There is no substitution layer — a literal `{{env.FOO}}` reaches the agent as the literal string `{{env.FOO}}`. The platform's MCP schema **rejects** any prompt matching `{{ env.… }}`. Write what the agent should do with the context that arrives in `<run_input>` instead (see "Run input — the only per-run channel" below).
+5. **Do NOT declare `env_variables`.** Omit the field from the `aramb_workflows.create` call entirely. The column has no runtime path in v2 — declaring entries reads as "I wired up your API_KEY" when nothing consumes it. The platform's MCP schema rejects a non-empty `env_variables` map. Secrets/credentials are connected through the Composio account, not declared on the workflow.
 6. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below for the exact template.
-   - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble then shows "(no summary)" instead of the real hand-off — the chain works visually but with zero context flowing between steps. Outputs are load-bearing.
+   - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and the platform's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble then shows "(no summary)" instead of the real hand-off — the chain works visually but with zero context flowing between steps. Outputs are load-bearing.
 7. **Call `aramb_workflows.create` exactly once.** Success or failure — never retry.
 8. **Close out cleanly.** Task dispatch: always close with `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave the task `in_progress`. Chat dispatch: confirm in your reply text (success or failure). There is no task to close in chat dispatch.
-9. **Speak to the user in plain product language — never leak internals.** The person reading your chat is a customer, not an engineer. Do NOT mention MCP tool names (`aramb_workflows.create`, `aramb_triggers.create`), raw upstream errors (`toolkit-proxy 502`, `ConfigInvalid`), CLI names, internal toolkit/slug strings, or phrases like "the tool isn't in my surface." You DO have these tools — call them. If something genuinely fails, say it in human terms ("I couldn't set up the trigger — the GitHub connection looks unavailable") and stop. Internal mechanics stay in your reasoning, never in the reply.
+9. **Speak to the user in plain product language — never leak internals.** The person reading your chat is a customer, not an engineer. Do NOT mention MCP tool names (`aramb_workflows.create`, `aramb_triggers.create`), raw upstream errors (`the integrations proxy 502`, `ConfigInvalid`), CLI names, internal toolkit/slug strings, or phrases like "the tool isn't in my surface." You DO have these tools — call them. If something genuinely fails, say it in human terms ("I couldn't set up the trigger — the GitHub connection looks unavailable") and stop. Internal mechanics stay in your reasoning, never in the reply.
 
 ## Run input — the only per-run channel
 
 A workflow run receives ALL of its per-run context in a single `<run_input>`
-block that brahmi renders into the **first step's** prompt at dispatch. It holds
+block that the platform renders into the **first step's** prompt at dispatch. It holds
 either the user's free-form instruction (manual run) or the trigger payload JSON
 (trigger run) — same slot either way. There are no declared input variables, no
 typed form, no substitution. The agent reads `<run_input>` and figures out what
@@ -372,7 +372,7 @@ npx mcporter call aramb_tasks.update \
 ```
 
 **Chat dispatch.** The user sees chat, not a task card. Write short progress
-narration in your reply text at three checkpoints (brahmi saves your final
+narration in your reply text at three checkpoints (the platform saves your final
 assistant text as the chat row — no MCP call needed):
 1. Restate the workflow you're about to build **and which evidence source you're using** ("Building from your description: 3-step Gmail → Sheet → email digest" / "Consolidating from the work we did earlier in this chat: 3 steps — fetch, write, notify").
 2. When you start designing nodes ("Designing 3 nodes — Gmail fetch → Sheet append → notify").
@@ -398,11 +398,11 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 
 - **Merge or split** steps where it makes the workflow cleaner. Not every source task becomes a node.
 - **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what actually worked but keep the concrete subject matter.
-- **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — brahmi rejects that shape.
+- **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — the platform rejects that shape.
 - **`assigned_agent` per node** — one agent per role, decided IDENTICALLY in solo and team (see "Per-node persona — decided by the work"). For each node: reuse an existing agent that fits the role (a roster persona — `developer` / `*-tester` / `checker` / `*-deployer`), otherwise **author a bespoke sub-agent spec INLINE in the workflow's `agent_specs`** named for its role (`issue-triager`, `fix-implementer`, `qa-tester`, `pr-author`, …) to the template-grade bar, and set the node's `assigned_agent` to that spec's `name`. In task dispatch, you may default to the source task's persona. Authoring a spec per distinct role is the DEFAULT. A single-role workflow may keep `agent_specs` empty and point every node at **the agent you are building**, using its routing name from `aramb_agents.get` → `benji_agent_id` (never `"main"` — no such agent — and never `"master"`/`"solo"`, which are infra agents) — only for a trivial single-node / pure-glue workflow. Do NOT branch on solo vs team.
 - **Do NOT pick a different model per node.** Model/effort/thinking come from the single workflow-wide `default_node_settings` (or, for an inline sub-agent, its `defaultModel`); per-node `settings` stays `{}` (inherit). Never stamp `model` on individual nodes — no per-step Haiku/Opus/Sonnet juggling.
-- **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase and **grounded via `aramb_toolkits.list_toolkits`** (see "Ground the slugs"), not guessed from prose. Brahmi snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
-- **Carry a singular `toolkit` per node that has any toolkits — MANDATORY when `required_toolkits` is non-empty.** It is the node's *primary* toolkit (the one a trigger would bind to). Invariant: `toolkit ∈ required_toolkits`. Single-toolkit node → `toolkit` equals the one slug. Multi-toolkit node → pick the slug the node's job is "about" (the action it exists to perform, not an incidental read). Omit `toolkit` (or `null`) only when `required_toolkits` is `[]`. Brahmi rejects a `toolkit` that isn't in `required_toolkits`.
+- **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase and **grounded via `aramb_toolkits.list_toolkits`** (see "Ground the slugs"), not guessed from prose. The platform snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
+- **Carry a singular `toolkit` per node that has any toolkits — MANDATORY when `required_toolkits` is non-empty.** It is the node's *primary* toolkit (the one a trigger would bind to). Invariant: `toolkit ∈ required_toolkits`. Single-toolkit node → `toolkit` equals the one slug. Multi-toolkit node → pick the slug the node's job is "about" (the action it exists to perform, not an incidental read). Omit `toolkit` (or `null`) only when `required_toolkits` is `[]`. The platform rejects a `toolkit` that isn't in `required_toolkits`.
 - **Per-node toolkit CHOICE — Composio connection vs `aramb-browser`.** For each node that touches an external surface, decide *how* it acts: does the **Composio toolkit** cover the action, or do you need **`aramb-browser`** (drive a logged-in website directly)? Composio is the default when it has the action; reach for `aramb-browser` when Composio's coverage of that service is limited (e.g. Composio LinkedIn is read-thin → a "post to LinkedIn" or "comment on a profile" node needs `aramb-browser`, and trips the browser-login pre-check below). **Shortcut: if the work was already performed** (you can see it in the session or the task outputs), reuse whatever actually served the purpose — the user already chose the path that worked; don't second-guess it.
 - **Write prompts against `<run_input>`, never placeholders.** Each node's `prompt` describes what to do with the context it receives — for step 1 that context is the `<run_input>` block (see "Run input — the only per-run channel"); for later steps it's the parent's `outputs.summary`. No `{{env.KEY}}` / `{{input.KEY}}` anywhere. Step 1's prompt must explicitly tell the agent to distill the relevant input into its `outputs.summary` for downstream steps.
 - **Set `default_node_settings` on the workflow.** Always emit a sensible defaults block — see "Default node settings — workflow-level". Don't leave it empty: the FE renders the settings tray off these values.
@@ -437,7 +437,7 @@ Why both `summary` and `files`:
 - `files` is a list of paths (relative to the workspace working directory) the next agent reads to dig deeper. Empty array `[]` is correct when the node only sends a message / posts to an external service and produces no files.
 
 Notes:
-- The agent reads its `project_id` and `step_id` from the User Message under "## Current Context" (`Project ID:` and `Workflow Run Step ID:` lines) at dispatch time. Brahmi rejects cross-step writes (`context_drift`), so the agent MUST copy these UUIDs verbatim into the close call.
+- The agent reads its `project_id` and `step_id` from the User Message under "## Current Context" (`Project ID:` and `Workflow Run Step ID:` lines) at dispatch time. The platform rejects cross-step writes (`context_drift`), so the agent MUST copy these UUIDs verbatim into the close call.
 - Do NOT instruct the agent to call `aramb_tasks.update` from a workflow-step prompt — that targets the tasks domain (different DB rows) and the run will stall on the safety net. Only `aramb_workflows.update_step` closes a workflow run step.
 
 ## Git operations — route through aramb_toolkits + native git/gh
@@ -542,7 +542,7 @@ potentially-resumed run.
 
 ## Default node settings — workflow-level
 
-Every workflow carries a `default_node_settings` JSONB block on the workflow itself. The FE renders the workflow settings tray from these values, and brahmi merges them per-step at dispatch time (workflow defaults ⊕ node overrides). Always emit it — leaving it `{}` makes the FE render blanks and the runtime fall back to coarse defaults.
+Every workflow carries a `default_node_settings` JSONB block on the workflow itself. The FE renders the workflow settings tray from these values, and the platform merges them per-step at dispatch time (workflow defaults ⊕ node overrides). Always emit it — leaving it `{}` makes the FE render blanks and the runtime fall back to coarse defaults.
 
 Sensible default block to emit unless the user said otherwise:
 
@@ -585,7 +585,7 @@ into the relevant node's prompt. There is no `env_variables` channel in v2:
 
 - **Omit `env_variables` from the `aramb_workflows.create` call entirely.** The
   column has no runtime path — nothing reads it. Declaring entries misleads the
-  user ("I added your API_KEY" — but nothing consumes it). The brahmi MCP schema
+  user ("I added your API_KEY" — but nothing consumes it). The platform's MCP schema
   rejects a non-empty `env_variables` map.
 - **Secrets / credentials are NOT declared here.** Third-party auth (API keys,
   OAuth tokens) is supplied through the Composio connected account for the
@@ -644,7 +644,7 @@ npx mcporter call aramb_workflows.set_callback \
 
 The response returns a **signing secret once** — surface it to the user verbatim
 and tell them it won't be shown again (they verify `Webhook-Signature` with it).
-brahmi then POSTs a signed status payload on every real run, on start (`running`)
+the platform then POSTs a signed status payload on every real run, on start (`running`)
 and on terminal (`completed`/`failed`/`cancelled`). It's workflow-level config —
 see the `aramb-workflows` skill for the full payload contract. Don't set one
 unless the user asked.
@@ -670,11 +670,11 @@ exist or the workflow fails silently at run time. **Hard gate — no "save anywa
 
 ## 5. Save the workflow
 
-Update progress: "Saving workflow to brahmi".
+Update progress: "Saving workflow to the platform".
 
 Call `aramb_workflows.create` with `agent_id` (the agent this workflow belongs to)
 + `project_id` (both in your session metadata / dispatch block; `application_id` is
-optional/legacy). Brahmi creates the workflow row + nodes atomically in a single
+optional/legacy). The platform creates the workflow row + nodes atomically in a single
 transaction, filed under the owning agent as a **draft** — no publish step.
 
 **Do not reach this step if the browser-login pre-check found a missing
@@ -685,12 +685,12 @@ transaction, filed under the owning agent as a **draft** — no publish step.
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
 - `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
-- `assigned_agent` — one agent per role, decided identically in solo and team: reuse a fitting existing roster agent, else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs`. Never `null` or empty, and never collapse a multi-step workflow onto one agent. (A node whose `assigned_agent` matches no roster agent and no spec is a dangling reference — brahmi rejects it for an agent-bound workflow. For a genuinely single-role workflow, name the agent you are building via its `benji_agent_id`; never `"main"`, `"master"` or `"solo"`.)
+- `assigned_agent` — one agent per role, decided identically in solo and team: reuse a fitting existing roster agent, else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs`. Never `null` or empty, and never collapse a multi-step workflow onto one agent. (A node whose `assigned_agent` matches no roster agent and no spec is a dangling reference — the platform rejects it for an agent-bound workflow. For a genuinely single-role workflow, name the agent you are building via its `benji_agent_id`; never `"main"`, `"master"` or `"solo"`.)
 - `acceptance_criteria` — how to know the step succeeded
 - **`required_toolkits`** — grounded via `aramb_toolkits.list_toolkits`; copied from the source task (task dispatch) or inferred-then-grounded (chat dispatch). `[]` for orchestration / file-only nodes; never omit.
 - **`toolkit`** — the node's primary toolkit slug; MUST be a member of `required_toolkits`. Omit (or `null`) only when `required_toolkits` is `[]`.
 - **`prompt`** — no `{{env.…}}` / `{{input.…}}` placeholders anywhere; step 1's prompt instructs the agent to read `<run_input>` and distill the relevant bits into its `outputs.summary`.
-- **`source_task_id`** — **task dispatch only:** the `task_id` of the originating user task from `aramb_tasks.list`. Required whenever the node consolidates from one user task; omit only for glue / orchestration nodes you invented. Powers the FE "show me the task that produced this node" link and cost reconciliation. **Chat dispatch:** omit the field entirely (or pass `null`) — solo has no source tasks. Brahmi accepts both.
+- **`source_task_id`** — **task dispatch only:** the `task_id` of the originating user task from `aramb_tasks.list`. Required whenever the node consolidates from one user task; omit only for glue / orchestration nodes you invented. Powers the FE "show me the task that produced this node" link and cost reconciliation. **Chat dispatch:** omit the field entirely (or pass `null`) — solo has no source tasks. The platform accepts both.
 - **`settings`** — JSONB; usually `{}`. Set keys only when this node deviates from the workflow defaults.
 
 And on the call itself:
@@ -703,9 +703,9 @@ And on the call itself:
 
 Bugs that silently break downstream behaviour — fix the payload before calling:
 1. Missing `required_toolkits` — kills Evaluate's missing-connection warnings.
-2. `toolkit` not in `required_toolkits` (or missing on a toolkit-using node) — brahmi rejects the call.
-3. A `{{env.KEY}}` / `{{input.KEY}}` placeholder in any prompt — brahmi rejects the call.
-4. An out-of-enum `trigger_choice` value — brahmi rejects it; omit the field unless the user picked toolkit_event/cron/manual.
+2. `toolkit` not in `required_toolkits` (or missing on a toolkit-using node) — the platform rejects the call.
+3. A `{{env.KEY}}` / `{{input.KEY}}` placeholder in any prompt — the platform rejects the call.
+4. An out-of-enum `trigger_choice` value — the platform rejects it; omit the field unless the user picked toolkit_event/cron/manual.
 5. Missing `source_task_id` (task dispatch) — once saved, the link to the originating user task is gone for good.
 6. Missing closing instruction in `prompt` — `outputs` stays NULL, downstream sees "(no summary)" preamble.
 
@@ -791,7 +791,7 @@ The response includes `workflow_id` and `node_count`. If `node_count` matches th
 
 ### Task dispatch — close the task
 
-On success, use the `workflow_id` brahmi returned:
+On success, use the `workflow_id` the platform returned:
 
 ```bash
 npx mcporter call aramb_tasks.update \
@@ -871,12 +871,12 @@ could change, then stop — don't retry.
 - **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
 - **Always emit `default_node_settings`** with the full sensible-defaults block; never leave it empty.
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
-- **`assigned_agent`** — one agent per role, decided IDENTICALLY in solo and team (mode never enters the decision). For each node: reuse a fitting existing roster agent (`developer` / `*-tester` / `checker` / `*-deployer`), else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs` (identity/soul/agentsDoc to the template-grade bar) on the same `create` call — never the benji-CLI `create-agent` runtime flow. Empty `agent_specs` (all nodes → the agent you are building, named by its `benji_agent_id`; never `"main"`/`"master"`/`"solo"`) only for a trivial single-node / single-role workflow; never collapse a genuinely multi-role workflow onto one agent.
+- **`assigned_agent`** — one agent per role, decided IDENTICALLY in solo and team (mode never enters the decision). For each node: reuse a fitting existing roster agent (`developer` / `*-tester` / `checker` / `*-deployer`), else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs` (identity/soul/agentsDoc to the template-grade bar) on the same `create` call — never the agent-runtime `create-agent` flow. Empty `agent_specs` (all nodes → the agent you are building, named by its `benji_agent_id`; never `"main"`/`"master"`/`"solo"`) only for a trivial single-node / single-role workflow; never collapse a genuinely multi-role workflow onto one agent.
 - **`agent_specs`** — the top-level inline sub-agent array; one `TemplateAgent` (`name` + `identity`/`soul`/`agentsDoc` + optional `skills`/`defaultModel`/`defaultBackend`/`defaultThinking`) per genuinely-distinct role referenced by a node's `assigned_agent`. Passed in the SAME `create`/`update` call as `nodes`/`edges`; `'[]'` (or omit) for a single-role workflow. Provisioned deterministically at claim/run — the specs travel WITH the workflow.
 - **`source_task_id`** — task dispatch: copy the literal `task_id` UUID from `aramb_tasks.list` (omit only for invented glue nodes). Chat dispatch: omit (or `null`) — solo has no source tasks.
 - **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls, grounded via `aramb_toolkits.list_toolkits`; `[]` when it touches no third-party service; never omit.
 - **`toolkit` per node** is the primary slug for trigger-binding; it MUST be a member of `required_toolkits`; omit (or `null`) only when `required_toolkits` is `[]`.
-- **No placeholder syntax in prompts** — no `{{env.KEY}}`, no `{{input.KEY}}`. There is no substitution layer; brahmi rejects prompts containing `{{ env.… }}`. Per-run values arrive in `<run_input>` (step 1 only); the agent reads them there.
+- **No placeholder syntax in prompts** — no `{{env.KEY}}`, no `{{input.KEY}}`. There is no substitution layer; the platform rejects prompts containing `{{ env.… }}`. Per-run values arrive in `<run_input>` (step 1 only); the agent reads them there.
 - **Do NOT declare `env_variables`** — omit the field. The column has no runtime path in v2 and the schema rejects a non-empty map. Constant recipe values bake into prompts; secrets come from the Composio connection.
 - **Trigger is recommend-and-add, not a save gate** — `trigger_choice` is optional; recommend a firing condition off the entry node (Section 4.5) and add it on approval, but save the workflow regardless of whether the user picks one.
 - **Step 1's prompt must distill `<run_input>` into its `outputs.summary`** — downstream steps see only the parent's summary, never `<run_input>`.

@@ -120,7 +120,7 @@ they've asked anything.
   when the agent has **no** starters. It is **not** a prompt instruction and **not**
   model output, so it cannot adapt to context — do **not** write greetings like
   *"Welcome back, I see you were working on…"*; the surface renders a fixed string.
-  Empty greeting ⇒ brahmi's default is used.
+  Empty greeting ⇒ the platform's default is used.
 - **Neither an opener nor a resume costs a model call.** Showing the pills, showing
   the canned greeting, and resuming an existing conversation are all rendered by the
   surface with **zero** model calls. This is the whole point of the opener model: a
@@ -224,7 +224,7 @@ Two optional controls:
 - **`aramb_agents.list_mcp_connections`** (`agent_id`) — list the agent's connected
   MCP servers so you know their names. Returns `{mcp_connections: [{name,
   display_name, enabled}]}` — names + arm state only (URL/headers/secrets live in
-  toolkit-proxy and are never returned).
+  the integrations proxy and are never returned).
 - **`mcp_required`** on `export_template` — an object marking each server required or
   optional, e.g. `mcp_required='{"echo_server": true, "scratch_mcp": false}'`. A
   server you omit defaults to **required**. `true` = the importer must connect it to

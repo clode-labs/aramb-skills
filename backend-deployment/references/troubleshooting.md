@@ -148,8 +148,8 @@ export ARAMB_SERVICE_ID="your-service-id"
 
 **API authentication issues:**
 ```bash
-# Test API connectivity
-curl -H "Authorization: Bearer $ARAMB_API_TOKEN" https://jumbo.aramb.dev/health
+# Verify your API token is set (re-issue it from the aramb console if expired)
+[ -n "$ARAMB_API_TOKEN" ] || echo "ARAMB_API_TOKEN not set"
 
 # Refresh token if expired
 # Contact aramb support for new token

@@ -40,7 +40,7 @@ Call `aramb_chat.start_planning` with `file_path=".planning/<descriptive-name>.m
 
 Ask ONE question at a time using `aramb_chat.ask_question`. Never inline numbered-list questions in your reply text — they store as plain text with no `options`, the frontend cannot render a picker, and the user reply comes back as unstructured free text.
 
-Pass choices as the `options` array — do NOT inline them as a numbered list in the `question` body. Brahmi stores the array structurally so the UI renders a real choice picker and the answer comes back as `selected_option`.
+Pass choices as the `options` array — do NOT inline them as a numbered list in the `question` body. The platform stores the array structurally so the UI renders a real choice picker and the answer comes back as `selected_option`.
 
 ```bash
 npx mcporter call aramb_chat.ask_question \

@@ -174,7 +174,7 @@ gap to jitter within). Default is off; only enable it when the user asks.
 
 ### 5. Confirm in chat
 
-Write the confirmation in your reply text (brahmi saves it as the chat row — no MCP call needed). Confirm:
+Write the confirmation in your reply text (the platform saves it as the chat row — no MCP call needed). Confirm:
 
 - The cron expression in plain English ("Mondays at 9am UTC")
 - The next scheduled run (from `next_run_at` in the response)

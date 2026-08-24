@@ -71,7 +71,7 @@ Every user-facing deliverable (file you wrote, URL you exposed) MUST be surfaced
 # Solo / mid-task recall — file. project_id + application_id are REQUIRED
 # (copy from your User Message's "## Current Context" block) — the URL-kind
 # preview-URL side-effect lands on application_id, so a wrong/missing id
-# silently mutates the wrong app. Brahmi rejects calls without it.
+# silently mutates the wrong app. The platform rejects calls without it.
 npx mcporter call aramb_chat.deliver_artifacts \
   project_id="<PROJECT_ID>" \
   application_id="<APPLICATION_ID>" \

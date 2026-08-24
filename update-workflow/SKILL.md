@@ -18,7 +18,7 @@ description: >
 
 Produce a fresh, full replacement node + edge set for an **existing** workflow,
 taking the existing definition into account as a hint about what worked. The
-workflow ALREADY exists — brahmi atomically swaps the new definition in when you
+workflow ALREADY exists — the platform atomically swaps the new definition in when you
 call `aramb_workflows.update`. The old definition stays live until that call
 succeeds; in-flight runs continue against their snapshot.
 
@@ -27,7 +27,7 @@ succeeds; in-flight runs continue against their snapshot.
 
 ## Which dispatch mode am I in? — read this first
 
-The `task_id` / `workflow_id` referred to here are **brahmi's** ids from the
+The `task_id` / `workflow_id` referred to here are **the platform's** ids from the
 dispatch block — NOT Claude's built-in `TaskCreate`.
 
 - **A) Task dispatch (you are master, dispatched as a system task).** Your "Your
@@ -53,22 +53,22 @@ short hand-off that does no authoring.
 
 ## MUST rules — read before anything else
 
-1. **Every node in `aramb_workflows.update` MUST carry `required_toolkits`.** Copy the slugs from each source task's `required_toolkits` (task dispatch) or the matching node in `aramb_workflows.get` / the action it performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service. Omitting silently kills the Evaluate missing-connection warnings. Ground slugs via `aramb_toolkits.list_toolkits` — don't trust a slug you can't see in the catalog. **Never invent a toolkit binding, and never bind a platform-internal/hidden toolkit** (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) — `aramb_workflows.update` rejects those; for Slack/Discord/Teams messaging deliver via chil `chat.send_dm` (no toolkit). See the `aramb-workflows` skill.
-2. **Every node that touches a third-party service MUST carry a singular `toolkit`** — its primary toolkit slug, used for trigger-binding. Invariant brahmi enforces: **`toolkit ∈ required_toolkits`.** Omit (or `null`) only when `required_toolkits` is `[]`. If the existing node had no `toolkit` (pre-v2 definition), add it now.
-3. **No placeholder syntax in any node `prompt`.** No `{{env.KEY}}`, no `{{input.KEY}}`. There is no substitution layer; brahmi **rejects** any prompt matching `{{ env.… }}`. If a node you carry forward from `aramb_workflows.get` still contains legacy `{{env.…}}` placeholders, **rewrite that prompt now** to read its per-run values from `<run_input>` (see "Run input & slug grounding — v2 contract" below).
+1. **Every node in `aramb_workflows.update` MUST carry `required_toolkits`.** Copy the slugs from each source task's `required_toolkits` (task dispatch) or the matching node in `aramb_workflows.get` / the action it performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service. Omitting silently kills the Evaluate missing-connection warnings. Ground slugs via `aramb_toolkits.list_toolkits` — don't trust a slug you can't see in the catalog. **Never invent a toolkit binding, and never bind a platform-internal/hidden toolkit** (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) — `aramb_workflows.update` rejects those; for Slack/Discord/Teams messaging deliver via the chat service's `chat.send_dm` (no toolkit). See the `aramb-workflows` skill.
+2. **Every node that touches a third-party service MUST carry a singular `toolkit`** — its primary toolkit slug, used for trigger-binding. Invariant the platform enforces: **`toolkit ∈ required_toolkits`.** Omit (or `null`) only when `required_toolkits` is `[]`. If the existing node had no `toolkit` (pre-v2 definition), add it now.
+3. **No placeholder syntax in any node `prompt`.** No `{{env.KEY}}`, no `{{input.KEY}}`. There is no substitution layer; the platform **rejects** any prompt matching `{{ env.… }}`. If a node you carry forward from `aramb_workflows.get` still contains legacy `{{env.…}}` placeholders, **rewrite that prompt now** to read its per-run values from `<run_input>` (see "Run input & slug grounding — v2 contract" below).
 4. **Do NOT declare `env_variables`.** Omit the field from the `aramb_workflows.update` call (leaving it out keeps nothing — there's no runtime path). If the existing definition declared `env_variables`, drop them: the schema rejects a non-empty map and the values were never read.
 5. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below.
-   - **Failure mode:** Without it, the agent finishes its LLM session, brahmi's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble shows "(no summary)" instead of the real hand-off.
+   - **Failure mode:** Without it, the agent finishes its LLM session, the platform's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble shows "(no summary)" instead of the real hand-off.
 6. **Call `aramb_workflows.update` exactly once.** Success or failure — never retry.
 7. **Close out cleanly.** Task dispatch: always `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave `in_progress`. Chat dispatch: confirm in your reply text. There is no task to close in chat dispatch.
-8. **Speak to the user in plain product language — never leak internals.** No MCP tool names (`aramb_workflows.update`), raw upstream errors (`toolkit-proxy 502`), CLI names, or "the tool isn't in my surface." You have these tools — call them. Report real failures in human terms and stop.
+8. **Speak to the user in plain product language — never leak internals.** No MCP tool names (`aramb_workflows.update`), raw upstream errors (`502` from the integrations proxy), CLI names, or "the tool isn't in my surface." You have these tools — call them. Report real failures in human terms and stop.
 
 ## Run input & slug grounding — v2 contract
 
 These rules apply to every node you author or carry forward — same contract as
 `create-workflow`:
 
-- **Per-run context arrives in `<run_input>`, not declared variables.** brahmi
+- **Per-run context arrives in `<run_input>`, not declared variables.** The platform
   renders the user's instruction (manual run) or the trigger payload JSON (trigger
   run) into the **first step's** prompt as a `<run_input>` block. There are no
   input variables, no typed form, no `{{env.KEY}}` substitution. Write node prompts
@@ -113,7 +113,7 @@ inline.** Instead:
    npx mcporter call aramb_workflows.update_from_tasks workflow_id="<WORKFLOW_ID_FROM_STEP_1>"
    ```
    Then write a one-line confirmation in your reply text (e.g. *"Starting workflow
-   update, task &lt;id&gt;."*) and STOP. (Brahmi saves your final assistant text as
+   update, task &lt;id&gt;."*) and STOP. (The platform saves your final assistant text as
    the chat row.) The dispatched system task arrives separately and reloads this
    skill with the correct `workflow_id` + `task_id` (Path A).
 3. **If no workflow exists** — tell the user there is no workflow to update yet and
@@ -231,7 +231,7 @@ Many change requests don't change the *graph* — they change a *setting*. Recog
 | "all steps should use Opus" / "switch the model to Opus" | `default_node_settings.model = "claude-opus-4-7"` (workflow) |
 | "the synth step should use Opus" | that one node's `settings.model = "claude-opus-4-7"` (override) |
 | "use Sonnet everywhere except the writer step, which should be Opus" | workflow `default_node_settings.model = "claude-sonnet-4-6"` AND that one node's `settings.model = "claude-opus-4-7"` |
-| "give it a $50 budget" / "raise the budget to $50" | workflow-level `budget_usd = 50.0`. Cumulative cap across the whole run (passed to benji as `maxSessionCostUsd`). |
+| "give it a $50 budget" / "raise the budget to $50" | workflow-level `budget_usd = 50.0`. Cumulative cap across the whole run (passed to the agent runtime as `maxSessionCostUsd`). |
 | "cap the synth step at $5" / per-step budget | Reject. Budget caps are workflow-level only. Reply: "Budget caps apply to the whole workflow run, not individual steps. I'll set the workflow budget to $5 if that's what you meant." |
 | "this step shouldn't auto-approve" / "make me approve the email step" | that one node's `settings.approval_mode = "manual"` |
 | "auto-approve everything" | workflow `default_node_settings.approval_mode = "auto"` AND clear `approval_mode` from any per-node `settings` overrides |
@@ -308,7 +308,7 @@ Why both `summary` and `files`:
 - `files` is a list of paths (relative to the workspace working directory) the next agent reads to dig deeper. Empty array `[]` is correct when the node only sends a message / posts to an external service and produces no files.
 
 Notes:
-- The agent reads `project_id` and `step_id` from the User Message under "## Current Context" (`Project ID:` and `Workflow Run Step ID:` lines). Brahmi rejects cross-step writes (`context_drift`), so the agent must copy these verbatim into the close call — never re-use a stale UUID.
+- The agent reads `project_id` and `step_id` from the User Message under "## Current Context" (`Project ID:` and `Workflow Run Step ID:` lines). The platform rejects cross-step writes (`context_drift`), so the agent must copy these verbatim into the close call — never re-use a stale UUID.
 - Do NOT instruct the agent to call `aramb_tasks.update` from a workflow-step prompt — that targets the tasks domain (different DB rows) and the run will stall on the safety net. Only `aramb_workflows.update_step` closes a workflow run step.
 - When carrying over node prompts from the existing definition, **re-verify the closing template is present and uses `update_step` with explicit IDs.** If the existing version pre-dates this rule (still references `update_my_step`), rewrite it now.
 
@@ -371,8 +371,8 @@ And on the call itself:
 
 Bugs that silently break downstream behaviour, as fatal as in create-workflow:
 1. Missing `required_toolkits` — kills Evaluate's missing-connection warnings.
-2. `toolkit` not in `required_toolkits` (or missing on a toolkit-using node) — brahmi rejects the call.
-3. A `{{env.KEY}}` / `{{input.KEY}}` placeholder in any prompt — brahmi rejects the call.
+2. `toolkit` not in `required_toolkits` (or missing on a toolkit-using node) — the platform rejects the call.
+3. A `{{env.KEY}}` / `{{input.KEY}}` placeholder in any prompt — the platform rejects the call.
 4. Missing closing instruction in `prompt` — outputs stay NULL, downstream sees "(no summary)" preamble.
 
 **Each node's `prompt` should look like this (markdown, multi-line) before you JSON-encode it:**
@@ -418,7 +418,7 @@ The example shows a workflow whose user said "switch the model to Opus and raise
 
 **`required_toolkits` per node — always include it.** Copy the existing list from
 the matching node in `aramb_workflows.get` (step 1), plus or minus what the user is
-changing. If you omit it, brahmi falls back to the prior node's toolkits matched by
+changing. If you omit it, the platform falls back to the prior node's toolkits matched by
 `name` — brittle across renames. Emit the field explicitly. `[]` only when the node
 genuinely needs no toolkits.
 
@@ -430,7 +430,7 @@ The response includes:
 
 The response `status` is always `"draft"` after a successful update — an updated workflow returns to draft so the change ships deliberately. A workflow is part of its owning agent (whether it was created with `agent_id` or later attached via `aramb_agents.attach_workflow` — same end state) and has no publish step of its own: the draft goes live automatically when the **agent** is (re-)published (`aramb_agents.publish`) — **but only if the workflow's required toolkits are connected.** A workflow whose steps need third-party toolkits (Gmail, Slack…) is published with the agent ONLY once those toolkits are **CONNECTED**; otherwise it stays a draft and the publish response reports it as blocked, naming the missing toolkits. Test the draft via Preview (`aramb_workflows.run` works on the draft) in the meantime; never call a workflow-publish tool yourself.
 
-**Never retry `aramb_workflows.update`.** If the first call succeeds you're done. If it errors (bad payload, cycle in edges), close the task as failed (Path A) or tell the user the concise reason and stop (Path C) — don't retry silently. The original definition is intact on failure (the swap is atomic; rejection happens before it). Brahmi emits `workflow.update_failed` so the UI shows "Update failed, original kept".
+**Never retry `aramb_workflows.update`.** If the first call succeeds you're done. If it errors (bad payload, cycle in edges), close the task as failed (Path A) or tell the user the concise reason and stop (Path C) — don't retry silently. The original definition is intact on failure (the swap is atomic; rejection happens before it). The platform emits `workflow.update_failed` so the UI shows "Update failed, original kept".
 
 ### Step 6. Tell the user about side effects + setting changes
 
@@ -494,7 +494,7 @@ npx mcporter call aramb_tasks.update \
 **CRITICAL: After calling `aramb_tasks.update`, STOP. Do not send any follow-up messages.**
 
 **Path C (chat dispatch, solo) — confirm in chat.** Write a one-line confirmation in
-your reply text (brahmi saves it as the chat row):
+your reply text (the platform saves it as the chat row):
 
 ```
 Updated workflow "<name>" — <one-line summary of what changed>. Status: draft (goes live when you publish the agent).
@@ -514,7 +514,7 @@ definition is intact.
 - **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
 - **Each node carries `required_toolkits`** — `[]` when the node touches no third-party service; never omit. Ground slugs via `aramb_toolkits.list_toolkits`.
 - **Each toolkit-using node carries a singular `toolkit`** — its primary slug, a member of `required_toolkits`; omit (or `null`) when `required_toolkits` is `[]`.
-- **No placeholder syntax in prompts** — no `{{env.KEY}}`, no `{{input.KEY}}`; brahmi rejects prompts containing `{{ env.… }}`. Per-run values arrive in `<run_input>` (step 1 only); rewrite any legacy placeholders carried over from the old definition.
+- **No placeholder syntax in prompts** — no `{{env.KEY}}`, no `{{input.KEY}}`; the platform rejects prompts containing `{{ env.… }}`. Per-run values arrive in `<run_input>` (step 1 only); rewrite any legacy placeholders carried over from the old definition.
 - **Do NOT declare `env_variables`** — omit the field; drop any the old definition carried. The schema rejects a non-empty map; the column has no runtime path in v2.
 - **The entry node's prompt distills `<run_input>` into its `outputs.summary`** — downstream steps never see `<run_input>`.
 - **Each node carries `settings`** — preserve existing per-node overrides from `aramb_workflows.get`; `{}` when none.

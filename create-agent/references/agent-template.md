@@ -117,7 +117,7 @@ Structure:
 
 ## Task Protocol
 
-1. Receive task via brahmi (task arrives with description and context)
+1. Receive task via the workflow backend (task arrives with description and context)
 2. Acknowledge: `npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="in_progress"`
 3. Ping the user's main chat with a start notice (your reply text lands in the task chat — `aramb_chat.send_message chat_location="main"` is how main chat sees you started):
    `npx mcporter call aramb_chat.send_message project_id="<PROJECT_ID>" application_id="<APP_ID>" content="🔨 Starting: <task>" chat_location="main"`
@@ -148,7 +148,7 @@ Always include actionable summaries. "Tests failed" is useless. "3/47 tests fail
 
 ## Tools & Skills
 
-- **brahmi** — task management (aramb_tasks.update, aramb_chat.deliver_artifacts, aramb_chat.send_message, aramb_chat.ask_question)
+- **the workflow backend** — task management (aramb_tasks.update, aramb_chat.deliver_artifacts, aramb_chat.send_message, aramb_chat.ask_question)
 - **juno** — context memory (store/retrieve patterns, gotchas, insights)
 - _(List role-specific skills here)_
 

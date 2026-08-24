@@ -15,13 +15,13 @@ The `aramb_tasks.*` tools manage the task lifecycle. **You will only see these i
 The **status lifecycle**, **escalation contract** (`retryable` /
 `needs_master_attention` / `awaiting_user_input`), and **close mechanics**
 (`outputs` shape, when to set `summary` / `artifacts`) are in the central
-**TASK EXECUTOR** system prompt brahmi injects on every team-mode task
+**TASK EXECUTOR** system prompt the platform injects on every team-mode task
 dispatch. This skill is the *syntax cookbook* for those calls — the
 *semantic contract* is the TASK EXECUTOR prompt. Follow that.
 
 ## Not the same as Claude's built-in `TaskCreate`
 
-`aramb_tasks.*` (this toolkit) and Claude's built-in `TaskCreate` / `TaskUpdate` / `TaskList` are two different systems that happen to share the word "task" — do not conflate them. `aramb_tasks.*` lives on the **brahmi MCP server**: each call writes a DB row that survives the session, is visible to other agents and the UI, and is how work is *delegated and persisted*. Claude's `TaskCreate` lives in the **LLM runtime**: it's an in-session scratchpad, gone when the run ends, visible only to you, and never reaches brahmi. Tracking your own progress → `TaskCreate`. Dispatching or persisting a real work unit → `aramb_tasks.*`. Calling `TaskCreate` dispatches nothing; calling `aramb_tasks.create` does not populate your in-session tracker.
+`aramb_tasks.*` (this toolkit) and Claude's built-in `TaskCreate` / `TaskUpdate` / `TaskList` are two different systems that happen to share the word "task" — do not conflate them. `aramb_tasks.*` lives on the **platform's MCP server**: each call writes a DB row that survives the session, is visible to other agents and the UI, and is how work is *delegated and persisted*. Claude's `TaskCreate` lives in the **LLM runtime**: it's an in-session scratchpad, gone when the run ends, visible only to you, and never reaches the platform. Tracking your own progress → `TaskCreate`. Dispatching or persisting a real work unit → `aramb_tasks.*`. Calling `TaskCreate` dispatches nothing; calling `aramb_tasks.create` does not populate your in-session tracker.
 
 ## mcporter syntax rules
 
@@ -57,7 +57,7 @@ chat message) don't need a subfolder — only tasks that touch files on disk.
 
 ### required_toolkits — declare third-party tool needs upfront
 
-When a task needs a Composio toolkit (Gmail, Google Sheets, Slack, Notion, GitHub, etc.) to do its work, **declare the slugs in `required_toolkits`** at create time. Brahmi stores the list on the task row, surfaces it to the executing agent in the dispatch prompt, and (eventually) checks the user has connected those toolkits before the agent starts work.
+When a task needs a Composio toolkit (Gmail, Google Sheets, Slack, Notion, GitHub, etc.) to do its work, **declare the slugs in `required_toolkits`** at create time. The platform stores the list on the task row, surfaces it to the executing agent in the dispatch prompt, and (eventually) checks the user has connected those toolkits before the agent starts work.
 
 - **Slugs only**, uppercase, exactly as Composio reports them: `GMAIL`, `GOOGLESHEETS`, `GOOGLEDRIVE`, `SLACK`, `NOTION`, `LINEAR`, `GITHUB`, etc. Look them up via `composio toolkit list` if unsure.
 - **Empty / omitted** when no third-party tools are needed (most coding tasks). Don't pad the list.
@@ -75,7 +75,7 @@ npx mcporter call aramb_tasks.create project_id="<PROJECT_ID>" application_id="<
 
 ## update — close YOUR current task
 
-For closing your OWN task, use `aramb_tasks.update` with the `task_id` rendered into your dispatch prompt (the "## Current Context" block, `Task ID:` line). Copy it verbatim — if you pass any other UUID, brahmi rejects the call as `context_drift` and your work is unrecorded (the rejection is loud and final, not a probe-and-correct contract; re-dispatch is the only recovery).
+For closing your OWN task, use `aramb_tasks.update` with the `task_id` rendered into your dispatch prompt (the "## Current Context" block, `Task ID:` line). Copy it verbatim — if you pass any other UUID, the platform rejects the call as `context_drift` and your work is unrecorded (the rejection is loud and final, not a probe-and-correct contract; re-dispatch is the only recovery).
 
 ```bash
 # Save your IDs from the User Message once and reuse them.
@@ -132,7 +132,7 @@ prompt tells you: look for `enable_checker` (or the **## Quality gate** block).
   advances it to `done` itself or sends the task back to you as `inbox` with the
   gaps to fix. Same `summary` / `artifacts` / `outputs` shape as a `done` close.
 
-**Do not write `done` when the gate is on.** Brahmi rejects the call with a
+**Do not write `done` when the gate is on.** The platform rejects the call with a
 corrective tool result telling you to use `validating`; read it and re-issue.
 The corrective result is the contract talking — treat it as a teach signal, not
 an error. The full discipline lives in the **TASK EXECUTOR** system prompt.
@@ -201,7 +201,7 @@ npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID"
 npx mcporter call aramb_tasks.update project_id="$PROJECT_ID" task_id="$TASK_ID" status="done" outputs='{"verdict":"fail","summary":"6 tests failed","details":"full details here"}'
 ```
 
-When `verdict="fail"`, brahmi triggers the feedback loop: master is called back, creates a corrective task for the right developer, and the test re-runs automatically.
+When `verdict="fail"`, the platform triggers the feedback loop: master is called back, creates a corrective task for the right developer, and the test re-runs automatically.
 
 ## Rules
 

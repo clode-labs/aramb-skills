@@ -234,7 +234,7 @@ Service status: deploying
 
 **Network issues:**
 - Check internet connection
-- Verify API endpoint accessible: `curl https://jumbo.aramb.dev/health`
+- Verify your app's configured API endpoint is reachable
 
 **Service startup issues:**
 - Check service configuration

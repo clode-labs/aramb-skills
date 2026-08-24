@@ -2,7 +2,7 @@
 name: import-workflow
 description: >
   Enrich a pre-created workflow draft for the current application — fetch the
-  draft brahmi already built from the template, polish its node prompts using
+  draft the platform already built from the template, polish its node prompts using
   the user's wizard answers, save the polish, and (if asked) set its schedule.
   The platform then auto-publishes and runs it. Use when the dispatch contains
   a <template-import> block in the extra-system-prompt. NOT for: consolidating
@@ -12,10 +12,10 @@ description: >
 
 # Import Workflow
 
-A template import is a **two-phase** flow and brahmi has already done phase one
+A template import is a **two-phase** flow and the platform has already done phase one
 before you were dispatched:
 
-- It **provisioned every template agent** into benji (identity / soul /
+- It **provisioned every template agent** into the agent runtime (identity / soul /
   agentsDoc / model / backend all baked from the template).
 - It **created the draft workflow** for this application, with the template's
   nodes/edges and the wizard answers already substituted into the node prompts.
@@ -32,7 +32,7 @@ then post a short summary and stop. You do **not** create agents and you do
 > **If asked to consolidate completed tasks into a new workflow, use the
 > `create-workflow` skill. If asked to edit some other existing workflow, use
 > `update-workflow`.** This skill is exclusively for the template-import path
-> triggered by a `<template-import>` block from brahmi.
+> triggered by a `<template-import>` block from the platform.
 
 ## MUST rules — read before anything else
 
@@ -45,7 +45,7 @@ then post a short summary and stop. You do **not** create agents and you do
    and save your polish with `aramb_workflows.update`. Calling `create` will fork
    a second, duplicate workflow and fail ("a workflow already exists for this
    application").
-3. **The agents ALREADY EXIST. Do NOT create them.** brahmi provisioned every
+3. **The agents ALREADY EXIST. Do NOT create them.** The platform provisioned every
    template agent before dispatching you — do NOT run `create-agent`, do NOT run
    `benji agent create`. The node `assigned_agent` references already resolve.
    Re-creating them clobbers the template's configuration (model/backend) with
@@ -55,7 +55,7 @@ then post a short summary and stop. You do **not** create agents and you do
    tell the user to publish it, run it, or trigger anything manually, and do not
    wait for their confirmation.
 5. **Do NOT call `aramb_tasks.list` / `aramb_tasks.update`.** No task drives this
-   dispatch — brahmi dispatched you (the master/solo agent) directly with the
+   dispatch — the platform dispatched you (the master/solo agent) directly with the
    template payload. Calling them returns unrelated rows and misleads the import.
 6. **Preserve structure; polish only text.** `aramb_workflows.update` replaces
    nodes + edges atomically, so you must send the FULL set back. You may rewrite
@@ -68,17 +68,17 @@ then post a short summary and stop. You do **not** create agents and you do
    platform-internal/hidden toolkit** (`composio`, `composio_search`,
    `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) —
    `aramb_workflows.update` rejects those; for Slack/Discord/Teams messaging the
-   node delivers via chil `chat.send_dm` (no toolkit). See the `aramb-workflows`
+   node delivers via the chat service's `chat.send_dm` (no toolkit). See the `aramb-workflows`
    skill.
 8. **No placeholder syntax in any node `prompt`.** The draft's prompts should be
-   literal (brahmi already substituted). Do NOT introduce `{{env.KEY}}` /
+   literal (the platform already substituted). Do NOT introduce `{{env.KEY}}` /
    `{{input.KEY}}`; if a node still contains a literal `{{env.…}}` (a template
-   bug), rewrite it to read its per-run value from `<run_input>`. The brahmi MCP
+   bug), rewrite it to read its per-run value from `<run_input>`. The platform's MCP
    schema rejects prompts matching `{{ env.… }}`.
 9. **Do NOT pass `env_variables`.** Omit it from `aramb_workflows.update` — v2
    templates declare none and a non-empty map is rejected.
 10. **Speak to the user in plain product language — never leak internals.** No
-    MCP tool names, raw upstream errors (`toolkit-proxy 502`, `ConfigInvalid`),
+    MCP tool names, raw upstream errors (`502` from the integrations proxy, `ConfigInvalid`),
     CLI names, or "the tool isn't in my surface." You have these tools — call
     them. Report real failures in human terms and stop.
 
@@ -86,7 +86,7 @@ You are running as the **master/solo agent**, not as a task. The
 `<template-import>` block in your extra-system-prompt gives you:
 
 - `slug` — the template's slug (e.g. `discovery-workflow`), on the opening tag.
-- `workflow_id` — the UUID of the draft brahmi already created, on the opening
+- `workflow_id` — the UUID of the draft the platform already created, on the opening
   tag. This is what you pass to `aramb_workflows.get` / `aramb_workflows.update`.
 - `<wizard-answers>` — JSON object of the user's wizard inputs (e.g.
   `team_name`, `channel_ids`, `lookback_days`) — use these to polish node
@@ -99,7 +99,7 @@ current nodes/edges.
 ## System / appless imports (discovery & per-user system workflows)
 
 Some template imports are **system workflows** — the canonical one is
-`discovery-workflow` (the slug on the opening tag). brahmi materializes these as
+`discovery-workflow` (the slug on the opening tag). The platform materializes these as
 **project-scoped, appless** workflows in the user's **private project** (the
 per-user DM project), not as a channel-app workflow in the public project:
 
@@ -108,9 +108,9 @@ per-user DM project), not as a channel-app workflow in the public project:
   `workflow_id`, so it works **unchanged** — never reach for an `application_id`
   to fetch or save a system workflow.
 - **Output is DM-delivered.** A system workflow's final/delivery node reports to
-  the user over their **DM**, via chil `chat.send_dm` (no toolkit) — it must NOT
+  the user over their **DM**, via the chat service's `chat.send_dm` (no toolkit) — it must NOT
   post to a public channel-app. When you polish a delivery node, keep it on the
-  DM path; do not rewrite it into a chil `chat.send_message`/channel post or bind
+  DM path; do not rewrite it into a chat-service `chat.send_message`/channel post or bind
   a Slack toolkit. (The Discovery template already does this — "scan your channels
   and DM you a report.")
 - **It lives in the private project.** Treat the report as a per-user artifact:
@@ -132,7 +132,7 @@ the FE timeline for humans AND is parsed as preamble by the next agent.
 Examples:
 
 - `Outputs to next step: 'summary' is a per-channel table of message counts and topics; 'files' lists the .discovery/messages/*.json captures.`
-- `Outputs to result: 'summary' is the top suggestions + the chil send_dm response (ok, ts); 'files' is the fallback report path if the DM failed.`
+- `Outputs to result: 'summary' is the top suggestions + the chat service's send_dm response (ok, ts); 'files' is the fallback report path if the DM failed.`
 
 If a fetched node prompt ends with a stale `npx mcporter call
 aramb_workflows.update_my_step …` block, strip it during polish and replace it
@@ -274,7 +274,7 @@ After posting, STOP. Do not send follow-up messages.
 ## Error handling
 
 - **`aramb_workflows.get` fails / returns no workflow for the id** → the draft
-  brahmi should have created is missing. Do NOT fall back to `create`. Post one
+  the platform should have created is missing. Do NOT fall back to `create`. Post one
   chat message flagging it as a setup problem and STOP.
 
   ```bash
@@ -314,7 +314,7 @@ After posting, STOP. Do not send follow-up messages.
 
 - Does NOT call `aramb_workflows.create` (the draft already exists — use
   `get` + `update`)
-- Does NOT create agents / call `create-agent` / `benji agent create` (brahmi
+- Does NOT create agents / call `create-agent` / `benji agent create` (the platform
   already provisioned them)
 - Does NOT publish the workflow or trigger a run (auto-publish does both on turn
   completion)
@@ -328,7 +328,7 @@ After posting, STOP. Do not send follow-up messages.
 - The draft workflow AND its agents already exist — `get` the workflow by `workflow_id`, never `create`, never `create-agent`
 - Send the FULL node + edge set to `aramb_workflows.update` (it replaces atomically); polish only `name` / `prompt`, everything else verbatim
 - Every node keeps `required_toolkits` (use `[]`, never omit) and its singular `toolkit` (a member of it) verbatim — never invent or use a hidden toolkit
-- No placeholder syntax (`{{env.KEY}}` / `{{input.KEY}}`) in any prompt — brahmi rejects it; per-run context reaches the first node via `<run_input>`
+- No placeholder syntax (`{{env.KEY}}` / `{{input.KEY}}`) in any prompt — the platform rejects it; per-run context reaches the first node via `<run_input>`
 - Omit `env_variables` (the schema rejects a non-empty map)
 - Every node's `prompt` carries business context + a one-line output contract
 - Set a schedule with `aramb_workflows.set_schedule` only if the dispatch asks; never trigger the first run yourself

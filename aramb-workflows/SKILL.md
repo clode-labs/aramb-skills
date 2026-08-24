@@ -94,11 +94,11 @@ npx mcporter call aramb_workflows.create \
 - **`instruction` and `enabled` (both optional, top-level) — wire the workflow to its owning agent's invocation behavior** (the console **Tools ▸ Workflows** tab). `instruction` is free-text on HOW and WHEN the owning agent should invoke this workflow and what input to pass — surfaced **verbatim** in the agent's "## Your workflows" prompt injection. `enabled` (`true`/`false`) is a per-agent toggle: `false` hides the bound workflow from the owning agent; `true` (or omitted) surfaces it. On `update` these are **merged, not clobbering** — see the note under "Update an existing workflow".
 - **`project_id` is required; `application_id` is optional/legacy.** Pass `project_id` (alongside `agent_id`) to create the workflow. The workflow is keyed by its own lineage (`workflow_id`) and belongs to its owning agent.
 - **`application_id` (optional, legacy app-bound)** — passing it binds the workflow to one application. App-bound workflows retain the old "at most one per application" behavior, so a second `create` with the same `application_id` fails (use `aramb_workflows.update` to modify it). Appless workflows have no such limit — a project can hold many.
-- Per-user **system** workflows (e.g. the discovery report) are appless workflows in the user's **private project**. They deliver output via **DM** (chil `chat.send_dm`), never a public channel-app post. `get` / `update` by `workflow_id` work identically for appless workflows. (Template imports of system workflows arrive pre-created — polish them via the `import-workflow` skill, don't `create` them.)
+- Per-user **system** workflows (e.g. the discovery report) are appless workflows in the user's **private project**. They deliver output via **DM** (the chat toolkit's `chat.send_dm`), never a public channel-app post. `get` / `update` by `workflow_id` work identically for appless workflows. (Template imports of system workflows arrive pre-created — polish them via the `import-workflow` skill, don't `create` them.)
 - **Edges are top-level**, not per-node. Do NOT emit `dependencies` or `dependsOn` on nodes.
-- **Never invent or bind hidden toolkits.** Set a node's `toolkit` / `required_toolkits` only to toolkits the workspace actually exposes. Platform-internal/hidden toolkits (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) are REJECTED by `aramb_workflows.create`/`update` — never bind them. For Slack/Discord/Teams messaging deliverables, deliver via chil `chat.send_dm` (no toolkit).
+- **Never invent or bind hidden toolkits.** Set a node's `toolkit` / `required_toolkits` only to toolkits the workspace actually exposes. Platform-internal/hidden toolkits (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) are REJECTED by `aramb_workflows.create`/`update` — never bind them. For Slack/Discord/Teams messaging deliverables, deliver via the chat toolkit's `chat.send_dm` (no toolkit).
 - `template_slug` (optional) is forwarded verbatim from a dispatched `<template-import slug="...">` block when this call originates from template import.
-- **`agent_specs` (optional, top-level array) — inline sub-agent definitions carried WITH the workflow.** When a workflow's nodes are genuinely different roles, author each distinct role's FULL sub-agent spec here and reference it from a node by setting that node's `assigned_agent` to the spec's `name`. brahmi stores these on `workflows.agent_specs` and provisions them **deterministically at claim/run** — you do NOT route bespoke node agents through any separate agent-creation flow. Each entry is a `TemplateAgent`:
+- **`agent_specs` (optional, top-level array) — inline sub-agent definitions carried WITH the workflow.** When a workflow's nodes are genuinely different roles, author each distinct role's FULL sub-agent spec here and reference it from a node by setting that node's `assigned_agent` to the spec's `name`. the platform stores these on `workflows.agent_specs` and provisions them **deterministically at claim/run** — you do NOT route bespoke node agents through any separate agent-creation flow. Each entry is a `TemplateAgent`:
   - `name` (REQUIRED, unique) — the role identifier a node's `assigned_agent` references.
   - `displayName` — human label.
   - `identity` — who this sub-agent is (like an agent `IDENTITY.md`).
@@ -107,7 +107,7 @@ npx mcporter call aramb_workflows.create \
   - `skills` (optional) — registry skill ids, e.g. `["clode-labs/aramb-skills/<slug>"]`.
   - `defaultModel` (optional; `""` = inherit workflow default), `defaultBackend` (e.g. `"claude-sdk"`), `defaultThinking` (e.g. `"medium"`).
 
-  **A node whose `assigned_agent` has no matching spec (and is not an existing roster agent) is a DANGLING reference** — brahmi rejects it at author time for an agent-bound workflow; there is no "main agent" to fall back to. Minting a distinct spec per genuinely-distinct role is the DEFAULT. A **single-role workflow may keep `agent_specs` empty (or omitted)** — then every node names **the agent you are building**, by its routing name (`aramb_agents.get` → `benji_agent_id`, e.g. `inbox-digest-5248d2e7`). Never `"main"` (not a routing token) and never `"master"`/`"solo"` (platform infra agents — the team orchestrator and the solo runtime, never the agent you built). See "Multi-agent workflow" below for a worked example.
+  **A node whose `assigned_agent` has no matching spec (and is not an existing roster agent) is a DANGLING reference** — the platform rejects it at author time for an agent-bound workflow; there is no "main agent" to fall back to. Minting a distinct spec per genuinely-distinct role is the DEFAULT. A **single-role workflow may keep `agent_specs` empty (or omitted)** — then every node names **the agent you are building**, by its routing name (`aramb_agents.get` → `benji_agent_id`, e.g. `inbox-digest-5248d2e7`). Never `"main"` (not a routing token) and never `"master"`/`"solo"` (platform infra agents — the team orchestrator and the solo runtime, never the agent you built). See "Multi-agent workflow" below for a worked example.
 
 ### Multi-agent workflow — nodes + edges + `agent_specs` in one call
 
@@ -186,7 +186,7 @@ npx mcporter call aramb_workflows.update \
 
 ## Consolidate from tasks (chat-driven)
 
-When the user asks master in main chat to create / update / regenerate the workflow for their application, master does NOT design the workflow inline. Instead it spawns the appropriate system task and brahmi loops it back to master with the right skill (`create-workflow` or `update-workflow`) loaded.
+When the user asks master in main chat to create / update / regenerate the workflow for their application, master does NOT design the workflow inline. Instead it spawns the appropriate system task and the platform loops it back to master with the right skill (`create-workflow` or `update-workflow`) loaded.
 
 ```bash
 # First-time create — application has no workflow yet
@@ -231,7 +231,7 @@ Returns `cron_expression`, `cron_timezone`, `enabled`, `env_overrides`, `next_ru
 
 ## Run status callbacks (workflow-level webhook)
 
-Set an optional `callback_url` on a workflow so brahmi POSTs a signed status
+Set an optional `callback_url` on a workflow so the platform POSTs a signed status
 payload on every **real** run — manual, cron, and event. Preview/test runs are
 excluded. Each run fires twice: on **start** (`running`) and on **terminal**
 (`completed` / `failed` / `cancelled`).
@@ -246,12 +246,12 @@ npx mcporter call aramb_workflows.set_callback \
 
 - The response returns a **signing secret ONCE**. Surface it to the user verbatim
   and tell them it won't be shown again — they need it to verify the
-  `Webhook-Signature` header. brahmi never returns the secret again (not in `get` /
+  `Webhook-Signature` header. the platform never returns the secret again (not in `get` /
   `list`), so if the user loses it they must re-set the callback to regenerate one.
 - Workflow-level config (not per-node, not per-trigger). `callback_url` shows up in
   `get` / `list` output; the secret never does.
 
-### Signed payload contract (matches brahmi exactly)
+### Signed payload contract (matches the platform exactly)
 
 Each delivery is an HTTP POST to `callback_url`:
 
@@ -363,7 +363,7 @@ Read `aramb_workflows.run`'s result before you say anything:
   the moment they look at the empty Runs tab.
 
 ### 5. After the run starts — let the system report; never fabricate progress
-Once a run is kicked off, brahmi posts **real** run progress and the terminal
+Once a run is kicked off, the platform posts **real** run progress and the terminal
 result to the conversation automatically. So your job is to hand work to the run,
 not to narrate it:
 
@@ -374,7 +374,7 @@ not to narrate it:
   while a run may actually be failing. The system's own messages are the source of
   truth.
 - **When the user asks "what's the status?", point at the run's own updates.** The
-  conversation thread is the source of truth for run/step progress — brahmi posts it
+  conversation thread is the source of truth for run/step progress — the platform posts it
   there as it happens. So acknowledge the run is in progress and that its updates
   (and the final result) arrive here automatically. `aramb_workflows.get` / `list`
   do **not** return run progress — they return the workflow's **definition and
@@ -424,7 +424,7 @@ Rules for `update_step`:
 
 ## Checker verdict on a workflow step (maker-checker gate)
 
-When a workflow node has the maker-checker gate enabled, Brahmi runs the node's maker, then dispatches an independent **checker review** against the same step before the step advances. The review is the step's own assigned agent re-run in a fresh, read-only session under a gatekeeper system prompt — there is no separate checker persona. If your dispatch tells you to validate a workflow step (you'll get a gatekeeper system prompt, not the maker's execution prompt), **the STATUS you write IS the verdict** — there is no `verdict` field in `outputs` anymore. A DIRTY verdict's gaps travel in a top-level `feedback` arg, not in `outputs`.
+When a workflow node has the maker-checker gate enabled, the platform runs the node's maker, then dispatches an independent **checker review** against the same step before the step advances. The review is the step's own assigned agent re-run in a fresh, read-only session under a gatekeeper system prompt — there is no separate checker persona. If your dispatch tells you to validate a workflow step (you'll get a gatekeeper system prompt, not the maker's execution prompt), **the STATUS you write IS the verdict** — there is no `verdict` field in `outputs` anymore. A DIRTY verdict's gaps travel in a top-level `feedback` arg, not in `outputs`.
 
 **Report via `aramb_workflows.update_step` with the `step_id` from your dispatch User Message.** Your dispatch gives you the exact command (with the real `step_id`) under "Report your verdict" — run that. Pick exactly ONE:
 
@@ -432,10 +432,10 @@ When a workflow node has the maker-checker gate enabled, Brahmi runs the node's 
 # CLEAN — work has integrity; the step completes and children promote:
 npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="done" outputs='{"audit":"clean","notes":"All criteria met."}'
 
-# DIRTY, RETRY — gaps found and rounds remain; Brahmi re-runs the maker with these gaps:
+# DIRTY, RETRY — gaps found and rounds remain; the platform re-runs the maker with these gaps:
 npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="pending" feedback='{"round":1,"previous_gaps":[{"id":"gap_1","fixed":false}],"new_gaps":[{"description":"POST /users returns 500 on valid input","severity":"critical"}]}'
 
-# DIRTY, EXHAUSTED — gaps found and this is the final round (or Brahmi rejects your retry as budget-exhausted):
+# DIRTY, EXHAUSTED — gaps found and this is the final round (or the platform rejects your retry as budget-exhausted):
 npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="failed" error="3 rounds; integrity gaps remain: <list>"
 
 # CAN'T AUDIT — environment broken (working dir or files missing). Steps have NO master-escalation path, so this closes failed:
@@ -444,9 +444,9 @@ npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id=
 
 Verdict rules (same as the task checker — see the `checker-prompt` skill):
 - `status="done"` only when the work has integrity and no critical gap remains.
-- `status="pending"` re-runs the maker with the unfixed gaps from `feedback` injected into its prompt (capped at the round count Brahmi shows you; past the cap, write `status="failed"`).
+- `status="pending"` re-runs the maker with the unfixed gaps from `feedback` injected into its prompt (capped at the round count the platform shows you; past the cap, write `status="failed"`).
 - `status="failed"` is the DIRTY-exhausted verdict AND the can't-validate fallback (missing working dir, etc.). For a workflow step, can't-audit also closes `failed` — there is no `needs_master_attention` for steps.
-- In `feedback`, `previous_gaps` must report `fixed` for every gap id you were given; `new_gaps` omit `id` (Brahmi assigns stable ids).
+- In `feedback`, `previous_gaps` must report `fixed` for every gap id you were given; `new_gaps` omit `id` (the platform assigns stable ids).
 
 ## Rules
 
