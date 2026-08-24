@@ -242,7 +242,7 @@ Both ids come from your User Message's "## Current Context" block — REQUIRED (
 - **create-agent** — spawn new agents when the roster doesn't cover a need
 - **aramb-skills** — search, inspect, and download skills from the Skills Registry before creating from scratch
 - **juno** — context memory (store and retrieve patterns, gotchas, insights across sessions)
-- **aramb-browser** — browser automation (navigate pages, fill forms, take screenshots, scrape content, inspect network, manage cloud and local browser instances). Default provider: aramb. Fallback: jumbo. For popular/restricted sites, always check `browser_clients_list` and prompt the user to connect via `aramb harbor` before proceeding. See aramb-browser skill for the full decision flow.
+- **aramb-browser** — browser automation (navigate pages, fill forms, take screenshots, scrape content, inspect network, manage cloud and local browser instances). Default provider: aramb. For popular/restricted sites, always check `browser_clients_list` and prompt the user to connect via `aramb harbor` before proceeding. See aramb-browser skill for the full decision flow.
 
 ## Key Rules
 
