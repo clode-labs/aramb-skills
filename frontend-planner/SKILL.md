@@ -339,7 +339,7 @@ The QA task is responsible for:
 3. **Validating its own criteria**: coverage, edge cases, meaningful tests
 4. **Outputting verdict** with `feedback_for_rebuild` if implementation has issues
 
-**CRITICAL:** Include `critiques_tasks` in inputs - this tells brahmi which task(s) to retry if QA fails:
+**CRITICAL:** Include `critiques_tasks` in inputs - this tells the workflow backend which task(s) to retry if QA fails:
 
 ```json
 {
@@ -364,8 +364,8 @@ The QA task is responsible for:
 
 **How the correctness loop works:**
 1. QA task completes with `verdict: fail` and `feedback_for_rebuild` in outputs
-2. Brahmi reads `critiques_tasks` from QA task inputs
-3. Brahmi retries those task(s) with the feedback injected into their inputs
+2. The workflow backend reads `critiques_tasks` from QA task inputs
+3. The workflow backend retries those task(s) with the feedback injected into their inputs
 4. QA task resets to "planned" (waiting for dependency)
 5. After retried task completes, QA runs again
 6. Loop continues until `verdict: pass` or max retries exceeded

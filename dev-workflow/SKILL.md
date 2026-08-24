@@ -13,7 +13,7 @@ description: >
 ## Receiving Tasks
 
 Every task arrives with context from the orchestrator:
-- `project_id` — the Brahmi project this belongs to
+- `project_id` — the platform project this belongs to
 - `application_id` — the specific app/service being built (used in branch names)
 - `acceptance_criteria` — what "done" looks like (verify every criterion before reporting)
 
@@ -357,7 +357,7 @@ Before reporting a task as done, verify each item:
 4. **Health checks** — all services report healthy after startup
 5. **Acceptance criteria** — every criterion from the task is met and verified
 6. **Clean commits** — all changes committed with conventional commit messages
-7. **Juno writes** — gotchas, patterns, or insights stored before completion
+7. **Knowledge writes** — gotchas, patterns, or insights stored before completion
 8. **Branch** — all work is on the correct feature/fix branch
 
 Then report:

@@ -9,7 +9,7 @@ Use this skill whenever you set `enable_checker: true` on a task **or a workflow
 
 ## You write the validation guideline — not the reporting instructions
 
-The `checker_prompt` is **only** the guideline of what to verify (context + criteria, below). The gatekeeper's behavior — read-only auditing, how it decides, and how it commits the outcome — is supplied by Brahmi's `checker_executor` system prompt, not by you. Do NOT bake verdict-reporting or tool-call instructions into the `checker_prompt`.
+The `checker_prompt` is **only** the guideline of what to verify (context + criteria, below). The gatekeeper's behavior — read-only auditing, how it decides, and how it commits the outcome — is supplied by the platform's `checker_executor` system prompt, not by you. Do NOT bake verdict-reporting or tool-call instructions into the `checker_prompt`.
 
 For reference (so you know what the gatekeeper does with what you write): **the STATUS the checker writes IS the verdict.** There is no `verdict` field in `outputs` — the status field carries the decision, and a DIRTY verdict's gaps travel in a top-level `feedback` arg. The checker uses `aramb_tasks.update` (with `task_id`) or `aramb_workflows.update_step` (with `step_id`) — both rendered into its dispatch User Message. (Session-implicit variants no longer exist; the runtime rejects cross-task/step writes as `context_drift`.) It picks exactly one of four terminal calls:
 

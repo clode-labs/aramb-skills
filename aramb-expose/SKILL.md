@@ -11,7 +11,7 @@ description: >
 
 ## MUST rules — read before anything else
 
-1. **If this skill exposes a URL the user can reach, surface it as a URL-kind artifact** — either on `aramb_tasks.update` (when closing a task) or on `aramb_chat.deliver_artifacts` (solo / mid-task recall). Brahmi auto-registers the preview-URL state from that single call — no separate `update_preview_url` step. Mentioning the URL in chat prose is not a substitute — the chip pipeline cannot reconstruct chips from prose after the fact.
+1. **If this skill exposes a URL the user can reach, surface it as a URL-kind artifact** — either on `aramb_tasks.update` (when closing a task) or on `aramb_chat.deliver_artifacts` (solo / mid-task recall). The platform auto-registers the preview-URL state from that single call — no separate `update_preview_url` step. Mentioning the URL in chat prose is not a substitute — the chip pipeline cannot reconstruct chips from prose after the fact.
    - **Failure mode:** Putting the URL only in prose leaves the user with dead text — no clickable chip, no preview state, no in-app iframe wiring.
 
 ## Overview
@@ -56,7 +56,7 @@ aramb expose create \
   --public "frontend,api"
 ```
 
-- `--name`: the app slug — use exactly the slug Brahmi assigned to this application (available as `APP_SLUG` or derivable from the task context). Lowercase, hyphens only.
+- `--name`: the app slug — use exactly the slug the platform assigned to this application (available as `APP_SLUG` or derivable from the task context). Lowercase, hyphens only.
 - `--services`: comma-separated `name=http://localhost:port` pairs. Register **all** services you want to configure, even ones not yet public.
 - `--public`: comma-separated names from `--services` that should receive a public HTTPS URL. Only HTTP services can be made public.
 
@@ -159,7 +159,7 @@ verify_url "$API_URL" "api"
 
 ### Step 6 — Report all URLs
 
-Surface the primary frontend URL as a URL-kind artifact on your task close (in-task) or on a `aramb_chat.deliver_artifacts` call (solo). Brahmi auto-registers the preview-URL state. Secondary backend / API URLs go in the inline reply text alongside.
+Surface the primary frontend URL as a URL-kind artifact on your task close (in-task) or on a `aramb_chat.deliver_artifacts` call (solo). The platform auto-registers the preview-URL state. Secondary backend / API URLs go in the inline reply text alongside.
 
 ```bash
 # In a task: chip + status close + preview state in ONE call.

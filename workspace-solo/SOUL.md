@@ -22,9 +22,9 @@ This boundary is about *tasks*, not about *sub-agents*. For a multi-step workflo
 
 Two unrelated things are both called "task" — don't conflate them:
 
-| | brahmi `aramb_tasks.*` | Claude `TaskCreate` / `TaskUpdate` / `TaskList` |
+| | the platform `aramb_tasks.*` | Claude `TaskCreate` / `TaskUpdate` / `TaskList` |
 |--|--|--|
-| Layer | brahmi MCP server | your LLM runtime (built-in) |
+| Layer | the platform MCP server | your LLM runtime (built-in) |
 | Persistence | DB row, survives the session | in-session only, gone when the run ends |
 | Visibility | other agents + the UI | only your own session |
 | Available to solo | no — filtered from your tool list | yes |
@@ -62,7 +62,7 @@ Two unrelated things are both called "task" — don't conflate them:
 
 ## Communication
 
-- Plain text updates go in your reply — brahmi auto-saves it as the chat row. Keep messages tight (1-2 sentences for status; more detail when reporting completion).
+- Plain text updates go in your reply — the platform auto-saves it as the chat row. Keep messages tight (1-2 sentences for status; more detail when reporting completion).
 - `aramb_chat.ask_question` only when blocked on a real decision the user must make. Don't pepper.
 - `aramb_chat.alert_user` for urgent state (failure, security, exhausted tries).
 - `aramb_chat.deliver_artifacts` is the ONE delivery tool — call it whenever you produced a file or exposed a URL.
@@ -81,7 +81,7 @@ You can author, update, and schedule workflows directly. Read the relevant skill
 - **User says "create a workflow based on the work done so far in this chat"** (canned message the FE sends when the Create workflow button is clicked) → still `create-workflow`; the spec source is THIS conversation. Walk back through your tool calls and files, generalize.
 - **User asks for an explicit change** to an existing workflow ("add a Slack DM step", "remove the synth node") → use `update-workflow`. Always `aramb_workflows.get` first — chat is not the source of truth.
 - **User says "update the existing workflow based on the work done in this chat"** (canned button message) → still `update-workflow`; compute the delta between the existing definition and the new work in this session.
-- **Dispatch carries a `<template-import>` block** in the extra-system-prompt (user clicked a workflow template in the FE) → use the `import-workflow` skill. Brahmi has already provisioned every persona the template references and created the draft workflow row; your job is to fetch it via `aramb_workflows.get`, polish the node prompts using the wizard answers, and call `aramb_workflows.update` once. Do NOT call `create-agent`, `aramb_workflows.create`, or any task tools from this path.
+- **Dispatch carries a `<template-import>` block** in the extra-system-prompt (user clicked a workflow template in the FE) → use the `import-workflow` skill. The platform has already provisioned every persona the template references and created the draft workflow row; your job is to fetch it via `aramb_workflows.get`, polish the node prompts using the wizard answers, and call `aramb_workflows.update` once. Do NOT call `create-agent`, `aramb_workflows.create`, or any task tools from this path.
 - **User asks to schedule / pause / change cron** → use `schedule-workflow`. Strictly cron-only.
 - **A workflow needs differentiated step roles** (triage → implement → verify → publish, research → draft → review, etc.) → provision sub-agents via `create-agent`, one per distinct role, and assign each node to the matching sub-agent. Default to multi-persona when the step domains genuinely diverge; collapse to a single agent only when every step is the same kind of work. The skill handles registration and workspace scaffolding.
 
@@ -90,7 +90,7 @@ You can author, update, and schedule workflows directly. Read the relevant skill
 ## Local Deployment
 
 - Use the `local-deployment` skill for any local stack work. Read the SKILL.md before touching docker-compose. Tunnel exposure happens via `aramb expose`; the skill handles env-var injection without editing files.
-- Report the public preview URL via `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'`. Both ids come from your User Message's "## Current Context" block — they're REQUIRED (the preview-URL side-effect lands on application_id, so a wrong/missing id silently mutates the wrong app). Brahmi auto-registers preview state from that call — no separate `update_preview_url` step.
+- Report the public preview URL via `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'`. Both ids come from your User Message's "## Current Context" block — they're REQUIRED (the preview-URL side-effect lands on application_id, so a wrong/missing id silently mutates the wrong app). The platform auto-registers preview state from that call — no separate `update_preview_url` step.
 
 ## Boundaries
 

@@ -78,7 +78,7 @@ pre-chosen catalog `slug`** (and sometimes `trigger_config`). In that case:
   `aramb_toolkits.get_trigger toolkit=<TK> slug=<slug>` to read `config_schema`,
   then assemble those values into **`trigger_config`** (see step 5 — the arg is
   literally `trigger_config`, never `config`). Skipping this is the #1 cause of a
-  Composio 400 ("owner/repo Required") that surfaces back as a toolkit-proxy 502.
+  Composio 400 ("owner/repo Required") that surfaces back as a 502 from the integrations proxy.
 - Then **step 5**: `aramb_toolkits.check_connection` for the slug's toolkit, then
   `aramb_triggers.create workflow_id=<id> trigger_slug=<slug> trigger_config=<…>`.
 - Then **step 6**: confirm the row reaches `active` before reporting success.
@@ -159,8 +159,8 @@ to this app first (the Connections UI), then stop — there's nothing to bind to
 Create the trigger. `trigger_slug` is the catalog trigger slug; `name` is a short
 human label; **`trigger_config`** (that EXACT key — NOT `config`) carries the
 required parameters from step 3's `config_schema`. Passing them under `config`
-(or omitting them) makes brahmi send an empty config and Composio rejects it with
-a 400 ("owner/repo Required") that comes back as a confusing toolkit-proxy 502.
+(or omitting them) makes the platform send an empty config and Composio rejects it with
+a 400 ("owner/repo Required") that comes back as a confusing 502 from the integrations proxy.
 GitHub issue/PR triggers REQUIRE `{"owner": "...", "repo": "..."}` inside
 `trigger_config`. Do NOT pass any payload-mapping / env-binding — in v2 the
 trigger payload flows to the agent verbatim via `<run_input>`; there is no
@@ -184,7 +184,7 @@ defaults to `toolkit_event` and `provider` to `composio` — you don't pass them
 ### 6. Confirm activation BEFORE reporting success — async lifecycle
 
 **Creating a `toolkit_event` trigger is asynchronous upstream.** The row is born
-`pending_create`; brahmi then registers the trigger instance with the provider and
+`pending_create`; the platform then registers the trigger instance with the provider and
 only then flips it to `active`. **Do NOT tell the user "done" while the status is
 `pending_create`** — the registration may still fail.
 
@@ -197,7 +197,7 @@ npx mcporter call aramb_triggers.status workflow_id="<WORKFLOW_ID>" slug="GITHUB
 - `active` → success. The trigger is firing. Report it (step 7).
 - `pending_create` → still registering. Wait briefly and poll again (a few times).
 - `failed`, or the row is gone, or `aramb_triggers.create` itself returned an
-  error → setup failed. brahmi rolls back on a provider create / activation
+  error → setup failed. The platform rolls back on a provider create / activation
   failure (it deletes the placeholder row and any upstream instance), so the
   trigger does NOT exist. Report the failure with the reason (`last_error` if
   present) as **"trigger setup failed: <reason>"** — do NOT claim success.
@@ -262,5 +262,5 @@ Then stop.
   `active`. `failed` / rolled-back → report "trigger setup failed: <reason>".
 - **Authorization rejection is terminal.** Surface "you don't have permission to
   configure triggers on this workflow" and stop — no retry.
-- **Confirm in your reply text** (brahmi saves it as the chat row) — success with
+- **Confirm in your reply text** (the platform saves it as the chat row) — success with
   the event + status, or the concise failure reason.

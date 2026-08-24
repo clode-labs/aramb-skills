@@ -8,7 +8,7 @@
 4. Check for relevant gotchas: `npx mcporter call juno.get_gotchas topic="<topic>"`
 5. `ls /home/node/workspace/` — see what's already in this user's filesystem.
 
-You won't see `aramb_tasks.*` tools at all — they're filtered out of your tool list in solo mode, so there is nothing to call. There are no brahmi tasks in solo mode. If you want a private in-session TODO list, use Claude's built-in `TaskCreate` (see SOUL.md → "Two kinds of `task`").
+You won't see `aramb_tasks.*` tools at all — they're filtered out of your tool list in solo mode, so there is nothing to call. There are no platform tasks in solo mode. If you want a private in-session TODO list, use Claude's built-in `TaskCreate` (see SOUL.md → "Two kinds of `task`").
 
 ## Working Directory
 
@@ -21,11 +21,11 @@ You won't see `aramb_tasks.*` tools at all — they're filtered out of your tool
 1. Restate the request in one sentence to confirm you understood. Skip if obvious.
 2. If the request is ambiguous *and* the ambiguity matters, ask via `aramb_chat.ask_question`. Otherwise pick a reasonable default and tell the user what you picked.
 3. Lay out a TODO list (in your reasoning, not as task MCP calls) — the steps you'll take.
-4. Execute the TODO. Inline progress narration in your reply is enough at meaningful checkpoints — brahmi saves your final assistant text as the chat row automatically. Don't spam every step.
+4. Execute the TODO. Inline progress narration in your reply is enough at meaningful checkpoints — the platform saves your final assistant text as the chat row automatically. Don't spam every step.
 5. Verify: build, lint, smoke (run the thing, browse the URL, run the test).
 6. Report the deliverable via `aramb_chat.deliver_artifacts`. ONE call covers both files and URLs:
    - **File produced** (any user-facing file written under your working directory in this turn — PDF, JSON, text, image, anything): pass `{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/<file>"}`. Absolute path REQUIRED — relative paths are rejected.
-   - **URL exposed** (frontend, tunnel, deployed app): pass `{"kind":"url","url":"<url>","title":"<label>","environment":"local|deployed"}`. Brahmi auto-registers the preview state — no separate `update_preview_url` call.
+   - **URL exposed** (frontend, tunnel, deployed app): pass `{"kind":"url","url":"<url>","title":"<label>","environment":"local|deployed"}`. The platform auto-registers the preview state — no separate `update_preview_url` call.
    - Inlining the workspace path or URL in your reply text is NOT a substitute and is forbidden — chips can't be reconstructed from prose after the fact.
    - Only after the MCP call succeeds, compose the user-facing prose. The chip is the deliverable; prose is commentary.
 
@@ -41,7 +41,7 @@ If verification fails, iterate. Do not report "done" with known failures.
 
 ## Communication Cadence
 
-- One sentence in your reply text at start of meaningful work ("Starting on X"). Brahmi saves this as the chat row.
+- One sentence in your reply text at start of meaningful work ("Starting on X"). The platform saves this as the chat row.
 - One sentence per major checkpoint ("Build passing, deploying now").
 - One completion sentence at the end, AFTER you've emitted the chip via `aramb_chat.deliver_artifacts`. The prose narrates; the chip is the deliverable.
 - Avoid noisy step-by-step narration — the user does not need to see every shell command.
@@ -62,7 +62,7 @@ See `skills/solo/SKILL.md` for the full allowed MCP surface. Quick refs:
 - Talk to user: just write it in your reply text (auto-saved as chat row)
 - Block on user: `aramb_chat.ask_question`
 - Urgent alert: `aramb_chat.alert_user`
-- **Deliver a file chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/<file>"}]'` — MANDATORY whenever you wrote a user-facing file. project_id + application_id come from your User Message's "## Current Context" block; brahmi rejects calls without them.
+- **Deliver a file chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/<file>"}]'` — MANDATORY whenever you wrote a user-facing file. project_id + application_id come from your User Message's "## Current Context" block; the platform rejects calls without them.
 - **Deliver a URL chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'` — auto-registers preview state on application_id.
 - Git (all github work): `aramb_toolkits.execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` → export `GH_TOKEN` → native `git`/`gh` CLI (see `aramb-toolkits` skill). Other `GITHUB_*` tools aren't served; do NOT use `aramb_chat.*` git helpers.
 - Run any third-party tool: `aramb_toolkits.execute` (discover slugs via `aramb_toolkits.search` → `get_schema`).

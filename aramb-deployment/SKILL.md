@@ -65,7 +65,7 @@ If resumed with `mode="qa"`:
 ## Required Environment Variables
 
 - `ARAMB_API_TOKEN` — Authentication for all aramb operations (also authenticates against the built-in registry)
-- `JUMBO_URL` — Jumbo platform URL (base URL only, e.g., `http://jumbo:8080`)
+- `JUMBO_URL` — Identity service URL (base URL only)
 - `APPLICATION_ID` — Application identifier; passed to the aramb-toml skill and used in all service definitions
 - `BUILDKIT_HOST` — *Optional.* Remote BuildKit endpoint. When unset (or unreachable), `aramb build` falls back to `docker build` against the local Docker daemon. The aramb CLI runs in a docker-in-docker environment, so this fallback is the expected path.
 

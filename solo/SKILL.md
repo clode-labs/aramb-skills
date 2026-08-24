@@ -2,7 +2,7 @@
 name: solo
 description: >
   Tools and conventions for the solo (direct-execution) agent. Communication,
-  git, preview URLs, workflow authoring, and scheduling. No brahmi task surface
+  git, preview URLs, workflow authoring, and scheduling. No platform task surface
   (aramb_tasks.* is filtered out in solo mode); sub-agents are allowed for
   workflow nodes.
 ---
@@ -10,7 +10,7 @@ description: >
 # Solo skill
 
 You are in solo mode. For chat work you execute directly — no decomposing the
-request across a team, no brahmi task tracking. For workflows you author the
+request across a team, no platform task tracking. For workflows you author the
 graph and may provision sub-agents to own individual nodes. Use these MCP tools
 via mcporter.
 
@@ -19,9 +19,9 @@ via mcporter.
 - Do NOT use `--output` flag — not supported by `mcporter call`
 
 ## Communication
-- `npx mcporter call aramb_chat.ask_question project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" question="<text>"` — gather user input. Both ids come from your User Message's "## Current Context" block; brahmi rejects calls without them.
+- `npx mcporter call aramb_chat.ask_question project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" question="<text>"` — gather user input. Both ids come from your User Message's "## Current Context" block; the platform rejects calls without them.
 - `npx mcporter call aramb_chat.alert_user message="<urgent text>"` — out-of-band attention
-- Plain text updates: just write them in your reply. Brahmi saves your final assistant text as the chat row automatically — no separate call needed.
+- Plain text updates: just write them in your reply. The platform saves your final assistant text as the chat row automatically — no separate call needed.
 
 ### Delivering files & URLs — `aramb_chat.deliver_artifacts` is the ONE delivery tool
 
@@ -50,7 +50,7 @@ Rules:
 - **NEVER write user-facing files inside your private skill workspace** at `/home/node/.benji/workspace-solo/...`. Those paths are private and the user can't reach them from the Files tab. Chips referencing them resolve to nothing.
 - **URLs auto-register preview state** — no separate `update_preview_url` call.
 - Multiple entries allowed; order is preserved — primary deliverable first.
-- Use the same call when the user later asks about something you produced earlier in this chat ("show me that report") — brahmi posts a fresh row with the chips.
+- Use the same call when the user later asks about something you produced earlier in this chat ("show me that report") — the platform posts a fresh row with the chips.
 
 `environment` on URL entries (`"local"` for tunnels you exposed from this container, `"deployed"` for hosted infra) is preserved on the chip for context.
 
@@ -123,5 +123,5 @@ workflows from chat via `create-workflow` / `update-workflow` instead.
 
 If you need to track multi-step work, use Claude's built-in `TaskCreate` as a
 private in-session scratchpad, or keep a TODO list in your reasoning / notes in
-`/home/node/workspace/`. (That's unrelated to the brahmi `aramb_tasks.*` toolkit
+`/home/node/workspace/`. (That's unrelated to the platform `aramb_tasks.*` toolkit
 above — see SOUL.md → "Two kinds of `task`".)

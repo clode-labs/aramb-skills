@@ -21,8 +21,8 @@ Complete setup instructions for local-deploy skill.
 - `DOCKER_REGISTRY` - Docker registry URL
 - `DOCKER_USERNAME` - Docker registry username
 - `DOCKER_PASSWORD` - Docker registry password
-- `JUMBO_URL` - Jumbo API endpoint (default: https://jumbo.aramb.dev)
-- `HATHI_URL` - Hathi API endpoint (default: https://hathi.aramb.dev)
+- `JUMBO_URL` - Identity service API endpoint
+- `HATHI_URL` - Platform API endpoint
 
 ## Quick Setup
 

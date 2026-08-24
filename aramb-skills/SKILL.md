@@ -2,14 +2,14 @@
 name: aramb-skills
 description: >
   Search, inspect, and download skills from the Skills Registry using the aramb-skills CLI.
-  Available natively at /usr/local/bin/aramb-skills inside all benji agent containers — no install needed.
+  Available natively at /usr/local/bin/aramb-skills inside all agent runtime containers — no install needed.
   Use when: discovering available skills before creating agents, checking if a skill exists in the registry,
   downloading a skill into an agent workspace, or listing skills by category or tag.
 ---
 
 # aramb-skills CLI
 
-The `aramb-skills` binary is pre-installed at `/usr/local/bin/aramb-skills` in every benji agent container. No installation step is needed.
+The `aramb-skills` binary is pre-installed at `/usr/local/bin/aramb-skills` in every agent runtime container. No installation step is needed.
 
 ## Environment Variables
 

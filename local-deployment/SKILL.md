@@ -118,7 +118,7 @@ Expose all HTTP services before starting the stack. URLs are assigned by the tun
 ### 3a — Build the services and public lists
 
 ```bash
-APP_SLUG="<app-slug>"   # from brahmi task context
+APP_SLUG="<app-slug>"   # from the platform task context
 
 # Always include the frontend
 SERVICES_ARG="frontend=http://localhost:${FRONTEND_PORT}"
@@ -409,7 +409,7 @@ Env overrides injected: $DEPLOY_ENV_FILE" \
 
 ### Solo mode / no task to close
 
-When the deploy was kicked off directly in a chat (no `task_id` in your `## Current Context`), use `aramb_chat.deliver_artifacts` — same artifact shape, no task transition. Brahmi still auto-registers the preview-URL state from the URL-kind entry.
+When the deploy was kicked off directly in a chat (no `task_id` in your `## Current Context`), use `aramb_chat.deliver_artifacts` — same artifact shape, no task transition. The platform still auto-registers the preview-URL state from the URL-kind entry.
 
 ```
 npx mcporter call aramb_chat.deliver_artifacts \
@@ -421,7 +421,7 @@ npx mcporter call aramb_chat.deliver_artifacts \
 ### Rules for preview URLs (apply to both paths above)
 
 - The rule fires whenever this skill produced any URL the user can reach (frontend, API, tunnel, public proxy).
-- A URL-kind artifact is **mandatory** for the primary frontend URL — on `aramb_tasks.update.artifacts` in team mode, or on `aramb_chat.deliver_artifacts.artifacts` in solo mode. Brahmi auto-registers preview-URL state from it — no separate call.
+- A URL-kind artifact is **mandatory** for the primary frontend URL — on `aramb_tasks.update.artifacts` in team mode, or on `aramb_chat.deliver_artifacts.artifacts` in solo mode. The platform auto-registers preview-URL state from it — no separate call.
 - Mentioning the URL only in chat prose is forbidden — the chip pipeline cannot reconstruct chips from prose after the fact, and the workbench browser/preview tab won't open from prose.
 - For aramb-expose tunnels the `environment` field is `"deployed"` (the URL is a public proxy.clode.space hostname reachable outside the agent's container).
 - The chip is for the *primary* frontend URL only. Secondary backend / API URLs can stay in the `summary` text — one URL chip per chat row is plenty.
@@ -442,8 +442,8 @@ npx mcporter call aramb_chat.ask_question \
 
 Rules:
 - **One question per deployment** — fire this exactly once, immediately after the Step 8 artifact call. Do not re-prompt on the same deploy.
-- **Options stay in the `options` array**, not in the question prose. The Slack/web renderer turns each option into a button (chil's `QuestionBlocks` emits one button per option; any N up to ~5 renders cleanly).
-- **`chat_location` is forced to `"main"`** by brahmi for every `ask_question` call — the question always surfaces in the user's main chat, even if you were dispatched from inside a task. The `task_id` (if any) is auto-carried via question metadata so the answer routes back into your session.
+- **Options stay in the `options` array**, not in the question prose. The Slack/web renderer turns each option into a button (the chat toolkit's `QuestionBlocks` emits one button per option; any N up to ~5 renders cleanly).
+- **`chat_location` is forced to `"main"`** by the platform for every `ask_question` call — the question always surfaces in the user's main chat, even if you were dispatched from inside a task. The `task_id` (if any) is auto-carried via question metadata so the answer routes back into your session.
 - **Blocking** — the run pauses until the user picks. The answer arrives as your next dispatch with the user's selection; do not poll.
 - **If the user picks the "Yes…" option**, hand off to the cloud-deploy skill with the same app slug. If they pick "Not now" or "Skip", end the session — do NOT kill the local tunnel (see "Keep the tunnel alive" below).
 
