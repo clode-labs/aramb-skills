@@ -10,7 +10,7 @@ examples were sanity-checked for internal consistency with the documented args.
 ## New MCP surface documented (agreed contract — matches brahmi)
 
 ### Feature 1 — Random delay (cron-only)
-Two optional args on `aramb_workflows.set_schedule`:
+Two optional args on `aramb_mcp.workflows_set_schedule`:
 - `random_delay_enabled` (bool, default `false`)
 - `random_delay_max_minutes` (int, optional) — absolute cap; effective delay =
   `min(random_delay_max_minutes, 80% of the gap to the next tick)`, chosen fresh each fire.
@@ -19,7 +19,7 @@ Two optional args on `aramb_workflows.set_schedule`:
 - Agent speaks **minutes**; brahmi stores seconds (never surfaced in skills).
 
 ### Feature 2 — Run status callback (workflow-level webhook)
-New tool `aramb_workflows.set_callback`:
+New tool `aramb_mcp.workflows_set_callback`:
 - Args: `workflow_id`, `callback_url`.
 - Returns a **signing secret ONCE** — agent surfaces it verbatim and warns it won't be shown again.
 - Fires on every real run (manual, cron, event); preview/test runs excluded. POSTs on start
@@ -62,8 +62,8 @@ New tool `aramb_workflows.set_callback`:
 ### `update-workflow/SKILL.md`
 - **Step 3 (firing-condition routing):** added "stagger the fire time" as a cron-shaped phrase
   routing to `schedule-workflow`, noting the `random_delay_*` jitter lives in the cron columns; added
-  a new **Run-status callback** routing bullet (set via `aramb_workflows.set_callback`, NOT a
-  definition change, do not call `aramb_workflows.update` for it).
+  a new **Run-status callback** routing bullet (set via `aramb_mcp.workflows_set_callback`, NOT a
+  definition change, do not call `aramb_mcp.workflows_update` for it).
 
 ### `import-workflow/SKILL.md`
 - **Step 5 (Schedule):** added a note to pass `random_delay_enabled` / `random_delay_max_minutes`
@@ -79,23 +79,23 @@ New tool `aramb_workflows.set_callback`:
 
 **Task doc:** `claude/tasks/2026-06-21/run-workflow-mcp-addendum.md`
 
-Documented the new `aramb_workflows.run` tool + the confirm-first "run an existing workflow"
+Documented the new `aramb_mcp.workflows_run` tool + the confirm-first "run an existing workflow"
 flow. **Locked policy: ALWAYS confirm the specific workflow before running, even on an exact
 name match** (list → fuzzy-match → confirm → run).
 
 ### New MCP surface documented
-`aramb_workflows.run`:
+`aramb_mcp.workflows_run`:
 - Args: `workflow_id` (required), `custom_instruction` (optional free-form text passed into the
   workflow's first step `<run_input>` — included only if the user gave extra per-run context).
 - Kicks off a single manual run; returns a `run_id`.
 
 ### Files + sections changed
-- **`aramb-workflows/SKILL.md`** — intro overview line now enumerates `aramb_workflows.run`
+- **`aramb-workflows/SKILL.md`** — intro overview line now enumerates `aramb_mcp.workflows_run`
   (confirm-first); new **"## Running an existing workflow (manual run)"** section: trigger phrases,
   the 4-step list→match→confirm→run flow, multiple-match / no-match / non-runnable-status handling,
   the optional `custom_instruction`, and the guardrails (never run without explicit confirmation,
   never guess a `workflow_id`, one run per confirmation).
-- **`workspace-solo/AGENTS.md`** — added a one-line `aramb_workflows.run` (confirm-first) bullet to
+- **`workspace-solo/AGENTS.md`** — added a one-line `aramb_mcp.workflows_run` (confirm-first) bullet to
   the workflow tool inventory.
 - **`workspace-master/AGENTS.md`** — added the same one-line bullet under Tools & Skills.
 

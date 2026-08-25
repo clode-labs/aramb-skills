@@ -11,7 +11,7 @@ description: >
 # Schedule Workflow
 
 Translate a user's natural-language schedule request into a cron expression
-+ timezone, then call `aramb_workflows.set_schedule`. The workflow already has a
++ timezone, then call `aramb_mcp.workflows_set_schedule`. The workflow already has a
 schedule slot (one schedule per workflow) — this skill writes to it.
 
 You are typically replying to a chat message on the Workflow page. The user
@@ -23,7 +23,7 @@ asked something like:
 
 The workflow_id is in the chat context (from the Workflow page). If you don't
 have it, list the project's workflows and pick the right one:
-`aramb_workflows.list project_id="<PROJECT_ID>"` (a project can hold several
+`aramb_mcp.workflows_list project_id="<PROJECT_ID>"` (a project can hold several
 workflows — appless is the norm; if more than one matches, ask which).
 
 ## Schedule vs trigger — route first
@@ -45,8 +45,8 @@ handle the cron part here and tell the user the event part is configured via
 When `create-workflow` (or `update-workflow`) calls you mid-authoring after the
 trigger picker chose **cron**, you arrive with a pre-resolved `workflow_id` and
 the cadence the user already gave. **Skip step 2 (clarify)** — the cadence is
-settled. Map it to a cron expression (step 3) and call `aramb_workflows.set_schedule`
-(step 4) directly. Only fall back to a clarifying `aramb_chat.ask_question` if the
+settled. Map it to a cron expression (step 3) and call `aramb_mcp.workflows_set_schedule`
+(step 4) directly. Only fall back to a clarifying `aramb_mcp.chat_ask_question` if the
 supplied cadence genuinely can't be mapped (missing time-of-day, ambiguous day).
 Standalone use (user invokes directly) runs the full flow below.
 
@@ -61,13 +61,13 @@ Three branches:
 - **Set / update** ("run weekly", "every Monday at 9am", "schedule for 2pm UTC"):
   go to step 2.
 - **Read / confirm** ("what's the schedule?", "when does this run?"): call
-  `aramb_workflows.get_schedule workflow_id="<workflow_id>"` and report what you find.
+  `aramb_mcp.workflows_get_schedule workflow_id="<workflow_id>"` and report what you find.
   No write needed.
 
 ### 2. Clarify if ambiguous
 
 Some phrases do not have enough information to map to a cron expression. Ask
-the user **one** clarifying question via `aramb_chat.ask_question` and stop until
+the user **one** clarifying question via `aramb_mcp.chat_ask_question` and stop until
 they answer. Do NOT invent a default like "Sunday midnight UTC" silently.
 
 Phrases that need a clarifying question:
@@ -115,12 +115,12 @@ Default timezone: **UTC**. If the user named a timezone ("Pacific", "EST",
 `Europe/London`) and use that. **Tell the user explicitly which timezone you
 used** in your reply — never silently apply one.
 
-### 4. Call aramb_workflows.set_schedule
+### 4. Call aramb_mcp.workflows_set_schedule
 
 For an enable / update:
 
 ```bash
-npx mcporter call aramb_workflows.set_schedule \
+npx mcporter call aramb_mcp.workflows_set_schedule \
   workflow_id="<workflow_id>" \
   cron_expression="0 9 * * 1" \
   cron_timezone="UTC" \
@@ -130,7 +130,7 @@ npx mcporter call aramb_workflows.set_schedule \
 For a pause / disable:
 
 ```bash
-npx mcporter call aramb_workflows.set_schedule \
+npx mcporter call aramb_mcp.workflows_set_schedule \
   workflow_id="<workflow_id>" \
   enabled=false
 ```
@@ -152,7 +152,7 @@ extra args on the same `set_schedule` call:
 - `random_delay_max_minutes` (int, optional) — an absolute cap on the delay
 
 ```bash
-npx mcporter call aramb_workflows.set_schedule \
+npx mcporter call aramb_mcp.workflows_set_schedule \
   workflow_id="<workflow_id>" \
   cron_expression="0 9 * * *" \
   cron_timezone="UTC" \

@@ -46,7 +46,7 @@ kicking off a run; likely in `aramb-workflows/SKILL.md` near the `run` flow, and
   and the final result — it should NOT claim per-batch counts or "working through the rest" that it
   cannot verify.
 - When the user asks "what's the status?", the agent should report only **verifiable** state (e.g. via
-  `aramb_workflows.get` / `list`, or acknowledge the run is in progress and the system will post
+  `aramb_mcp.workflows_get` / `list`, or acknowledge the run is in progress and the system will post
   updates) — never fabricated progress numbers.
 - Remove/repair any existing template lines that encourage made-up progress narration.
 

@@ -4,25 +4,25 @@
 > guidance below was documented in the 2026-06-21 batch (see this dir's
 > `IMPL-COMPLETE.md` → "Run-flow addendum"). Batch 1 (#5) finished the job by aligning
 > the documented tool shapes with brahmi's now-registered MCP tools:
-> `aramb_workflows.run` returns `{ run_id, status }` and **auto-publishes a draft
-> first**; `aramb_workflows.publish` takes `workflow_id` and returns
+> `aramb_mcp.workflows_run` returns `{ run_id, status }` and **auto-publishes a draft
+> first**; `aramb_mcp.workflows_publish` takes `workflow_id` and returns
 > `{ workflow_id, status:"active", version, published_at }`. The confirm-first policy
 > is unchanged. No further action — kept for history.
 
-Same branch `feat/trigger-jitter-and-callbacks`. Document the new `aramb_workflows.run` MCP tool and
+Same branch `feat/trigger-jitter-and-callbacks`. Document the new `aramb_mcp.workflows_run` MCP tool and
 the flow for "run X workflow" requests. **Policy (locked): ALWAYS confirm before running** — even on
 an exact name match.
 
 ## Where
 Add a new section **"## Running an existing workflow (manual run)"** to
 `aramb-workflows/SKILL.md` (the always-loaded MCP reference skill). Keep the terse, example-first
-voice. Also add a one-line entry for `aramb_workflows.run` to that skill's tool list / the list-row
-and get sections where the other `aramb_workflows.*` tools are enumerated.
+voice. Also add a one-line entry for `aramb_mcp.workflows_run` to that skill's tool list / the list-row
+and get sections where the other `aramb_mcp.workflows_*` tools are enumerated.
 
 ## The flow to document
 Trigger phrases: "run X", "run the X workflow", "execute X", "kick off X", "trigger X now", "start X".
 
-1. **List + match.** Call `aramb_workflows.list project_id=<from User Message>` → `{workflow_id,
+1. **List + match.** Call `aramb_mcp.workflows_list project_id=<from User Message>` → `{workflow_id,
    name, status, schedule}`. Fuzzy-match the user's phrase to a workflow name (the model does this —
    partial/typo/synonym is fine). 
 2. **ALWAYS confirm before running.** State the matched workflow's exact `name` (+ note its `status`,
@@ -34,7 +34,7 @@ Trigger phrases: "run X", "run the X workflow", "execute X", "kick off X", "trig
      the confirmation so the user knows.
 3. **Run only after explicit confirmation.** Call:
    ```
-   npx mcporter call aramb_workflows.run \
+   npx mcporter call aramb_mcp.workflows_run \
      workflow_id="<id>" \
      [custom_instruction="<any extra per-run context the user gave>"]
    ```
@@ -44,13 +44,13 @@ Trigger phrases: "run X", "run the X workflow", "execute X", "kick off X", "trig
    relevant.
 
 ## Guardrails to state in the skill
-- Never call `aramb_workflows.run` without an explicit user confirmation of the specific workflow.
-- Never guess a `workflow_id` — always resolve via `aramb_workflows.list` first.
+- Never call `aramb_mcp.workflows_run` without an explicit user confirmation of the specific workflow.
+- Never guess a `workflow_id` — always resolve via `aramb_mcp.workflows_list` first.
 - One run per confirmation; don't batch-run multiple workflows off one "run X" unless asked.
 
 ## Optional (consistency)
 If the repo carries `workspace-solo/AGENTS.md` / `workspace-master/AGENTS.md` tool inventories, add a
-one-line bullet: "Run an existing workflow on request (confirm-first): `aramb_workflows.run` (via the
+one-line bullet: "Run an existing workflow on request (confirm-first): `aramb_mcp.workflows_run` (via the
 aramb-workflows run flow)."
 
 No build step (markdown). Append a "## Run-flow addendum" note to

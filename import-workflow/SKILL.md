@@ -25,7 +25,7 @@ before you were dispatched:
 
 Your job (phase two) is the **enrichment polish**: fetch that draft, rewrite the
 node prompts so the substituted prose reads naturally and carries the user's
-intent, save the polish with `aramb_workflows.update`, optionally set a schedule,
+intent, save the polish with `aramb_mcp.workflows_update`, optionally set a schedule,
 then post a short summary and stop. You do **not** create agents and you do
 **not** create a workflow — both already exist.
 
@@ -40,9 +40,9 @@ then post a short summary and stop. You do **not** create agents and you do
    block.** If no such block is present in the extra-system-prompt, STOP — you
    should be using `create-workflow` or `update-workflow` instead. The block is
    the trigger; the user's prose alone does not authorise this path.
-2. **The draft workflow ALREADY EXISTS. Do NOT call `aramb_workflows.create`.**
-   The block carries a `workflow_id`. Fetch the draft with `aramb_workflows.get`
-   and save your polish with `aramb_workflows.update`. Calling `create` will fork
+2. **The draft workflow ALREADY EXISTS. Do NOT call `aramb_mcp.workflows_create`.**
+   The block carries a `workflow_id`. Fetch the draft with `aramb_mcp.workflows_get`
+   and save your polish with `aramb_mcp.workflows_update`. Calling `create` will fork
    a second, duplicate workflow and fail ("a workflow already exists for this
    application").
 3. **The agents ALREADY EXIST. Do NOT create them.** The platform provisioned every
@@ -54,10 +54,10 @@ then post a short summary and stop. You do **not** create agents and you do
    workflow and fires its first run automatically when this turn ends. Never
    tell the user to publish it, run it, or trigger anything manually, and do not
    wait for their confirmation.
-5. **Do NOT call `aramb_tasks.list` / `aramb_tasks.update`.** No task drives this
+5. **Do NOT call `aramb_mcp.tasks_list` / `aramb_mcp.tasks_update`.** No task drives this
    dispatch — the platform dispatched you (the master/solo agent) directly with the
    template payload. Calling them returns unrelated rows and misleads the import.
-6. **Preserve structure; polish only text.** `aramb_workflows.update` replaces
+6. **Preserve structure; polish only text.** `aramb_mcp.workflows_update` replaces
    nodes + edges atomically, so you must send the FULL set back. You may rewrite
    each node's `name` / `prompt` (and the workflow `name` / `description`). You
    must NOT change `unique_id`, `assigned_agent`, `acceptance_criteria`,
@@ -67,7 +67,7 @@ then post a short summary and stop. You do **not** create agents and you do
    verbatim from the fetched draft. **Never invent a binding, and never use a
    platform-internal/hidden toolkit** (`composio`, `composio_search`,
    `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) —
-   `aramb_workflows.update` rejects those; for Slack/Discord/Teams messaging the
+   `aramb_mcp.workflows_update` rejects those; for Slack/Discord/Teams messaging the
    node delivers via the chat service's `chat.send_dm` (no toolkit). See the `aramb-workflows`
    skill.
 8. **No placeholder syntax in any node `prompt`.** The draft's prompts should be
@@ -75,7 +75,7 @@ then post a short summary and stop. You do **not** create agents and you do
    `{{input.KEY}}`; if a node still contains a literal `{{env.…}}` (a template
    bug), rewrite it to read its per-run value from `<run_input>`. The platform's MCP
    schema rejects prompts matching `{{ env.… }}`.
-9. **Do NOT pass `env_variables`.** Omit it from `aramb_workflows.update` — v2
+9. **Do NOT pass `env_variables`.** Omit it from `aramb_mcp.workflows_update` — v2
    templates declare none and a non-empty map is rejected.
 10. **Speak to the user in plain product language — never leak internals.** No
     MCP tool names, raw upstream errors (`502` from the integrations proxy, `ConfigInvalid`),
@@ -87,7 +87,7 @@ You are running as the **master/solo agent**, not as a task. The
 
 - `slug` — the template's slug (e.g. `discovery-workflow`), on the opening tag.
 - `workflow_id` — the UUID of the draft the platform already created, on the opening
-  tag. This is what you pass to `aramb_workflows.get` / `aramb_workflows.update`.
+  tag. This is what you pass to `aramb_mcp.workflows_get` / `aramb_mcp.workflows_update`.
 - `<wizard-answers>` — JSON object of the user's wizard inputs (e.g.
   `team_name`, `channel_ids`, `lookback_days`) — use these to polish node
   prompts in step 3.
@@ -135,7 +135,7 @@ Examples:
 - `Outputs to result: 'summary' is the top suggestions + the chat service's send_dm response (ok, ts); 'files' is the fallback report path if the DM failed.`
 
 If a fetched node prompt ends with a stale `npx mcporter call
-aramb_workflows.update_my_step …` block, strip it during polish and replace it
+aramb_mcp.workflows_update_my_step …` block, strip it during polish and replace it
 with the contract line above.
 
 ## Workflow
@@ -155,7 +155,7 @@ see "Error handling" below.
 ### 2. Fetch the draft
 
 ```bash
-npx mcporter call aramb_workflows.get workflow_id="<workflow_id from the block>"
+npx mcporter call aramb_mcp.workflows_get workflow_id="<workflow_id from the block>"
 ```
 
 This returns the draft's `name`, `description`, `nodes` (each with `unique_id`,
@@ -163,7 +163,7 @@ This returns the draft's `name`, `description`, `nodes` (each with `unique_id`,
 `toolkit`, `settings`), and `edges`. This is your authoritative structure — you
 will send it back, with only the text fields polished.
 
-If `aramb_workflows.get` fails or returns no workflow for the id, see "Error
+If `aramb_mcp.workflows_get` fails or returns no workflow for the id, see "Error
 handling" (do NOT fall back to `create`).
 
 ### 3. Polish the node prompts (substantive — required when wizard answers are present)
@@ -181,7 +181,7 @@ What "substantive polish" looks like:
 - Weave in the *meaning* of the wizard answers, not just the strings.
 - Add brief, neutral context implied by the inputs when it helps the executing
   agent (e.g. "these are public ops channels; expect deploy chatter and alerts").
-- Strip any stale `npx mcporter call aramb_workflows.update_my_step …` block and
+- Strip any stale `npx mcporter call aramb_mcp.workflows_update_my_step …` block and
   replace it with the one-line output contract above.
 - Never introduce placeholder syntax — `{{env.KEY}}` / `{{input.KEY}}` are
   rejected. If a fetched prompt still has a literal `{{env.…}}`, rewrite it to
@@ -196,11 +196,11 @@ fetched text is obviously broken. The stale-closing-block strip still applies.
 
 ### 4. Save the polish
 
-Call `aramb_workflows.update` with the `workflow_id` and the FULL node + edge set
+Call `aramb_mcp.workflows_update` with the `workflow_id` and the FULL node + edge set
 (it replaces atomically — a partial set deletes the rest):
 
 ```bash
-npx mcporter call aramb_workflows.update \
+npx mcporter call aramb_mcp.workflows_update \
   workflow_id="<workflow_id from the block>" \
   name="<workflow.name, polished — optional, omit to keep>" \
   description="<workflow.description, polished — optional, omit to keep>" \
@@ -208,7 +208,7 @@ npx mcporter call aramb_workflows.update \
   edges='<full edge set, verbatim from the fetched draft>'
 ```
 
-**Pre-flight checklist — verify before calling `aramb_workflows.update`.** For
+**Pre-flight checklist — verify before calling `aramb_mcp.workflows_update`.** For
 every node in your `nodes` array, confirm:
 
 - `unique_id`, `assigned_agent`, `acceptance_criteria`, `settings` — present and
@@ -231,7 +231,7 @@ If the user's message (or the template's accompanying instruction) asks for a
 recurring schedule, set it on the SAME workflow:
 
 ```bash
-npx mcporter call aramb_workflows.set_schedule \
+npx mcporter call aramb_mcp.workflows_set_schedule \
   workflow_id="<workflow_id>" \
   cron_expression="<5-field cron, e.g. 0 */6 * * *>" \
   cron_timezone="UTC" \
@@ -254,7 +254,7 @@ Post one short chat message naming the workflow and noting it's set up. Do NOT
 say "publish it" or "trigger it" — the platform does both automatically.
 
 ```bash
-npx mcporter call aramb_chat.send_message \
+npx mcporter call aramb_mcp.chat_send_message \
   project_id="<PROJECT_ID>" \
   application_id="<APPLICATION_ID>" \
   content="Set up the **Discovery Report** workflow — it'll scan your channels and DM you a report shortly, then refresh on schedule."
@@ -273,23 +273,23 @@ After posting, STOP. Do not send follow-up messages.
 
 ## Error handling
 
-- **`aramb_workflows.get` fails / returns no workflow for the id** → the draft
+- **`aramb_mcp.workflows_get` fails / returns no workflow for the id** → the draft
   the platform should have created is missing. Do NOT fall back to `create`. Post one
   chat message flagging it as a setup problem and STOP.
 
   ```bash
-  npx mcporter call aramb_chat.send_message \
+  npx mcporter call aramb_mcp.chat_send_message \
     project_id="<PROJECT_ID>" \
     application_id="<APPLICATION_ID>" \
     content="Couldn't finish setting up the workflow — its draft wasn't found. This is a setup issue on our side; please retry shortly."
   ```
 
-- **`aramb_workflows.update` fails** → the draft still exists and will
+- **`aramb_mcp.workflows_update` fails** → the draft still exists and will
   auto-publish with the unpolished (but functional) prompts. Post one chat
   message and STOP. No retry.
 
   ```bash
-  npx mcporter call aramb_chat.send_message \
+  npx mcporter call aramb_mcp.chat_send_message \
     project_id="<PROJECT_ID>" \
     application_id="<APPLICATION_ID>" \
     content="The workflow is set up and will run, but I couldn't apply my final polish to the steps: <reason>."
@@ -300,7 +300,7 @@ After posting, STOP. Do not send follow-up messages.
   STOP. No `get`, no `update`.
 
   ```bash
-  npx mcporter call aramb_chat.send_message \
+  npx mcporter call aramb_mcp.chat_send_message \
     project_id="<PROJECT_ID>" \
     application_id="<APPLICATION_ID>" \
     content="Template import payload was malformed — this is a bug, please file it."
@@ -312,13 +312,13 @@ After posting, STOP. Do not send follow-up messages.
 
 ## What this skill does NOT do
 
-- Does NOT call `aramb_workflows.create` (the draft already exists — use
+- Does NOT call `aramb_mcp.workflows_create` (the draft already exists — use
   `get` + `update`)
 - Does NOT create agents / call `create-agent` / `benji agent create` (the platform
   already provisioned them)
 - Does NOT publish the workflow or trigger a run (auto-publish does both on turn
   completion)
-- Does NOT call `aramb_tasks.list` / `aramb_tasks.update` (no task drives this)
+- Does NOT call `aramb_mcp.tasks_list` / `aramb_mcp.tasks_update` (no task drives this)
 - Does NOT invoke any other agent
 - Does NOT rewrite agent personas — only workflow node `name` / `prompt` text
 
@@ -326,12 +326,12 @@ After posting, STOP. Do not send follow-up messages.
 
 - Trigger is the `<template-import>` block in the extra-system-prompt — never the user's prose
 - The draft workflow AND its agents already exist — `get` the workflow by `workflow_id`, never `create`, never `create-agent`
-- Send the FULL node + edge set to `aramb_workflows.update` (it replaces atomically); polish only `name` / `prompt`, everything else verbatim
+- Send the FULL node + edge set to `aramb_mcp.workflows_update` (it replaces atomically); polish only `name` / `prompt`, everything else verbatim
 - Every node keeps `required_toolkits` (use `[]`, never omit) and its singular `toolkit` (a member of it) verbatim — never invent or use a hidden toolkit
 - No placeholder syntax (`{{env.KEY}}` / `{{input.KEY}}`) in any prompt — the platform rejects it; per-run context reaches the first node via `<run_input>`
 - Omit `env_variables` (the schema rejects a non-empty map)
 - Every node's `prompt` carries business context + a one-line output contract
-- Set a schedule with `aramb_workflows.set_schedule` only if the dispatch asks; never trigger the first run yourself
+- Set a schedule with `aramb_mcp.workflows_set_schedule` only if the dispatch asks; never trigger the first run yourself
 - Do NOT publish or trigger — the platform auto-publishes and runs the workflow on turn completion
 - Post exactly one chat summary at the end (success or error); then STOP
-- Never call `aramb_tasks.list`, `aramb_tasks.update`, or `aramb_workflows.create` from this skill
+- Never call `aramb_mcp.tasks_list`, `aramb_mcp.tasks_update`, or `aramb_mcp.workflows_create` from this skill

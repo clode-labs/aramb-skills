@@ -14,17 +14,17 @@ description: >
 # Configure Trigger
 
 Turn "fire this workflow when <event> happens" into a `toolkit_event` trigger
-row on a workflow, by calling the `aramb_triggers.*` write tools. You read the
-catalog with `aramb_toolkits.*` (read-only) and persist with `aramb_triggers.*`
+row on a workflow, by calling the `aramb_mcp.triggers_*` write tools. You read the
+catalog with `aramb_mcp.toolkits_*` (read-only) and persist with `aramb_mcp.triggers_*`
 (write). The two namespaces are split for security and discoverability — look up
 with one, mutate with the other.
 
-> **The `aramb_toolkits.*` call contract (`list_toolkits`, `list_triggers`,
+> **The `aramb_mcp.toolkits_*` call contract (`list_toolkits`, `list_triggers`,
 > `get_trigger`, `check_connection` — arg is `toolkit=`, never `toolkit_slug`)
 > is documented canonically in the `aramb-toolkits` skill.** This skill just uses
 > those calls in its flow; read `aramb-toolkits` for the full arg reference. For
 > the actual data fetch / action (not trigger wiring), that's
-> `aramb_toolkits.execute` (same skill).
+> `aramb_mcp.toolkits_execute` (same skill).
 
 > **Schedules are NOT triggers.** A wall-clock cadence ("daily at 9am", "every
 > Monday", a cron expression) is a *schedule* and lives on different storage with
@@ -55,14 +55,14 @@ router rule lives in `schedule-workflow`; keep the two consistent.
 - **`workflow_id`** — usually in the chat context (you're on the Workflow page).
   If you don't have it, find the project's workflows and pick the right one:
   ```bash
-  npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"
+  npx mcporter call aramb_mcp.workflows_list project_id="<PROJECT_ID>"
   ```
   (A project can hold several workflows — appless is the norm; don't assume one
   per application. If more than one matches, ask the user which.) If no workflow
   exists, tell the user there's nothing to attach a trigger to and suggest they
   create one first (`create-workflow`). Stop.
 - **`project_id` + `application_id`** — from your dispatch context (the
-  "## Current Context" block). Needed for `aramb_chat.ask_question`.
+  "## Current Context" block). Needed for `aramb_mcp.chat_ask_question`.
 
 ## Invoked from create-workflow / update-workflow (sub-mode)
 
@@ -71,16 +71,16 @@ picker already ran — you arrive with a **pre-resolved `workflow_id` and a
 pre-chosen catalog `slug`** (and sometimes `trigger_config`). In that case:
 
 - **Skip steps 1, 2, 4** (parse intent, narrow toolkit, disambiguate) — the
-  upstream picker already grounded the slug against `aramb_toolkits.list_triggers`.
+  upstream picker already grounded the slug against `aramb_mcp.toolkits_list_triggers`.
 - **Do NOT skip step 3's `get_trigger` call** when the trigger needs config. Most
   event triggers require parameters (GitHub triggers require `owner` + `repo`;
   Slack needs a channel; Sheets needs a spreadsheet id). Call
-  `aramb_toolkits.get_trigger toolkit=<TK> slug=<slug>` to read `config_schema`,
+  `aramb_mcp.toolkits_get_trigger toolkit=<TK> slug=<slug>` to read `config_schema`,
   then assemble those values into **`trigger_config`** (see step 5 — the arg is
   literally `trigger_config`, never `config`). Skipping this is the #1 cause of a
   Composio 400 ("owner/repo Required") that surfaces back as a 502 from the integrations proxy.
-- Then **step 5**: `aramb_toolkits.check_connection` for the slug's toolkit, then
-  `aramb_triggers.create workflow_id=<id> trigger_slug=<slug> trigger_config=<…>`.
+- Then **step 5**: `aramb_mcp.toolkits_check_connection` for the slug's toolkit, then
+  `aramb_mcp.triggers_create workflow_id=<id> trigger_slug=<slug> trigger_config=<…>`.
 - Then **step 6**: confirm the row reaches `active` before reporting success.
 
 The `workflow_id` already exists (create-workflow saved the workflow first), so
@@ -102,7 +102,7 @@ on new issues", "turn off the trigger"), skip to step 6.
 ### 2. Narrow to the toolkit
 
 ```bash
-npx mcporter call aramb_toolkits.list_toolkits
+npx mcporter call aramb_mcp.toolkits_list_toolkits
 ```
 
 Match the service to a real toolkit slug (uppercase, e.g. `GITHUB`, `SLACK`,
@@ -112,7 +112,7 @@ a toolkit for the service the user named, tell them it isn't available and stop.
 ### 3. Read the trigger catalog for that toolkit
 
 ```bash
-npx mcporter call aramb_toolkits.list_triggers toolkit="GITHUB"
+npx mcporter call aramb_mcp.toolkits_list_triggers toolkit="GITHUB"
 ```
 
 This returns the trigger types for the toolkit — each with a `slug` (e.g.
@@ -123,18 +123,18 @@ For the chosen slug, read its detail to learn what config it needs (some trigger
 require parameters like owner/repo or a channel id) and what payload it delivers:
 
 ```bash
-npx mcporter call aramb_toolkits.get_trigger toolkit="GITHUB" slug="GITHUB_NEW_ISSUE"
+npx mcporter call aramb_mcp.toolkits_get_trigger toolkit="GITHUB" slug="GITHUB_NEW_ISSUE"
 ```
 
 ### 4. Disambiguate if needed
 
 If two triggers plausibly match the intent ("issue created" vs "issue assigned to
 you"; "any push" vs "push to a specific branch"), ask ONE clarifying question via
-`aramb_chat.ask_question` and stop until the user answers. Same if a required
+`aramb_mcp.chat_ask_question` and stop until the user answers. Same if a required
 config value is missing and you can't infer it (which repo? which channel?).
 
 ```bash
-npx mcporter call aramb_chat.ask_question \
+npx mcporter call aramb_mcp.chat_ask_question \
   project_id="<PROJECT_ID>" \
   application_id="<APPLICATION_ID>" \
   question="Which GitHub event should this fire on?" \
@@ -150,7 +150,7 @@ The toolkit must have a connected account for this application — the trigger b
 to it. Confirm:
 
 ```bash
-npx mcporter call aramb_toolkits.check_connection toolkit="GITHUB"
+npx mcporter call aramb_mcp.toolkits_check_connection toolkit="GITHUB"
 ```
 
 If it reports no connected account, tell the user they need to connect <toolkit>
@@ -167,7 +167,7 @@ trigger payload flows to the agent verbatim via `<run_input>`; there is no
 mapping step.
 
 ```bash
-npx mcporter call aramb_triggers.create \
+npx mcporter call aramb_mcp.triggers_create \
   workflow_id="<WORKFLOW_ID>" \
   trigger_slug="GITHUB_NEW_ISSUE" \
   name="New GitHub issue" \
@@ -191,12 +191,12 @@ only then flips it to `active`. **Do NOT tell the user "done" while the status i
 Poll status until it settles:
 
 ```bash
-npx mcporter call aramb_triggers.status workflow_id="<WORKFLOW_ID>" slug="GITHUB_NEW_ISSUE"
+npx mcporter call aramb_mcp.triggers_status workflow_id="<WORKFLOW_ID>" slug="GITHUB_NEW_ISSUE"
 ```
 
 - `active` → success. The trigger is firing. Report it (step 7).
 - `pending_create` → still registering. Wait briefly and poll again (a few times).
-- `failed`, or the row is gone, or `aramb_triggers.create` itself returned an
+- `failed`, or the row is gone, or `aramb_mcp.triggers_create` itself returned an
   error → setup failed. The platform rolls back on a provider create / activation
   failure (it deletes the placeholder row and any upstream instance), so the
   trigger does NOT exist. Report the failure with the reason (`last_error` if
@@ -216,24 +216,24 @@ a failed create with the same payload.
 
 ## Disable / remove a trigger (step 1 routed here)
 
-To pause without deleting (`aramb_triggers.update`), or remove entirely
-(`aramb_triggers.delete`):
+To pause without deleting (`aramb_mcp.triggers_update`), or remove entirely
+(`aramb_mcp.triggers_delete`):
 
 ```bash
 # Pause — keeps the row, stops firing
-npx mcporter call aramb_triggers.update workflow_id="<WORKFLOW_ID>" slug="GITHUB_NEW_ISSUE" enabled=false
+npx mcporter call aramb_mcp.triggers_update workflow_id="<WORKFLOW_ID>" slug="GITHUB_NEW_ISSUE" enabled=false
 
 # Remove — deletes the row and the upstream instance
-npx mcporter call aramb_triggers.delete workflow_id="<WORKFLOW_ID>" slug="GITHUB_NEW_ISSUE"
+npx mcporter call aramb_mcp.triggers_delete workflow_id="<WORKFLOW_ID>" slug="GITHUB_NEW_ISSUE"
 ```
 
 If you don't know which trigger the user means and the workflow has more than one,
-list them (`aramb_triggers.status workflow_id="<WORKFLOW_ID>"` with no slug returns
+list them (`aramb_mcp.triggers_status workflow_id="<WORKFLOW_ID>"` with no slug returns
 all) and ask which one. Confirm the result in your reply text.
 
 ## Authorization failures — surface, don't retry
 
-The `aramb_triggers.*` write tools enforce application ownership at the MCP
+The `aramb_mcp.triggers_*` write tools enforce application ownership at the MCP
 boundary (the same check the REST surface applies). If a call is rejected for
 **permission / authorization** — the workflow belongs to an application you don't
 own — that is NOT a transient error. Do NOT retry, do NOT try a different payload.
@@ -249,16 +249,16 @@ Then stop.
 
 - **Route first.** Cron / wall-clock cadence → `schedule-workflow`, not this skill.
   Event → this skill. Never silently configure both for a mixed request.
-- **Ground every slug in the catalog.** Toolkit slugs via `aramb_toolkits.list_toolkits`,
-  trigger slugs via `aramb_toolkits.list_triggers`. Never invent a slug from prose.
-- **Read before write.** `aramb_toolkits.*` is read-only lookup; `aramb_triggers.*` is
+- **Ground every slug in the catalog.** Toolkit slugs via `aramb_mcp.toolkits_list_toolkits`,
+  trigger slugs via `aramb_mcp.toolkits_list_triggers`. Never invent a slug from prose.
+- **Read before write.** `aramb_mcp.toolkits_*` is read-only lookup; `aramb_mcp.triggers_*` is
   the write surface. Look up the trigger and its config needs before creating.
 - **Ask, don't guess.** Ambiguous event or a missing required config value → one
-  `aramb_chat.ask_question`, then stop until answered.
+  `aramb_mcp.chat_ask_question`, then stop until answered.
 - **No payload mapping / env binding.** The trigger payload reaches the agent
   verbatim through `<run_input>` in v2 — there is nothing to map. Never pass a
   payload-mapping argument.
-- **Never report success on `pending_create`.** Poll `aramb_triggers.status` until
+- **Never report success on `pending_create`.** Poll `aramb_mcp.triggers_status` until
   `active`. `failed` / rolled-back → report "trigger setup failed: <reason>".
 - **Authorization rejection is terminal.** Surface "you don't have permission to
   configure triggers on this workflow" and stop — no retry.

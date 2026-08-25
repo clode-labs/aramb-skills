@@ -168,13 +168,13 @@ JOURNEY RESULT: ✅ PASS (5/5 steps)
 
 **All journeys pass:**
 ```bash
-npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
+npx mcporter call aramb_mcp.tasks_update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
   outputs='{"verdict":"pass","summary":"All 3 user journeys verified end-to-end (auth flow, CRUD flow, search flow)"}'
 ```
 
 **Some journeys fail:**
 ```bash
-npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
+npx mcporter call aramb_mcp.tasks_update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
   outputs='{"verdict":"fail","summary":"2/3 journeys passing, 1 failing","details":"CRUD journey fails at step 4: created todo (id=7) not returned by GET /api/todos — API returns empty list despite DB confirming record exists. Likely a query/filter issue in the list endpoint."}'
 ```
 

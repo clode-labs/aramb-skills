@@ -3,20 +3,20 @@ name: aramb-toolkits
 description: >
   The SINGLE surface for third-party toolkits (Composio integrations) —
   discover, inspect, and EXECUTE tools, manage connections, read the event-
-  trigger catalog, and mint github credentials. All via `aramb_toolkits.*`.
+  trigger catalog, and mint github credentials. All via `aramb_mcp.toolkits_*`.
   Discover a tool (search → get_schema) then run it (execute). Check/list/connect
   accounts. For GitHub: execute GITHUB_GET_GIT_CREDENTIAL for a token, then use
   native git/gh. This skill fully replaces the retired `composio-cli` — there is
-  no `composio` CLI; everything is an `aramb_toolkits` MCP call.
+  no `composio` CLI; everything is an `aramb_mcp.toolkits_*` MCP call.
 ---
 
 # Aramb Toolkits — the single toolkit surface
 
-`aramb_toolkits.*` is the one place you reach any third-party integration
+`aramb_mcp.toolkits_*` is the one place you reach any third-party integration
 (Gmail, Slack, Google Sheets/Drive, GitHub, …). It does **discovery**,
 **execution**, **connection management**, and the **trigger catalog**. There is
 no separate CLI — if you remember `composio execute ...`, that is gone; the
-equivalent is `aramb_toolkits.execute`.
+equivalent is `aramb_mcp.toolkits_execute`.
 
 **Availability — not every persona gets every tool.** The agent-builder
 (Architect) persona is advertised `list_toolkits` only: `connect`, `execute`
@@ -35,10 +35,10 @@ Reach these tools with `mcporter`:
 
 ```bash
 # structured args → use --json (reliable for nested `arguments`)
-npx mcporter call aramb_toolkits.execute --json '{"tool":"GMAIL_SEND_EMAIL","arguments":{"recipient_email":"a@b.com","subject":"Hi","body":"..."}}'
+npx mcporter call aramb_mcp.toolkits_execute --json '{"tool":"GMAIL_SEND_EMAIL","arguments":{"recipient_email":"a@b.com","subject":"Hi","body":"..."}}'
 
 # a single simple arg → key="value" is fine too
-npx mcporter call aramb_toolkits.search query="send an email" toolkit="gmail"
+npx mcporter call aramb_mcp.toolkits_search query="send an email" toolkit="gmail"
 ```
 
 Rules:
@@ -58,17 +58,17 @@ Rules:
    tools, NOT your account's data.* (To search data — e.g. find a spreadsheet —
    you `execute` a toolkit tool like `GOOGLESHEETS_SEARCH_SPREADSHEETS`.)
    ```bash
-   npx mcporter call aramb_toolkits.search --json '{"query":"create a github issue","limit":6}'
+   npx mcporter call aramb_mcp.toolkits_search --json '{"query":"create a github issue","limit":6}'
    ```
    Returns `{slug,name,description,toolkit,is_deprecated}` rows. **Avoid
    `is_deprecated:true` slugs.**
 2. **`get_schema`** — read one tool's input arguments before calling it:
    ```bash
-   npx mcporter call aramb_toolkits.get_schema --json '{"tool":"GITHUB_CREATE_AN_ISSUE"}'
+   npx mcporter call aramb_mcp.toolkits_get_schema --json '{"tool":"GITHUB_CREATE_AN_ISSUE"}'
    ```
 3. **`execute`** — run it:
    ```bash
-   npx mcporter call aramb_toolkits.execute --json '{"tool":"GITHUB_CREATE_AN_ISSUE","arguments":{"owner":"acme","repo":"app","title":"Bug"}}'
+   npx mcporter call aramb_mcp.toolkits_execute --json '{"tool":"GITHUB_CREATE_AN_ISSUE","arguments":{"owner":"acme","repo":"app","title":"Bug"}}'
    ```
    - **Account selection is optional.** Omit `connected_account_id` and the
      single in-scope account for the toolkit is auto-resolved. If several
@@ -76,7 +76,7 @@ Rules:
      pass `connected_account_id` to pick one. The value may be an **account_ref**
      (`ca_…`) **or an alias** (e.g. `"work-gmail"`) from `list_connections`:
      ```bash
-     npx mcporter call aramb_toolkits.execute --json '{"tool":"GMAIL_SEND_EMAIL","connected_account_id":"work-gmail","arguments":{...}}'
+     npx mcporter call aramb_mcp.toolkits_execute --json '{"tool":"GMAIL_SEND_EMAIL","connected_account_id":"work-gmail","arguments":{...}}'
      ```
 
 ## Connections
@@ -85,17 +85,17 @@ Rules:
   `account_ref`, `alias`, `toolkit`, `status`). Optional `toolkit` filter. Use
   it to pick an `account_ref`/alias when a toolkit has several accounts.
   ```bash
-  npx mcporter call aramb_toolkits.list_connections toolkit="GITHUB"
+  npx mcporter call aramb_mcp.toolkits_list_connections toolkit="GITHUB"
   ```
 - **`check_connection`** — the cheap yes/no pre-flight for one toolkit; returns
   `{connected, connected_account_id, account_ref, status}`.
   ```bash
-  npx mcporter call aramb_toolkits.check_connection toolkit="GMAIL"
+  npx mcporter call aramb_mcp.toolkits_check_connection toolkit="GMAIL"
   ```
 - **`connect`** — start an OAuth connection; returns a `redirect_url` the user
   opens in a browser. Optional `alias` for a non-default/second account.
   ```bash
-  npx mcporter call aramb_toolkits.connect toolkit="gmail"
+  npx mcporter call aramb_mcp.toolkits_connect toolkit="gmail"
   # → { redirect_url: "https://...", ... } — share it, then poll check_connection until ACTIVE
   ```
 
@@ -111,10 +111,10 @@ connection may already exist.
 - **`list_triggers` / `get_trigger`** — the event-trigger catalog for a toolkit
   (used by `configure-trigger` / `create-workflow` to ground a trigger slug and
   read its `config_schema` / `payload_schema` before persisting a
-  `toolkit_event` trigger via `aramb_triggers.*`).
+  `toolkit_event` trigger via `aramb_mcp.triggers_*`).
   ```bash
-  npx mcporter call aramb_toolkits.list_triggers toolkit="GITHUB"
-  npx mcporter call aramb_toolkits.get_trigger --json '{"slug":"GITHUB_NEW_ISSUE"}'
+  npx mcporter call aramb_mcp.toolkits_list_triggers toolkit="GITHUB"
+  npx mcporter call aramb_mcp.toolkits_get_trigger --json '{"slug":"GITHUB_NEW_ISSUE"}'
   ```
 
 ## GitHub — token, then native git/gh
@@ -127,9 +127,9 @@ tools are not served here.
 
 ```bash
 # 1. confirm connected
-npx mcporter call aramb_toolkits.check_connection toolkit="GITHUB"
+npx mcporter call aramb_mcp.toolkits_check_connection toolkit="GITHUB"
 # 2. mint a token (result under `result`: {username:"x-access-token", token, account_ref, ...})
-npx mcporter call aramb_toolkits.execute --json '{"tool":"GITHUB_GET_GIT_CREDENTIAL"}'
+npx mcporter call aramb_mcp.toolkits_execute --json '{"tool":"GITHUB_GET_GIT_CREDENTIAL"}'
 # 3. use native CLI
 export GH_TOKEN="gho_…"
 git clone https://x-access-token:$GH_TOKEN@github.com/acme/repo.git
@@ -144,7 +144,7 @@ gh pr create --title "..." --body "..."
 
 ## Rules
 
-- **`aramb_toolkits` is the whole toolkit surface** — discovery, execution,
+- **`aramb_mcp.toolkits_*` is the whole toolkit surface** — discovery, execution,
   connections, trigger catalog, github credential. There is no `composio` CLI.
 - **`toolkit=` is the arg** (never `toolkit_slug`); `get_trigger` takes `slug=`.
 - **Ground every slug** in `list_toolkits` / `search` — uppercase, verbatim.
@@ -152,7 +152,7 @@ gh pr create --title "..." --body "..."
   `execute` (e.g. `*_SEARCH_*`).
 - **Read `result`** from the execute envelope `{tool, success, result}`.
 - **GitHub** = `execute GITHUB_GET_GIT_CREDENTIAL` + native `git`/`gh`.
-- **Persisting** an event trigger on a workflow is `aramb_triggers.*` (the
+- **Persisting** an event trigger on a workflow is `aramb_mcp.triggers_*` (the
   `configure-trigger` skill) — this skill only reads the trigger catalog.
 - **Check before you decline.** Run `check_connection` before saying you can't
   reach a service.

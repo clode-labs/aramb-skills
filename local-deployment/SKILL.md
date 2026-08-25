@@ -399,7 +399,7 @@ Once ALL URLs are verified, surface the primary frontend URL as a URL-kind artif
 The chip emit, preview-URL state registration, and task close all happen in ONE call.
 
 ```
-npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
+npx mcporter call aramb_mcp.tasks_update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
   summary="✅ App live (tunnel PID: $EXPOSE_PID):
 - frontend: $FRONTEND_URL
 - api: $API_URL (if applicable)
@@ -409,10 +409,10 @@ Env overrides injected: $DEPLOY_ENV_FILE" \
 
 ### Solo mode / no task to close
 
-When the deploy was kicked off directly in a chat (no `task_id` in your `## Current Context`), use `aramb_chat.deliver_artifacts` — same artifact shape, no task transition. The platform still auto-registers the preview-URL state from the URL-kind entry.
+When the deploy was kicked off directly in a chat (no `task_id` in your `## Current Context`), use `aramb_mcp.chat_deliver_artifacts` — same artifact shape, no task transition. The platform still auto-registers the preview-URL state from the URL-kind entry.
 
 ```
-npx mcporter call aramb_chat.deliver_artifacts \
+npx mcporter call aramb_mcp.chat_deliver_artifacts \
   project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
   artifacts='[{"kind":"url","url":"'"$FRONTEND_URL"'","title":"Preview URL","environment":"deployed"}]' \
   summary="✅ App live: $FRONTEND_URL (api: $API_URL if applicable)"
@@ -421,7 +421,7 @@ npx mcporter call aramb_chat.deliver_artifacts \
 ### Rules for preview URLs (apply to both paths above)
 
 - The rule fires whenever this skill produced any URL the user can reach (frontend, API, tunnel, public proxy).
-- A URL-kind artifact is **mandatory** for the primary frontend URL — on `aramb_tasks.update.artifacts` in team mode, or on `aramb_chat.deliver_artifacts.artifacts` in solo mode. The platform auto-registers preview-URL state from it — no separate call.
+- A URL-kind artifact is **mandatory** for the primary frontend URL — on `aramb_mcp.tasks_update.artifacts` in team mode, or on `aramb_mcp.chat_deliver_artifacts.artifacts` in solo mode. The platform auto-registers preview-URL state from it — no separate call.
 - Mentioning the URL only in chat prose is forbidden — the chip pipeline cannot reconstruct chips from prose after the fact, and the workbench browser/preview tab won't open from prose.
 - For aramb-expose tunnels the `environment` field is `"deployed"` (the URL is a public proxy.clode.space hostname reachable outside the agent's container).
 - The chip is for the *primary* frontend URL only. Secondary backend / API URLs can stay in the `summary` text — one URL chip per chat row is plenty.
@@ -433,7 +433,7 @@ npx mcporter call aramb_chat.deliver_artifacts \
 After the local URL artifact is delivered (Step 8), ask the user whether they also want a cloud deployment. **Always a separate call** — the URL belongs on its own chip in the previous chat row, and the question is a fresh row underneath it with action buttons. Do NOT embed the URL inside the question text — the chip pipeline cannot reconstruct it from prose, and Slack will render a duplicate link instead of a clean preview.
 
 ```bash
-npx mcporter call aramb_chat.ask_question \
+npx mcporter call aramb_mcp.chat_ask_question \
   project_id="<PROJECT_ID>" \
   application_id="<APPLICATION_ID>" \
   question="Want me to deploy this to cloud as well? Local tunnel URLs die when the tunnel restarts; a cloud deployment is durable." \

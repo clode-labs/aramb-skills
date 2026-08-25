@@ -6,12 +6,12 @@
 
 ## Summary
 
-aramb-skills owns the prompt rewrites that make workflows trigger-aware from authoring time: rewriting create/update/import-workflow skills to drop placeholders and ground slugs via the new `aramb_toolkits.*` MCP, plus authoring a new `configure-trigger` skill that wraps the new `aramb_triggers.*` MCP write tools.
+aramb-skills owns the prompt rewrites that make workflows trigger-aware from authoring time: rewriting create/update/import-workflow skills to drop placeholders and ground slugs via the new `aramb_mcp.toolkits_*` MCP, plus authoring a new `configure-trigger` skill that wraps the new `aramb_mcp.triggers_*` MCP write tools.
 
 ## Cross-repo coordination
 
 - **Phase 4 ships together with brahmi Phases 1 + 4 (schema) + 8.** Skills emitting placeholders against a brahmi that no longer substitutes = workflows dispatch literal `{{env.KEY}}` strings to the agent. Skills declaring `env_variables` get rejected at the MCP layer (brahmi Phase 4 validator).
-- **Phase 4.5 depends on brahmi's `aramb_toolkits.*` (Phase 3, read tools), `aramb_triggers.*` (Phase 4.5, write tools), AND the authorization seam on `WorkflowTriggerService`.** Skill cannot call tools that don't exist; will produce trigger rows that bypass authorization if the seam isn't in.
+- **Phase 4.5 depends on brahmi's `aramb_mcp.toolkits_*` (Phase 3, read tools), `aramb_mcp.triggers_*` (Phase 4.5, write tools), AND the authorization seam on `WorkflowTriggerService`.** Skill cannot call tools that don't exist; will produce trigger rows that bypass authorization if the seam isn't in.
 
 ## Phases
 
@@ -20,7 +20,7 @@ aramb-skills owns the prompt rewrites that make workflows trigger-aware from aut
 Rewrite `create-workflow/SKILL.md`, `update-workflow/SKILL.md`, `import-workflow/SKILL.md` to:
 
 1. **Ban placeholder syntax in node prompts.** No `{{env.KEY}}`, no `{{input.KEY}}`, no template substitution of any kind. The brahmi MCP schemas reject prompts matching `\{\{\s*env\.[A-Za-z_]` (brahmi-side Phase 4 validator) — skills must pass by construction, not rely on the validator as a safety net.
-2. **Call `aramb_toolkits.list_triggers` before drafting** to ground toolkit + trigger slugs in real catalog values. Today the skills tell the agent "slugs are uppercase, exactly as Composio reports them" (`create-workflow/SKILL.md:161`) but provide no tool to look them up — the agent hallucinates slugs from prose.
+2. **Call `aramb_mcp.toolkits_list_triggers` before drafting** to ground toolkit + trigger slugs in real catalog values. Today the skills tell the agent "slugs are uppercase, exactly as Composio reports them" (`create-workflow/SKILL.md:161`) but provide no tool to look them up — the agent hallucinates slugs from prose.
 3. **Emit per-step singular `toolkit`** alongside the existing `required_toolkits[]` array. Invariant: `toolkit ∈ required_toolkits`. The brahmi MCP schemas reject violations.
 4. **Omit `env_variables` from emitted workflows entirely.** The column has no runtime path in v2 (Decision 1); declaring no-op entries misleads users ("I added your API_KEY to env_variables — but nothing reads it"). The brahmi MCP schemas reject submissions with non-empty `env_variables`.
 5. **Write node prompts that describe what to do with the context that arrives in `<run_input>`** — e.g., "the user's instruction or the trigger payload will describe the work; extract the issue URL, repo, etc. from it". Trust the agent to parse JSON or free text.
@@ -42,11 +42,11 @@ Author `/Users/siva/workspace/aramb-skills/configure-trigger/SKILL.md` to handle
 Skill flow:
 
 1. Parse user intent ("I want this to fire when a github issue is created").
-2. Call `aramb_toolkits.list_toolkits` — narrow to the relevant toolkit.
-3. Call `aramb_toolkits.list_triggers(<toolkit>)` — read names + descriptions.
-4. Pick a candidate; ask a clarifying question via `aramb_chat.ask_question` if ambiguous ("issue created" vs "issue assigned to you").
-5. Call `aramb_triggers.create` to persist (write tools live in `aramb_triggers.*`, not `aramb_toolkits.*` — read/write split for security and discoverability).
-6. Poll `aramb_triggers.status` until `active`; only then report success to the user.
+2. Call `aramb_mcp.toolkits_list_toolkits` — narrow to the relevant toolkit.
+3. Call `aramb_mcp.toolkits_list_triggers(<toolkit>)` — read names + descriptions.
+4. Pick a candidate; ask a clarifying question via `aramb_mcp.chat_ask_question` if ambiguous ("issue created" vs "issue assigned to you").
+5. Call `aramb_mcp.triggers_create` to persist (write tools live in `aramb_mcp.triggers_*`, not `aramb_mcp.toolkits_*` — read/write split for security and discoverability).
+6. Poll `aramb_mcp.triggers_status` until `active`; only then report success to the user.
 
 **Composio lifecycle awareness** — the skill prompt must include:
 
@@ -80,7 +80,7 @@ Markdown lint via existing aramb-skills CI (if configured). Otherwise manual rev
 - **Phase 4 (create-workflow)**: Run the skill against the local-testing harness with prompt: *"Build me a workflow that auto-fixes GitHub issues by opening a PR."* Verify: every node has `toolkit = "GITHUB"`, no `{{env.KEY}}` anywhere, `env_variables` is empty, prompts reference `<run_input>` as the source of issue details, step 1's prompt instructs distillation for downstream.
 - **Phase 4 (import-workflow)**: Submit a workflow JSON with `{{env.KEY}}` in a node prompt. Verify the import returns a clean 4xx error to the user.
 - **Phase 4 (update-workflow)**: Update an existing workflow's node prompt to include `{{env.KEY}}`. Verify rejection.
-- **Phase 4.5**: Run the configure-trigger skill with prompt: *"Make it fire whenever a new GitHub issue is created."* Verify: `aramb_toolkits.list_triggers("GITHUB")` is called, `aramb_triggers.create` is called with `slug=GITHUB_NEW_ISSUE`, `aramb_triggers.status` is polled until `active`, success is reported only after activation. Verify disambiguation by prompting *"run this workflow daily"* — skill defers to `schedule-workflow`.
+- **Phase 4.5**: Run the configure-trigger skill with prompt: *"Make it fire whenever a new GitHub issue is created."* Verify: `aramb_mcp.toolkits_list_triggers("GITHUB")` is called, `aramb_mcp.triggers_create` is called with `slug=GITHUB_NEW_ISSUE`, `aramb_mcp.triggers_status` is polled until `active`, success is reported only after activation. Verify disambiguation by prompting *"run this workflow daily"* — skill defers to `schedule-workflow`.
 
 ## Risks specific to aramb-skills
 

@@ -18,7 +18,7 @@ description: >
 
 # Create Workflow
 
-Construct a brand-new workflow and save it with `aramb_workflows.create`. **The
+Construct a brand-new workflow and save it with `aramb_mcp.workflows_create`. **The
 workflow does NOT exist yet** — the platform creates the row + nodes atomically on that
 one call. Don't ask for a `workflow_id`; you don't have one and don't need one.
 The response tells you the id the platform assigned.
@@ -27,47 +27,47 @@ The response tells you the id the platform assigned.
 > polishing a template-import draft, use `import-workflow`.** This skill only
 > handles first-time creation.
 
-## Non-negotiables — read these before you call `aramb_workflows.create`
+## Non-negotiables — read these before you call `aramb_mcp.workflows_create`
 
 0. **The workflow belongs to exactly ONE agent — either create it with `agent_id`, or
    attach it to an agent once the agent exists.** A workflow is an integral part of a
    single agent: discoverable and runnable ONLY by that agent, never a standalone,
    reusable-across-agents asset. **Two equally-valid orderings** get you there:
    - **Agent-first (default):** the agent already exists (or you create it first), so
-     pass `agent_id="<that agent's id>"` on `aramb_workflows.create`. That one call
+     pass `agent_id="<that agent's id>"` on `aramb_mcp.workflows_create`. That one call
      creates the workflow AND stamps the ownership edge (create-and-link in one step).
    - **Workflow-first:** the builder wants to design and TEST the workflow before
      committing to an agent. That's fine — build it, iterate and Preview it on its own,
      then when they create (or pick) the agent, link it with
-     `aramb_agents.attach_workflow` (the `agent_id` gets stamped and the workflow is
+     `aramb_mcp.agents_attach_workflow` (the `agent_id` gets stamped and the workflow is
      re-filed under the agent's template project). Attach and create-with-`agent_id`
      **converge on the same end state** — owned by and filed under the agent.
    If a workflow is **meant for a specific agent**, don't leave it permanently unattached —
-   bind it via `agent_id` at create time, or `aramb_agents.attach_workflow` once the agent
+   bind it via `agent_id` at create time, or `aramb_mcp.agents_attach_workflow` once the agent
    exists. A workflow that is **not** tied to a particular agent is fine to leave standalone;
    binding is only for the ones that belong to an agent.
 
 1. **Every `create` is a NEW, separate workflow. NEVER replace an existing one.**
-   A project can hold many workflows side by side — `aramb_workflows.create` always
+   A project can hold many workflows side by side — `aramb_mcp.workflows_create` always
    adds a new one; it never touches what's already there. If the user says "create
    a workflow" and one already exists, you still **create a new one** — do NOT fall
-   back to `aramb_workflows.update`, and do NOT overwrite the existing workflow's
+   back to `aramb_mcp.workflows_update`, and do NOT overwrite the existing workflow's
    definition. The ONLY time you modify an existing workflow is when the user
    explicitly asks to *change/edit* that specific one — and then you use the
    `update-workflow` skill, never this one. Silently replacing a user's workflow is
    a serious failure.
 
 2. **The workflow is part of the agent you're building, and stays a DRAFT — do NOT
-   publish it as a build step.** `aramb_workflows.create` files the workflow under the
+   publish it as a build step.** `aramb_mcp.workflows_create` files the workflow under the
    agent (via `agent_id`, see #0) and leaves it a **draft** — it is NOT auto-published.
-   The builder TESTS the draft via Preview (`aramb_workflows.run` works on the draft —
+   The builder TESTS the draft via Preview (`aramb_mcp.workflows_run` works on the draft —
    see the `aramb-workflows` run section), and the workflow freezes into its live
-   version **automatically when the AGENT is published** (`aramb_agents.publish`).
+   version **automatically when the AGENT is published** (`aramb_mcp.agents_publish`).
    There is **no separate "publish this workflow" step** for you to perform — never
    call a workflow-publish tool as part of building, and never tell the user to
    "publish from the Workflows tab" (that step does not exist in this model).
    Toolkit connections matter in **two** ways. (a) For a *run* to succeed — verify every
-   external system up front with `aramb_toolkits.check_connection` and tell the user
+   external system up front with `aramb_mcp.toolkits_check_connection` and tell the user
    plainly which to connect. (b) **For the workflow to go LIVE at publish** — when the
    agent is published, a workflow whose steps require third-party toolkits is published
    ONLY if those toolkits are **CONNECTED**; otherwise it stays a draft and the publish
@@ -79,14 +79,14 @@ The response tells you the id the platform assigned.
    connected **and** the agent is published.
 
 3. **Never claim a workflow ran unless the run tool said so.** When the user asks to
-   run a workflow, call `aramb_workflows.run` and read its result. If it returns an
+   run a workflow, call `aramb_mcp.workflows_run` and read its result. If it returns an
    error (e.g. "not published", wrong id), report THAT — do not say "it's running",
    and never substitute a different workflow to make the action appear to succeed.
    Run exactly the workflow the user named; if you can't, say why. **And once a run
    starts, hand off to it — the platform posts real progress and the final result to the
    conversation automatically, so never narrate fabricated progress ("4/382 scored,
    working through the rest…") you can't verify.** The conversation thread is the
-   source of truth for run progress; `aramb_workflows.get` / `list` report only the
+   source of truth for run progress; `aramb_mcp.workflows_get` / `list` report only the
    workflow's definition/lifecycle state, not per-step run progress. See the
    `aramb-workflows` skill's run section.
 
@@ -99,9 +99,9 @@ does NOT decide a node's persona. The WORK each node does decides it.**
 ### Axis 1 — Are you the MASTER (team) or the SOLO agent? → decides only the dispatch channel, NOT personas
 
 Check your own tool list:
-- **You HAVE the `aramb_tasks.*` tools → you are the MASTER (team mode).** You route
-  work through tasks and close via `aramb_tasks.update`.
-- **You do NOT have `aramb_tasks.*` → you are the SOLO agent (solo mode).** You do
+- **You HAVE the `aramb_mcp.tasks_*` tools → you are the MASTER (team mode).** You route
+  work through tasks and close via `aramb_mcp.tasks_update`.
+- **You do NOT have `aramb_mcp.tasks_*` → you are the SOLO agent (solo mode).** You do
   the work directly in-session and close out in chat.
 
 **That is the ONLY difference between the modes** — close-out channel (tasks vs
@@ -115,8 +115,8 @@ work" below.
 
 - **Task dispatch:** the platform gave you a "Your task id" block (`application_id`,
   `project_id`, `task_id`). Spec source = the application's **user tasks**
-  (`aramb_tasks.list`, ALL statuses — see step 1); each node may carry a
-  `source_task_id`. Close out via `aramb_tasks.update`. (Only the master is ever
+  (`aramb_mcp.tasks_list`, ALL statuses — see step 1); each node may carry a
+  `source_task_id`. Close out via `aramb_mcp.tasks_update`. (Only the master is ever
   task-dispatched.)
 - **Chat dispatch:** no `task_id` — an ordinary chat turn. Spec source = the
   user's explicit description, or the work done so far in THIS conversation. Close
@@ -124,7 +124,7 @@ work" below.
 
 **The axes cross.** The **master can be in chat dispatch** — you just chatted
 "build a workflow" to it; that's still team mode (you route through tasks and
-close via `aramb_tasks.update`). (The platform `task_id` is NOT Claude's built-in
+close via `aramb_mcp.tasks_update`). (The platform `task_id` is NOT Claude's built-in
 `TaskCreate` — unrelated; a `TaskCreate` entry does not make this a task
 dispatch.)
 
@@ -153,7 +153,7 @@ For each node, assign an agent for its role in ONE of two ways:
   skill's `agent_specs` field + "Multi-agent workflow" example for the full
   contract).
 
-**The specs travel WITH the workflow.** They ride on the same `aramb_workflows.create`
+**The specs travel WITH the workflow.** They ride on the same `aramb_mcp.workflows_create`
 (or `update`) call — one `agent_specs` array alongside `nodes` + `edges` — and the platform
 provisions them **deterministically at claim/run**. You do NOT route bespoke node
 agents through a separate agent-creation flow: the Architect never uses the
@@ -180,7 +180,7 @@ its own `identity` / `soul` / `agentsDoc` — referenced by that node's `assigne
 Never collapse every node onto one shared agent because it was quicker to write.
 
 **When a node really is the agent itself, name THE AGENT YOU ARE BUILDING — by its
-routing name.** Read it from `aramb_agents.get` → `benji_agent_id` (e.g.
+routing name.** Read it from `aramb_mcp.agents_get` → `benji_agent_id` (e.g.
 `inbox-digest-5248d2e7`) and put that exact string in `assigned_agent`. There is **no
 `"main"` agent** — it is not a routing token, and writing it either dangles or silently
 dispatches to an unrelated base agent, so the agent you built never runs its own
@@ -189,23 +189,23 @@ runtime); they are never the agent you are building, so do not reach for them ei
 
 Everything else — node schema, `required_toolkits`, per-step `toolkit`, the
 closing-instruction template, `default_node_settings`, the no-placeholders /
-no-`env_variables` rules, and the one-shot `aramb_workflows.create` rule — is
+no-`env_variables` rules, and the one-shot `aramb_mcp.workflows_create` rule — is
 identical across every combination.
 
 ## MUST rules — read before anything else
 
-1. **Every node in `aramb_workflows.create` MUST carry `required_toolkits`.** Copy the array from each source task's `required_toolkits` (task dispatch) or infer it from the action the node performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service.
+1. **Every node in `aramb_mcp.workflows_create` MUST carry `required_toolkits`.** Copy the array from each source task's `required_toolkits` (task dispatch) or infer it from the action the node performs (chat dispatch). Use `[]` (not omitted) when the node touches no third-party service.
    - **Failure mode:** Omitting `required_toolkits` means workflow Evaluate cannot flag missing connections at publish time, and the Required-toolkits row in the FE node panel renders empty. Empty array `[]` is correct when the node touches no third-party service — never omit the field.
    - **Declaring is the whole job — you do not connect the accounts.** As the workflow's author you never start OAuth, never mint or paste an authorization link, and never claim a toolkit is connected. The **user** connects each account in the console (agent **Tools** page / Integrations), on their own runtime project — the only project execution resolves against; an account authorized through the builder would land on a project that never runs. A workflow whose toolkits aren't connected yet is a perfectly good deliverable: it simply stays gated until the user connects them, which is exactly what the declaration is for. (This is about toolkit *accounts* only — it is no reason to avoid authoring a workflow when the job genuinely needs one.)
 2. **Every node that touches a third-party service MUST carry a singular `toolkit`** — its *primary* toolkit slug, used for trigger-binding. The invariant the platform enforces: **`toolkit` MUST be a member of that node's `required_toolkits`.** A Gmail-fetch node is `toolkit:"GMAIL", required_toolkits:["GMAIL"]`; a node that reads Drive then writes Sheets is `toolkit:"GOOGLESHEETS", required_toolkits:["GOOGLEDRIVE","GOOGLESHEETS"]` (pick the one the trigger would bind to — usually the action the workflow is "about"). Omit `toolkit` (or pass `null`) only when `required_toolkits` is `[]`. The platform's MCP schema rejects a `toolkit` that isn't in `required_toolkits`.
-3. **Ground every toolkit + trigger slug in the real catalog — never hallucinate.** Before drafting, call `aramb_toolkits.list_toolkits` to confirm the exact uppercase slugs (and, when the workflow will be event-triggered, `aramb_toolkits.list_triggers("<TOOLKIT>")` for trigger slugs). Do NOT infer slugs from prose. See "Ground the slugs" below. **Never invent a toolkit binding, and never bind a platform-internal/hidden toolkit** (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) — `aramb_workflows.create` rejects those. For Slack/Discord/Teams messaging deliverables, deliver via the chat toolkit's `chat.send_dm` (no toolkit). See the `aramb-workflows` skill.
+3. **Ground every toolkit + trigger slug in the real catalog — never hallucinate.** Before drafting, call `aramb_mcp.toolkits_list_toolkits` to confirm the exact uppercase slugs (and, when the workflow will be event-triggered, `aramb_mcp.toolkits_list_triggers("<TOOLKIT>")` for trigger slugs). Do NOT infer slugs from prose. See "Ground the slugs" below. **Never invent a toolkit binding, and never bind a platform-internal/hidden toolkit** (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) — `aramb_mcp.workflows_create` rejects those. For Slack/Discord/Teams messaging deliverables, deliver via the chat toolkit's `chat.send_dm` (no toolkit). See the `aramb-workflows` skill.
 4. **No placeholder syntax in any node `prompt`.** No `{{env.KEY}}`, no `{{input.KEY}}`, no template substitution of any kind. There is no substitution layer — a literal `{{env.FOO}}` reaches the agent as the literal string `{{env.FOO}}`. The platform's MCP schema **rejects** any prompt matching `{{ env.… }}`. Write what the agent should do with the context that arrives in `<run_input>` instead (see "Run input — the only per-run channel" below).
-5. **Do NOT declare `env_variables`.** Omit the field from the `aramb_workflows.create` call entirely. The column has no runtime path in v2 — declaring entries reads as "I wired up your API_KEY" when nothing consumes it. The platform's MCP schema rejects a non-empty `env_variables` map. Secrets/credentials are connected through the Composio account, not declared on the workflow.
-6. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below for the exact template.
+5. **Do NOT declare `env_variables`.** Omit the field from the `aramb_mcp.workflows_create` call entirely. The column has no runtime path in v2 — declaring entries reads as "I wired up your API_KEY" when nothing consumes it. The platform's MCP schema rejects a non-empty `env_variables` map. Secrets/credentials are connected through the Composio account, not declared on the workflow.
+6. **Every node's `prompt` MUST end with the workflow-step closing instruction** so the executing agent calls `aramb_mcp.workflows_update_step` (with the explicit `step_id` rendered into its dispatch) at the end of its run. See "Closing instruction per node" below for the exact template.
    - **Failure mode:** Without the closing instruction, the agent finishes its LLM session and the platform's safety net auto-closes the step, but `outputs` stays NULL. The downstream step's `## Upstream context` preamble then shows "(no summary)" instead of the real hand-off — the chain works visually but with zero context flowing between steps. Outputs are load-bearing.
-7. **Call `aramb_workflows.create` exactly once.** Success or failure — never retry.
-8. **Close out cleanly.** Task dispatch: always close with `aramb_tasks.update` (`status=done` on success, `status=failed` on any error) — never leave the task `in_progress`. Chat dispatch: confirm in your reply text (success or failure). There is no task to close in chat dispatch.
-9. **Speak to the user in plain product language — never leak internals.** The person reading your chat is a customer, not an engineer. Do NOT mention MCP tool names (`aramb_workflows.create`, `aramb_triggers.create`), raw upstream errors (`the integrations proxy 502`, `ConfigInvalid`), CLI names, internal toolkit/slug strings, or phrases like "the tool isn't in my surface." You DO have these tools — call them. If something genuinely fails, say it in human terms ("I couldn't set up the trigger — the GitHub connection looks unavailable") and stop. Internal mechanics stay in your reasoning, never in the reply.
+7. **Call `aramb_mcp.workflows_create` exactly once.** Success or failure — never retry.
+8. **Close out cleanly.** Task dispatch: always close with `aramb_mcp.tasks_update` (`status=done` on success, `status=failed` on any error) — never leave the task `in_progress`. Chat dispatch: confirm in your reply text (success or failure). There is no task to close in chat dispatch.
+9. **Speak to the user in plain product language — never leak internals.** The person reading your chat is a customer, not an engineer. Do NOT mention MCP tool names (`aramb_mcp.workflows_create`, `aramb_mcp.triggers_create`), raw upstream errors (`the integrations proxy 502`, `ConfigInvalid`), CLI names, internal toolkit/slug strings, or phrases like "the tool isn't in my surface." You DO have these tools — call them. If something genuinely fails, say it in human terms ("I couldn't set up the trigger — the GitHub connection looks unavailable") and stop. Internal mechanics stay in your reasoning, never in the reply.
 
 ## Run input — the only per-run channel
 
@@ -234,22 +234,22 @@ This shapes how you write prompts:
   issue URL / instruction"* rather than guess. Don't add pre-flight gates; the
   agent surfaces the failure in the run history. Write step-1 prompts that say so.
 
-## Ground the slugs — call aramb_toolkits before drafting
+## Ground the slugs — call aramb_mcp.toolkits_* before drafting
 
 The slugs you stamp on `toolkit` / `required_toolkits` (and any trigger you wire)
 MUST be real catalog values. Don't infer them from prose. Look them up:
 
 ```bash
 # Confirm toolkit slugs (uppercase, exactly as the catalog reports them)
-npx mcporter call aramb_toolkits.list_toolkits
+npx mcporter call aramb_mcp.toolkits_list_toolkits
 
 # When the workflow is meant to fire on an event, read the trigger catalog for
 # that toolkit so you ground the trigger slug too (the configure-trigger skill
 # does the actual wiring — you just confirm the slug exists):
-npx mcporter call aramb_toolkits.list_triggers toolkit="GITHUB"
+npx mcporter call aramb_mcp.toolkits_list_triggers toolkit="GITHUB"
 ```
 
-`aramb_toolkits.*` returns toolkit + trigger slugs already normalized to uppercase —
+`aramb_mcp.toolkits_*` returns toolkit + trigger slugs already normalized to uppercase —
 use them verbatim. A `toolkit` or `required_toolkits` entry that isn't a real
 catalog slug fails pre-flight (no connected account) and the run never starts.
 
@@ -261,7 +261,7 @@ Append a "Reading the application's tasks" `## Progress` bullet to the task
 description, then:
 
 ```bash
-npx mcporter call aramb_tasks.list \
+npx mcporter call aramb_mcp.tasks_list \
   application_id="<application_id>"
 ```
 
@@ -304,10 +304,10 @@ For history-derived intent, walk back through the conversation and produce, in y
 
 **Generalize, don't transcribe.** A workflow is a *learned recipe* that should run again. If you fetched yesterday's emails as a one-off, the node should be "fetch the most recent day's emails", not "fetch emails dated 2026-05-04". Same for sheet ranges, time windows, recipient lists — bake the *shape*, not the *specifics* of this one run.
 
-If under-specified (either path), ask **1–2** specific clarifying questions via `aramb_chat.ask_question` BEFORE designing; pick sensible defaults for the rest and tell the user what you picked. Common reasons to clarify: identity (which account / inbox / sheet / channel), notification target, cadence vs trigger (if they want a schedule, capture the cron phrase verbatim — you'll wire it in via `aramb_workflows.set_schedule` after save).
+If under-specified (either path), ask **1–2** specific clarifying questions via `aramb_mcp.chat_ask_question` BEFORE designing; pick sensible defaults for the rest and tell the user what you picked. Common reasons to clarify: identity (which account / inbox / sheet / channel), notification target, cadence vs trigger (if they want a schedule, capture the cron phrase verbatim — you'll wire it in via `aramb_mcp.workflows_set_schedule` after save).
 
 ```bash
-npx mcporter call aramb_chat.ask_question \
+npx mcporter call aramb_mcp.chat_ask_question \
   project_id="<PROJECT_ID>" \
   application_id="<APPLICATION_ID>" \
   question="Which Gmail account should the workflow read from — the one connected to this app, or a different one?"
@@ -325,7 +325,7 @@ Do it as **confirm-then-build, not interrogation**: **one** concise round of **2
 questions** total, covering only the items below that actually apply and aren't
 already specified. If everything is clear, skip straight to building — don't
 manufacture questions. Verify the things you CAN verify yourself (toolkit
-connections) rather than asking. Ask via `aramb_chat.ask_question` (chat dispatch)
+connections) rather than asking. Ask via `aramb_mcp.chat_ask_question` (chat dispatch)
 or fold into your progress narration / a single batched question (task dispatch).
 Pick sensible defaults where you can and state what you picked.
 
@@ -335,7 +335,7 @@ Pick sensible defaults where you can and state what you picked.
   every item.
 - **Toolkit connectivity — verify, don't assume.** For **every** external system the
   workflow will touch (Sheets, GitHub, Gmail, Slack, …), check the connection
-  yourself with `aramb_toolkits.check_connection toolkit="<SLUG>"`. If any is not
+  yourself with `aramb_mcp.toolkits_check_connection toolkit="<SLUG>"`. If any is not
   connected, tell the user plainly which one(s) to connect **now** — before the
   build — rather than discovering it mid-run. (The authoritative check is the
   publish/run eval gate, which can still reject on scopes/expiry; this up-front
@@ -363,7 +363,7 @@ Three updates is usually right; don't spam. Preserve the original description te
 (append, don't replace).
 
 ```bash
-npx mcporter call aramb_tasks.update \
+npx mcporter call aramb_mcp.tasks_update \
   task_id="<your task_id>" \
   description="<full current description, including any Progress so far>
 ## Progress
@@ -399,9 +399,9 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 - **Merge or split** steps where it makes the workflow cleaner. Not every source task becomes a node.
 - **Concrete prompts** — each node's `prompt` carries the real business context baked in. This is a learned recipe, not a blank template. Distill what actually worked but keep the concrete subject matter.
 - **Preserve dependencies** — give each node a sequential `unique_id` (integers starting at 1), then express dependencies as a separate top-level `edges` array: `{ "source": <upstream unique_id>, "target": <downstream unique_id> }`. Do NOT put `dependencies`, `depends_on`, or `dependsOn` on node objects — the platform rejects that shape.
-- **`assigned_agent` per node** — one agent per role, decided IDENTICALLY in solo and team (see "Per-node persona — decided by the work"). For each node: reuse an existing agent that fits the role (a roster persona — `developer` / `*-tester` / `checker` / `*-deployer`), otherwise **author a bespoke sub-agent spec INLINE in the workflow's `agent_specs`** named for its role (`issue-triager`, `fix-implementer`, `qa-tester`, `pr-author`, …) to the template-grade bar, and set the node's `assigned_agent` to that spec's `name`. In task dispatch, you may default to the source task's persona. Authoring a spec per distinct role is the DEFAULT. A single-role workflow may keep `agent_specs` empty and point every node at **the agent you are building**, using its routing name from `aramb_agents.get` → `benji_agent_id` (never `"main"` — no such agent — and never `"master"`/`"solo"`, which are infra agents) — only for a trivial single-node / pure-glue workflow. Do NOT branch on solo vs team.
+- **`assigned_agent` per node** — one agent per role, decided IDENTICALLY in solo and team (see "Per-node persona — decided by the work"). For each node: reuse an existing agent that fits the role (a roster persona — `developer` / `*-tester` / `checker` / `*-deployer`), otherwise **author a bespoke sub-agent spec INLINE in the workflow's `agent_specs`** named for its role (`issue-triager`, `fix-implementer`, `qa-tester`, `pr-author`, …) to the template-grade bar, and set the node's `assigned_agent` to that spec's `name`. In task dispatch, you may default to the source task's persona. Authoring a spec per distinct role is the DEFAULT. A single-role workflow may keep `agent_specs` empty and point every node at **the agent you are building**, using its routing name from `aramb_mcp.agents_get` → `benji_agent_id` (never `"main"` — no such agent — and never `"master"`/`"solo"`, which are infra agents) — only for a trivial single-node / pure-glue workflow. Do NOT branch on solo vs team.
 - **Do NOT pick a different model per node.** Model/effort/thinking come from the single workflow-wide `default_node_settings` (or, for an inline sub-agent, its `defaultModel`); per-node `settings` stays `{}` (inherit). Never stamp `model` on individual nodes — no per-step Haiku/Opus/Sonnet juggling.
-- **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase and **grounded via `aramb_toolkits.list_toolkits`** (see "Ground the slugs"), not guessed from prose. The platform snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
+- **Carry `required_toolkits` per node — MANDATORY, never omit.** List the Composio toolkit slugs that node will call (`["GMAIL"]`, `["GOOGLESHEETS","GOOGLEDRIVE"]`, etc.). Task dispatch: source from each task's `required_toolkits` field (primary) and the tool calls you observe in outputs (cross-check). Chat dispatch: infer from the action — Gmail action → `["GMAIL"]`, Sheets append → `["GOOGLESHEETS"]`, Slack DM → `["SLACK"]`. Empty array (`[]`) when a node only writes files / orchestrates — `[]` is REQUIRED, not optional. Slugs are uppercase and **grounded via `aramb_mcp.toolkits_list_toolkits`** (see "Ground the slugs"), not guessed from prose. The platform snapshots this list onto every run step at trigger time and the Evaluate step uses it to surface missing-connection warnings before publish.
 - **Carry a singular `toolkit` per node that has any toolkits — MANDATORY when `required_toolkits` is non-empty.** It is the node's *primary* toolkit (the one a trigger would bind to). Invariant: `toolkit ∈ required_toolkits`. Single-toolkit node → `toolkit` equals the one slug. Multi-toolkit node → pick the slug the node's job is "about" (the action it exists to perform, not an incidental read). Omit `toolkit` (or `null`) only when `required_toolkits` is `[]`. The platform rejects a `toolkit` that isn't in `required_toolkits`.
 - **Per-node toolkit CHOICE — Composio connection vs `aramb-browser`.** For each node that touches an external surface, decide *how* it acts: does the **Composio toolkit** cover the action, or do you need **`aramb-browser`** (drive a logged-in website directly)? Composio is the default when it has the action; reach for `aramb-browser` when Composio's coverage of that service is limited (e.g. Composio LinkedIn is read-thin → a "post to LinkedIn" or "comment on a profile" node needs `aramb-browser`, and trips the browser-login pre-check below). **Shortcut: if the work was already performed** (you can see it in the session or the task outputs), reuse whatever actually served the purpose — the user already chose the path that worked; don't second-guess it.
 - **Write prompts against `<run_input>`, never placeholders.** Each node's `prompt` describes what to do with the context it receives — for step 1 that context is the `<run_input>` block (see "Run input — the only per-run channel"); for later steps it's the parent's `outputs.summary`. No `{{env.KEY}}` / `{{input.KEY}}` anywhere. Step 1's prompt must explicitly tell the agent to distill the relevant input into its `outputs.summary` for downstream steps.
@@ -412,20 +412,20 @@ Update progress: "Designing workflow graph — N nodes, M levels".
 
 ## Closing instruction per node — MANDATORY
 
-Every node's `prompt` MUST end with this exact block, with `<summary>` and `<files>` substituted to match what the node will actually produce. Treat it the way the task-description template treats the closing `aramb_tasks.update` call — non-negotiable, baked into every prompt at authoring time.
+Every node's `prompt` MUST end with this exact block, with `<summary>` and `<files>` substituted to match what the node will actually produce. Treat it the way the task-description template treats the closing `aramb_mcp.tasks_update` call — non-negotiable, baked into every prompt at authoring time.
 
 Append this to every node's `prompt`:
 
 ```
 When done — record your output for the next step:
-  npx mcporter call aramb_workflows.update_step \
+  npx mcporter call aramb_mcp.workflows_update_step \
     project_id="<your Project ID from User Message>" \
     step_id="<your Workflow Run Step ID from User Message>" \
     status="done" \
     outputs='{"summary":"<one-paragraph hand-off, under 500 chars>","files":["relative/path/to/output.json"]}'
 
 If you can't complete the step:
-  npx mcporter call aramb_workflows.update_step \
+  npx mcporter call aramb_mcp.workflows_update_step \
     project_id="<your Project ID from User Message>" \
     step_id="<your Workflow Run Step ID from User Message>" \
     status="failed" \
@@ -438,14 +438,14 @@ Why both `summary` and `files`:
 
 Notes:
 - The agent reads its `project_id` and `step_id` from the User Message under "## Current Context" (`Project ID:` and `Workflow Run Step ID:` lines) at dispatch time. The platform rejects cross-step writes (`context_drift`), so the agent MUST copy these UUIDs verbatim into the close call.
-- Do NOT instruct the agent to call `aramb_tasks.update` from a workflow-step prompt — that targets the tasks domain (different DB rows) and the run will stall on the safety net. Only `aramb_workflows.update_step` closes a workflow run step.
+- Do NOT instruct the agent to call `aramb_mcp.tasks_update` from a workflow-step prompt — that targets the tasks domain (different DB rows) and the run will stall on the safety net. Only `aramb_mcp.workflows_update_step` closes a workflow run step.
 
-## Git operations — route through aramb_toolkits + native git/gh
+## Git operations — route through aramb_mcp.toolkits_* + native git/gh
 
 **When to emit this block:** any node whose described work involves anything on
 github — clone, fetch, checkout, push, branch, commit, PRs, issues, releases,
 comments. Everything github goes through the same surface (no API-vs-protocol
-split anymore): `aramb_toolkits.execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` →
+split anymore): `aramb_mcp.toolkits_execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` →
 `GH_TOKEN` → native `git` / `gh` CLI.
 
 **Why it matters:** github is NOT a normal Composio tool on this platform — only
@@ -459,17 +459,17 @@ github work (after the closing-instruction template):
 ```
 ### Tool routing for github operations on this step
 1. Confirm the user has connected github:
-   `aramb_toolkits.check_connection toolkit="GITHUB"`
+   `aramb_mcp.toolkits_check_connection toolkit="GITHUB"`
    - If `connected: false` — call
-     `aramb_toolkits.connect toolkit="github"` and share the
+     `aramb_mcp.toolkits_connect toolkit="github"` and share the
      returned `redirect_url` with the user via your reply or
-     `aramb_chat.alert_user`. Close the step with `status="blocked"` until
+     `aramb_mcp.chat_alert_user`. Close the step with `status="blocked"` until
      they finish OAuth; do not retry without confirmation.
 2. Mint a token:
-   `aramb_toolkits.execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` (returns under
+   `aramb_mcp.toolkits_execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` (returns under
    `result`: `{ token, username, account_ref, ... }`).
    - If the org has multiple github accounts in scope and the response is
-     ambiguous, call `aramb_toolkits.list_connections toolkit="GITHUB"`, pick the
+     ambiguous, call `aramb_mcp.toolkits_list_connections toolkit="GITHUB"`, pick the
      right `account_ref`, then re-call with
      `{tool:"GITHUB_GET_GIT_CREDENTIAL","arguments":{"account_ref":"ca_..."}}`.
 3. Export and use native CLI for everything:
@@ -477,12 +477,12 @@ github work (after the closing-instruction template):
    `git clone https://x-access-token:$GH_TOKEN@github.com/<owner>/<repo>.git`
    `git push`, `gh pr create`, `gh issue list`, `gh release create`, etc.
 4. On `401` from `git` / `gh` (~8h token lifetime), re-call
-   `aramb_toolkits.execute {tool:"GITHUB_GET_GIT_CREDENTIAL"}` for a fresh token.
+   `aramb_mcp.toolkits_execute {tool:"GITHUB_GET_GIT_CREDENTIAL"}` for a fresh token.
    Cheap, no rate concerns.
 5. NEVER try other `GITHUB_*` tools via `execute` — only
    `GITHUB_GET_GIT_CREDENTIAL` is served; the rest are not. Also do NOT use
-   `aramb_chat.list_linked_repos`,
-   `aramb_chat.clone_repo`, or `aramb_chat.git_token` — those don't exist
+   `aramb_mcp.chat_list_linked_repos`,
+   `aramb_mcp.chat_clone_repo`, or `aramb_mcp.chat_git_token` — those don't exist
    on this surface anymore.
 ```
 
@@ -583,7 +583,7 @@ The workflow is a *learned recipe*. Bake business context, topic, tone, target
 audience, identity, endpoints — every concrete value the recipe needs — directly
 into the relevant node's prompt. There is no `env_variables` channel in v2:
 
-- **Omit `env_variables` from the `aramb_workflows.create` call entirely.** The
+- **Omit `env_variables` from the `aramb_mcp.workflows_create` call entirely.** The
   column has no runtime path — nothing reads it. Declaring entries misleads the
   user ("I added your API_KEY" — but nothing consumes it). The platform's MCP schema
   rejects a non-empty `env_variables` map.
@@ -602,15 +602,15 @@ So: constant recipe values → bake into the prompt. Per-run values → read fro
 ## 4.5 Recommend a trigger — recommend-and-add, NOT a save gate
 
 `trigger_choice` is **optional**. The trigger is a recommend-and-approve tail step,
-not a save gate — `aramb_workflows.create` saves fine without one. Don't block the
+not a save gate — `aramb_mcp.workflows_create` saves fine without one. Don't block the
 save on it; recommend a sensible firing condition and add it on the user's
 approval.
 
 1. **Ground the options.** Read the entry node's `toolkit` (the node with no
    incoming edge). If it has one, list real event candidates:
-   `npx mcporter call aramb_toolkits.list_triggers toolkit="<TOOLKIT>"`. No
+   `npx mcporter call aramb_mcp.toolkits_list_triggers toolkit="<TOOLKIT>"`. No
    toolkit (pure-LLM workflow) → offer only cron + manual.
-2. **Recommend via one question** through `aramb_chat.ask_question` with structured
+2. **Recommend via one question** through `aramb_mcp.chat_ask_question` with structured
    `options` — NOT a free-text wall of "decisions I need." Lead with the event
    trigger that best fits the user's intent (first option = your recommendation),
    then "On a schedule", then "No trigger / run manually". Keep labels
@@ -621,23 +621,23 @@ approval.
    (keep the catalog `slug`); schedule → `"cron"` (keep the cadence); manual /
    declined → omit `trigger_choice` (or pass `"manual"` if they explicitly chose
    it). Passing the field is optional — the save no longer depends on it.
-4. **If the user approved an event or schedule, wire it after `aramb_workflows.create`
+4. **If the user approved an event or schedule, wire it after `aramb_mcp.workflows_create`
    succeeds, in the same turn:**
    - `toolkit_event` → hand to the `configure-trigger` skill with the `workflow_id`
      + `slug`. It reads the trigger's `config_schema` and passes `trigger_config`
      (e.g. GitHub triggers need `{owner, repo}`). Don't tell the user it's firing
      until it reports `active` (registration is async upstream).
-   - `cron` → `aramb_workflows.set_schedule` with the cadence.
+   - `cron` → `aramb_mcp.workflows_set_schedule` with the cadence.
    - `manual` / declined → nothing to wire.
 
 ## 4.6 Run-status callback — optional, only if asked
 
 If the user wants an external system notified when this workflow runs ("POST to my
 endpoint when it starts/finishes", "send run status to this URL"), set a
-workflow-level callback after `aramb_workflows.create` succeeds:
+workflow-level callback after `aramb_mcp.workflows_create` succeeds:
 
 ```bash
-npx mcporter call aramb_workflows.set_callback \
+npx mcporter call aramb_mcp.workflows_set_callback \
   workflow_id="<workflow_id>" \
   callback_url="https://example.com/hooks/run-status"
 ```
@@ -661,7 +661,7 @@ exist or the workflow fails silently at run time. **Hard gate — no "save anywa
    `<site>-login` (e.g. `linkedin-login`). Public/no-login surfaces don't trip this.
 2. Check what exists: `npx mcporter call aramb-browser.browser_context_list`.
 3. **Present** → proceed; tell the user plainly you'll reuse their `<site>` login.
-   **Missing** → do NOT call `aramb_workflows.create`. Tell the user, in plain
+   **Missing** → do NOT call `aramb_mcp.workflows_create`. Tell the user, in plain
    language, that the workflow needs them to log in to `<site>` once in a separate
    browser chat — cite the aramb-browser flow (`browser_context_create
    context_name=<site>-login` → log in → `browser_save_context ...
@@ -672,7 +672,7 @@ exist or the workflow fails silently at run time. **Hard gate — no "save anywa
 
 Update progress: "Saving workflow to the platform".
 
-Call `aramb_workflows.create` with `agent_id` (the agent this workflow belongs to)
+Call `aramb_mcp.workflows_create` with `agent_id` (the agent this workflow belongs to)
 + `project_id` (both in your session metadata / dispatch block; `application_id` is
 optional/legacy). The platform creates the workflow row + nodes atomically in a single
 transaction, filed under the owning agent as a **draft** — no publish step.
@@ -680,23 +680,23 @@ transaction, filed under the owning agent as a **draft** — no publish step.
 **Do not reach this step if the browser-login pre-check found a missing
 `<site>-login` slot** — that gate is a hard stop, not advisory.
 
-**Pre-flight checklist — verify before calling `aramb_workflows.create`.** For every node:
+**Pre-flight checklist — verify before calling `aramb_mcp.workflows_create`.** For every node:
 
 - `unique_id` — sequential integer starting at 1
 - `name` — short label
 - `prompt` — concrete instruction with business context baked in **AND ending with the closing-instruction template**
 - `assigned_agent` — one agent per role, decided identically in solo and team: reuse a fitting existing roster agent, else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs`. Never `null` or empty, and never collapse a multi-step workflow onto one agent. (A node whose `assigned_agent` matches no roster agent and no spec is a dangling reference — the platform rejects it for an agent-bound workflow. For a genuinely single-role workflow, name the agent you are building via its `benji_agent_id`; never `"main"`, `"master"` or `"solo"`.)
 - `acceptance_criteria` — how to know the step succeeded
-- **`required_toolkits`** — grounded via `aramb_toolkits.list_toolkits`; copied from the source task (task dispatch) or inferred-then-grounded (chat dispatch). `[]` for orchestration / file-only nodes; never omit.
+- **`required_toolkits`** — grounded via `aramb_mcp.toolkits_list_toolkits`; copied from the source task (task dispatch) or inferred-then-grounded (chat dispatch). `[]` for orchestration / file-only nodes; never omit.
 - **`toolkit`** — the node's primary toolkit slug; MUST be a member of `required_toolkits`. Omit (or `null`) only when `required_toolkits` is `[]`.
 - **`prompt`** — no `{{env.…}}` / `{{input.…}}` placeholders anywhere; step 1's prompt instructs the agent to read `<run_input>` and distill the relevant bits into its `outputs.summary`.
-- **`source_task_id`** — **task dispatch only:** the `task_id` of the originating user task from `aramb_tasks.list`. Required whenever the node consolidates from one user task; omit only for glue / orchestration nodes you invented. Powers the FE "show me the task that produced this node" link and cost reconciliation. **Chat dispatch:** omit the field entirely (or pass `null`) — solo has no source tasks. The platform accepts both.
+- **`source_task_id`** — **task dispatch only:** the `task_id` of the originating user task from `aramb_mcp.tasks_list`. Required whenever the node consolidates from one user task; omit only for glue / orchestration nodes you invented. Powers the FE "show me the task that produced this node" link and cost reconciliation. **Chat dispatch:** omit the field entirely (or pass `null`) — solo has no source tasks. The platform accepts both.
 - **`settings`** — JSONB; usually `{}`. Set keys only when this node deviates from the workflow defaults.
 
 And on the call itself:
 
-- **`agent_id`** — the id of the agent this workflow belongs to. Pass it in the **agent-first** flow — it creates-and-links the workflow to that agent in one call. Omit it only in the deliberate **workflow-first** flow (build/test standalone, then `aramb_agents.attach_workflow` links it once the agent exists). Either way the workflow must end up owned by an agent — don't leave it *permanently* orphaned.
-- **`agent_specs`** — the top-level inline sub-agent array (one `TemplateAgent` per genuinely-distinct role a node references via `assigned_agent`). Pass it in the SAME call as `nodes`/`edges` when the workflow is multi-role; pass `'[]'` (or omit) for a single-role workflow where every node runs as the agent you are building (its `benji_agent_id` from `aramb_agents.get`). Each spec: `name` (unique, matched by a node's `assigned_agent`) + `identity`/`soul`/`agentsDoc` to the template-grade bar + optional `skills`/`defaultModel`/`defaultBackend`/`defaultThinking`. See the `aramb-workflows` skill's `agent_specs` field.
+- **`agent_id`** — the id of the agent this workflow belongs to. Pass it in the **agent-first** flow — it creates-and-links the workflow to that agent in one call. Omit it only in the deliberate **workflow-first** flow (build/test standalone, then `aramb_mcp.agents_attach_workflow` links it once the agent exists). Either way the workflow must end up owned by an agent — don't leave it *permanently* orphaned.
+- **`agent_specs`** — the top-level inline sub-agent array (one `TemplateAgent` per genuinely-distinct role a node references via `assigned_agent`). Pass it in the SAME call as `nodes`/`edges` when the workflow is multi-role; pass `'[]'` (or omit) for a single-role workflow where every node runs as the agent you are building (its `benji_agent_id` from `aramb_mcp.agents_get`). Each spec: `name` (unique, matched by a node's `assigned_agent`) + `identity`/`soul`/`agentsDoc` to the template-grade bar + optional `skills`/`defaultModel`/`defaultBackend`/`defaultThinking`. See the `aramb-workflows` skill's `agent_specs` field.
 - **`default_node_settings`** — the workflow-wide defaults block. Emit it; don't leave it empty.
 - **`trigger_choice`** — OPTIONAL (`toolkit_event` | `cron` | `manual`). Pass it only if the user picked a firing condition in Section 4.5; omit it otherwise. The save does NOT depend on it.
 - **No `env_variables`** — omit the field entirely (the schema rejects a non-empty map).
@@ -720,14 +720,14 @@ JSON to .planning/calendar.json. In your summary, state the day and event count
 so the next step doesn't have to re-read the input.
 
 When done — record your output for the next step:
-  npx mcporter call aramb_workflows.update_step \
+  npx mcporter call aramb_mcp.workflows_update_step \
     project_id="<your Project ID from User Message>" \
     step_id="<your Workflow Run Step ID from User Message>" \
     status="done" \
     outputs='{"summary":"Fetched N calendar events for today; saved JSON.","files":[".planning/calendar.json"]}'
 
 If you can't complete the step:
-  npx mcporter call aramb_workflows.update_step \
+  npx mcporter call aramb_mcp.workflows_update_step \
     project_id="<your Project ID from User Message>" \
     step_id="<your Workflow Run Step ID from User Message>" \
     status="failed" \
@@ -736,10 +736,10 @@ If you can't complete the step:
 
 The instruction body (top paragraph) is per-node business context. The `When done` / `If you can't complete` blocks are the closing template — identical structure across every node, only the `summary` / `files` content differs. Compose both halves, then JSON-encode the full string into the node's `prompt`.
 
-**`aramb_workflows.create` skeleton — team mode** (task dispatch; each node carries a real team persona + `source_task_id`):
+**`aramb_mcp.workflows_create` skeleton — team mode** (task dispatch; each node carries a real team persona + `source_task_id`):
 
 ```bash
-npx mcporter call aramb_workflows.create \
+npx mcporter call aramb_mcp.workflows_create \
   agent_id="<agent_id>" \
   project_id="<project_id>" \
   name="Descriptive Workflow Name" \
@@ -747,9 +747,9 @@ npx mcporter call aramb_workflows.create \
   trigger_choice="toolkit_event" \  # OPTIONAL — include only if the user approved an event/cron in 4.5; omit otherwise
   default_node_settings='{"model":"claude-sonnet-4-6","effort":"medium","thinking":"adaptive","max_turns":35,"admin":false,"budget_usd":25.0,"approval_mode":"auto","instructions":""}' \
   nodes='[
-    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<reads <run_input> + closing template>", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "toolkit": "GOOGLECALENDAR", "source_task_id": "<task_id from aramb_tasks.list>", "settings": {}},
-    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>",            "assigned_agent": "developer", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "source_task_id": "<task_id from aramb_tasks.list>", "settings": {}},
-    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>",            "assigned_agent": "developer", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "toolkit": "GMAIL", "source_task_id": "<task_id from aramb_tasks.list>", "settings": {"approval_mode":"manual"}}
+    {"unique_id": 1, "name": "Fetch calendar events", "prompt": "<reads <run_input> + closing template>", "assigned_agent": "developer", "acceptance_criteria": "events array fetched and logged", "required_toolkits": ["GOOGLECALENDAR"], "toolkit": "GOOGLECALENDAR", "source_task_id": "<task_id from aramb_mcp.tasks_list>", "settings": {}},
+    {"unique_id": 2, "name": "Summarize",             "prompt": "<body + closing template>",            "assigned_agent": "developer", "acceptance_criteria": "summary text produced",          "required_toolkits": [],                "source_task_id": "<task_id from aramb_mcp.tasks_list>", "settings": {}},
+    {"unique_id": 3, "name": "Email the summary",     "prompt": "<body + closing template>",            "assigned_agent": "developer", "acceptance_criteria": "Gmail returned a message id",  "required_toolkits": ["GMAIL"],         "toolkit": "GMAIL", "source_task_id": "<task_id from aramb_mcp.tasks_list>", "settings": {"approval_mode":"manual"}}
   ]' \
   edges='[
     {"source": 1, "target": 2},
@@ -757,10 +757,10 @@ npx mcporter call aramb_workflows.create \
   ]'
 ```
 
-**Solo mode** differs only in close-out (chat, not `aramb_tasks.update`) and
+**Solo mode** differs only in close-out (chat, not `aramb_mcp.tasks_update`) and
 `source_task_id` being omitted. **Each node still gets an agent for its role — for
 roles with no fitting roster agent, author the sub-agent's full spec INLINE in the
-`agent_specs` array on this SAME `aramb_workflows.create` call**, then set each
+`agent_specs` array on this SAME `aramb_mcp.workflows_create` call**, then set each
 node's `assigned_agent` to the matching spec `name`. No separate provisioning step,
 no `create-agent` — the specs travel with the workflow:
 
@@ -777,7 +777,7 @@ no `create-agent` — the specs travel with the workflow:
   ]'
 ```
 
-Author each spec's `identity` / `soul` / `agentsDoc` to the template-grade bar (see the `aramb-workflows` skill's "Multi-agent workflow" example for a fully-written spec). An **empty `agent_specs` (`'[]'`)** would only be right for a trivial **single-node / single-role** workflow, where every node runs as the agent you are building (its `benji_agent_id` from `aramb_agents.get`). A multi-step workflow whose nodes are distinct roles gets a distinct inline spec per role — the same way team mode reuses a distinct roster persona per node.
+Author each spec's `identity` / `soul` / `agentsDoc` to the template-grade bar (see the `aramb-workflows` skill's "Multi-agent workflow" example for a fully-written spec). An **empty `agent_specs` (`'[]'`)** would only be right for a trivial **single-node / single-role** workflow, where every node runs as the agent you are building (its `benji_agent_id` from `aramb_mcp.agents_get`). A multi-step workflow whose nodes are distinct roles gets a distinct inline spec per role — the same way team mode reuses a distinct roster persona per node.
 
 In both examples, node 3 carries `settings.approval_mode = "manual"` because it sends an external-facing message — exactly the per-node manual-approval heuristic. Nodes 1 and 2 keep `settings: {}` and inherit the workflow defaults.
 
@@ -785,7 +785,7 @@ Node objects carry ONLY the node fields. Dependencies live in the separate top-l
 
 The response includes `workflow_id` and `node_count`. If `node_count` matches the number of nodes you sent, the save succeeded.
 
-**Never retry `aramb_workflows.create`.** If the first call succeeds you're done — calling again fails with "workflow already exists for this application". If the first call errors (bad payload, cycle in deps), do NOT retry with a modified payload — close out as failed (task dispatch) or tell the user the concise reason and what they could change (chat dispatch). The user can click Create Workflow again for a fresh attempt.
+**Never retry `aramb_mcp.workflows_create`.** If the first call succeeds you're done — calling again fails with "workflow already exists for this application". If the first call errors (bad payload, cycle in deps), do NOT retry with a modified payload — close out as failed (task dispatch) or tell the user the concise reason and what they could change (chat dispatch). The user can click Create Workflow again for a fresh attempt.
 
 ## 6. Close out
 
@@ -794,14 +794,14 @@ The response includes `workflow_id` and `node_count`. If `node_count` matches th
 On success, use the `workflow_id` the platform returned:
 
 ```bash
-npx mcporter call aramb_tasks.update \
+npx mcporter call aramb_mcp.tasks_update \
   task_id="<your task_id>" \
   status="done" \
-  outputs='{"workflow_id":"<workflow_id from aramb_workflows.create response>","node_count":<number>,"summary":"Consolidated N tasks into M nodes across L levels."}'
+  outputs='{"workflow_id":"<workflow_id from aramb_mcp.workflows_create response>","node_count":<number>,"summary":"Consolidated N tasks into M nodes across L levels."}'
 ```
 
 **Trigger wiring.** If the user approved an event/cron in the Section 4.5
-recommend step, you wired it right after `aramb_workflows.create` in 4.5 step 4,
+recommend step, you wired it right after `aramb_mcp.workflows_create` in 4.5 step 4,
 in this same turn, so the trigger row / cron slot already exists. If they declined
 or picked manual, there's nothing wired — that's fine, the workflow saved anyway.
 Record whatever you wired (or "no trigger") in the close-out `summary` so it's
@@ -820,21 +820,21 @@ finishes the wiring — never report the workflow as fully triggered when it isn
 outputs='{"workflow_id":"<id>","node_count":<n>,"summary":"...trigger NOT yet active","trigger_hint":"Finish wiring: run configure-trigger with workflow_id=<id>, slug=GITHUB_NEW_ISSUE."}'
 ```
 
-On failure (aramb_tasks.list error, aramb_workflows.create error, cycle detected, …):
+On failure (aramb_mcp.tasks_list error, aramb_mcp.workflows_create error, cycle detected, …):
 
 ```bash
-npx mcporter call aramb_tasks.update \
+npx mcporter call aramb_mcp.tasks_update \
   task_id="<your task_id>" \
   status="failed" \
   rejection_reason="<concise one-line reason>"
 ```
 
-**CRITICAL: After calling `aramb_tasks.update`, STOP. Do not send any follow-up messages.**
+**CRITICAL: After calling `aramb_mcp.tasks_update`, STOP. Do not send any follow-up messages.**
 
 ### Chat dispatch — confirm in chat
 
 If the user approved an event/cron in Section 4.5, you wired it in 4.5 step 4
-right after `aramb_workflows.create` returned, so the confirmation reflects what's
+right after `aramb_mcp.workflows_create` returned, so the confirmation reflects what's
 already in place. If they declined, the workflow is saved with no trigger (runs
 manually) — say so plainly. Bundle the trigger result into the one-line
 confirmation:
@@ -846,10 +846,10 @@ Workflow created — "<name>" (<workflow_id>) — <n> steps, fires when a GitHub
 ```
 
 Reminders for the 4.5 step-4 wiring (only if the user approved a trigger):
-- `cron` → you called `aramb_workflows.set_schedule` yourself (it's not gated; the
+- `cron` → you called `aramb_mcp.workflows_set_schedule` yourself (it's not gated; the
   `schedule-workflow` skill has cron-format guidance). Example:
   ```bash
-  npx mcporter call aramb_workflows.set_schedule \
+  npx mcporter call aramb_mcp.workflows_set_schedule \
     workflow_id="<workflow_id>" cron_expression="0 8 * * *" \
     cron_timezone="Asia/Kolkata" enabled=true
   ```
@@ -861,20 +861,20 @@ Reminders for the 4.5 step-4 wiring (only if the user approved a trigger):
   `workflow_id` + chosen `slug`. Don't claim it's firing until it reports
   `active` (async upstream).
 
-On `aramb_workflows.create` error, tell the user the concise reason and what they
+On `aramb_mcp.workflows_create` error, tell the user the concise reason and what they
 could change, then stop — don't retry.
 
 ## Rules
 
-- **The workflow belongs to one agent — pass `agent_id` on `create`** (agent-first, create-and-link in one step), **or** attach it later with `aramb_agents.attach_workflow` (workflow-first); both converge on the same owned-and-filed end state, so never leave it *permanently* orphaned. It stays a **draft** and goes live automatically when that agent is published — **but a toolkit-using workflow only goes live once its toolkits are connected** (connect them on the **Integrations** page; see MUST rule #2). Do NOT call any workflow-publish tool as a build step, and test the draft via Preview / `aramb_workflows.run`.
+- **The workflow belongs to one agent — pass `agent_id` on `create`** (agent-first, create-and-link in one step), **or** attach it later with `aramb_mcp.agents_attach_workflow` (workflow-first); both converge on the same owned-and-filed end state, so never leave it *permanently* orphaned. It stays a **draft** and goes live automatically when that agent is published — **but a toolkit-using workflow only goes live once its toolkits are connected** (connect them on the **Integrations** page; see MUST rule #2). Do NOT call any workflow-publish tool as a build step, and test the draft via Preview / `aramb_mcp.workflows_run`.
 - Each node's `prompt` carries real business context baked in.
-- **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_workflows.update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
+- **Each node's `prompt` MUST end with the closing-instruction template** so the executing agent calls `aramb_mcp.workflows_update_step` (with the explicit `step_id` rendered into its dispatch User Message) at the end of its run. Without it, `outputs` stays NULL and the upstream-context hand-off chain shows "(no summary)".
 - **Always emit `default_node_settings`** with the full sensible-defaults block; never leave it empty.
 - **Per-node `settings`** stays `{}` unless the user asked for variation. Manual approval gating goes on individual node settings, never on the workflow default.
 - **`assigned_agent`** — one agent per role, decided IDENTICALLY in solo and team (mode never enters the decision). For each node: reuse a fitting existing roster agent (`developer` / `*-tester` / `checker` / `*-deployer`), else set it to the `name` of a bespoke sub-agent spec you author INLINE in the workflow's `agent_specs` (identity/soul/agentsDoc to the template-grade bar) on the same `create` call — never the agent-runtime `create-agent` flow. Empty `agent_specs` (all nodes → the agent you are building, named by its `benji_agent_id`; never `"main"`/`"master"`/`"solo"`) only for a trivial single-node / single-role workflow; never collapse a genuinely multi-role workflow onto one agent.
 - **`agent_specs`** — the top-level inline sub-agent array; one `TemplateAgent` (`name` + `identity`/`soul`/`agentsDoc` + optional `skills`/`defaultModel`/`defaultBackend`/`defaultThinking`) per genuinely-distinct role referenced by a node's `assigned_agent`. Passed in the SAME `create`/`update` call as `nodes`/`edges`; `'[]'` (or omit) for a single-role workflow. Provisioned deterministically at claim/run — the specs travel WITH the workflow.
-- **`source_task_id`** — task dispatch: copy the literal `task_id` UUID from `aramb_tasks.list` (omit only for invented glue nodes). Chat dispatch: omit (or `null`) — solo has no source tasks.
-- **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls, grounded via `aramb_toolkits.list_toolkits`; `[]` when it touches no third-party service; never omit.
+- **`source_task_id`** — task dispatch: copy the literal `task_id` UUID from `aramb_mcp.tasks_list` (omit only for invented glue nodes). Chat dispatch: omit (or `null`) — solo has no source tasks.
+- **`required_toolkits` per node is an honest list** of Composio slugs the node actually calls, grounded via `aramb_mcp.toolkits_list_toolkits`; `[]` when it touches no third-party service; never omit.
 - **`toolkit` per node** is the primary slug for trigger-binding; it MUST be a member of `required_toolkits`; omit (or `null`) only when `required_toolkits` is `[]`.
 - **No placeholder syntax in prompts** — no `{{env.KEY}}`, no `{{input.KEY}}`. There is no substitution layer; the platform rejects prompts containing `{{ env.… }}`. Per-run values arrive in `<run_input>` (step 1 only); the agent reads them there.
 - **Do NOT declare `env_variables`** — omit the field. The column has no runtime path in v2 and the schema rejects a non-empty map. Constant recipe values bake into prompts; secrets come from the Composio connection.
@@ -885,5 +885,5 @@ could change, then stop — don't retry.
 - Dependencies are expressed ONLY via the top-level `edges` array; never put `dependencies` / `depends_on` / `dependsOn` on node objects.
 - `edges` must be a DAG — no cycles. Single-node workflow: pass `'[]'` or omit.
 - Give the workflow a clear, descriptive name (not "Workflow 1").
-- Never call `aramb_workflows.create` more than once — one shot, success or failure.
-- **Close out:** task dispatch — always `aramb_tasks.update` (`done` or `failed`), then STOP; never leave `in_progress`. Chat dispatch — confirm inline in your reply text (success or failure), and call `aramb_workflows.set_schedule` yourself if the user also asked for a schedule.
+- Never call `aramb_mcp.workflows_create` more than once — one shot, success or failure.
+- **Close out:** task dispatch — always `aramb_mcp.tasks_update` (`done` or `failed`), then STOP; never leave `in_progress`. Chat dispatch — confirm inline in your reply text (success or failure), and call `aramb_mcp.workflows_set_schedule` yourself if the user also asked for a schedule.

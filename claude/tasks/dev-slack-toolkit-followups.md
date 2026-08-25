@@ -13,12 +13,12 @@ no Co-Authored-By trailer. Skills are flat dirs: `aramb-skills/<name>/SKILL.md`.
 ## Issue #2 — new `aramb-toolkits` skill
 
 There is a first-class skill for every MCP surface EXCEPT toolkits, so the agent
-guesses the `aramb_toolkits.*` call contract (`toolkit_slug=` vs `toolkit=`).
+guesses the `aramb_mcp.toolkits_*` call contract (`toolkit_slug=` vs `toolkit=`).
 
 **Create `aramb-skills/aramb-toolkits/SKILL.md`** mirroring `aramb-workflows/SKILL.md`
 structure and frontmatter:
-- Document the `aramb_toolkits.*` MCP **catalog/check** contract with exact mcporter
-  call syntax (`npx mcporter call aramb_toolkits.<tool> key="value"`):
+- Document the `aramb_mcp.toolkits_*` MCP **catalog/check** contract with exact mcporter
+  call syntax (`npx mcporter call aramb_mcp.toolkits_<tool> key="value"`):
   `list_toolkits`, `list_triggers`, `get_trigger`, `check_connection` — and the
   correct arg is **`toolkit=`** (not `toolkit_slug`). Pull the precise contract from
   `configure-trigger/SKILL.md` (which currently documents it incidentally) and
@@ -49,7 +49,7 @@ agent behavior (so it holds even where the chil surface prompt isn't loaded).
 
 ## Issue #4 — rewrite workflow skills to default project-scoped
 
-brahmi adds `aramb_workflows.list project_id=…` (+ `project_id` on `get`). The
+brahmi adds `aramb_mcp.workflows_list project_id=…` (+ `project_id` on `get`). The
 workflow skills still lead with `application_id` and the "one workflow per
 application" invariant, which is now wrong (workflows are appless/project-scoped;
 identity = `lineage_id`).
@@ -62,8 +62,8 @@ identity = `lineage_id`).
 `configure-trigger`, `schedule-workflow`.
 
 - **Lead with project scope:** to find/enumerate workflows, use
-  `npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"` (and note
-  `aramb_workflows.get project_id="…"` also works). This is the answer to "what
+  `npx mcporter call aramb_mcp.workflows_list project_id="<PROJECT_ID>"` (and note
+  `aramb_mcp.workflows_get project_id="…"` also works). This is the answer to "what
   workflows exist?" — NOT `get application_id=…` (that finds only one legacy
   app-bound row and misses appless workflows).
 - **Demote `application_id`** to optional/legacy throughout — it's no longer

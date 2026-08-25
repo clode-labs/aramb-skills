@@ -15,7 +15,7 @@ namespace. Command: `grep -rn "brahmi\." .` (review each — keep prose mentions
 fix only tool-call references like `brahmi.update_my_task`, `brahmi.send_message`, etc.).
 **Files:** skill `SKILL.md` files referencing MCP tool calls.
 **Verify:** grep returns no `brahmi.<tool>` MCP references; an agent following the skill closes a task via
-`aramb_tasks.update_me`.
+`aramb_mcp.tasks_update_me`.
 
 ### Checker-prompt skill — align with the simplified gatekeeper  [P2, follow-up to brahmi #16]
 **Context:** the sidecar revision kept the `checker-prompt` SKILL (it deleted only the dedicated
@@ -23,8 +23,8 @@ fix only tool-call references like `brahmi.update_my_task`, `brahmi.send_message
 system_prompts row (migration 0099), which is being simplified to a 2-part form (universal failure-mode
 audit + artifact-vs-action routing) — see brahmi doc #16.
 **Action:** ensure the `checker-prompt` skill is consistent with the simplified `checker_executor` and the
-**explicit-id verdict report** (the checker reports via `aramb_tasks.update task_id="…"` /
-`aramb_workflows.update_step step_id="…"`, NOT `update_me`). Remove any stale guidance that contradicts the
+**explicit-id verdict report** (the checker reports via `aramb_mcp.tasks_update task_id="…"` /
+`aramb_mcp.workflows_update_step step_id="…"`, NOT `update_me`). Remove any stale guidance that contradicts the
 new gatekeeper prompt or tells the checker to use session-scoped `update_me`.
 **Files:** the `checker-prompt` skill `SKILL.md`.
 

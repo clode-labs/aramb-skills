@@ -1,7 +1,7 @@
 ---
 name: vault-mcp
 description: >
-  Your own secure secret vault via the vault MCP server. Store, fetch, list, and
+  Your own secure secret vault via the aramb_mcp server (vault_* tools). Store, fetch, list, and
   delete your project-scoped secrets (API tokens, keys, credentials) — kept in a
   real secrets manager, never in chat, files, or git. Also create write-only
   placeholder secrets for the USER to fill with a credential you must not see.
@@ -48,7 +48,7 @@ Never claim you have no secrets tool — you do, it is the vault.
 ## Invocation
 
 ```bash
-npx mcporter call vault.<tool> name="<secret-name>" value="<secret string>"
+npx mcporter call aramb_mcp.vault_<tool> name="<secret-name>" value="<secret string>"
 ```
 
 - `name` is a plain string (the key).
@@ -76,7 +76,7 @@ token the user must paste. Don't ask for the value in chat. Instead create a
 value you can never read back.
 
 ```bash
-npx mcporter call vault.create_platform_secret \
+npx mcporter call aramb_mcp.vault_create_platform_secret \
   name="SSH_PASSWORD" description="Enter your SSH password"
 ```
 
@@ -89,24 +89,24 @@ read it back — the platform uses it on your behalf.
 
 ```bash
 # Store a GitHub token securely (returns {"ok":true} — nothing else)
-npx mcporter call vault.store_secret name="github" value="ghp_xxx"
+npx mcporter call aramb_mcp.vault_store_secret name="github" value="ghp_xxx"
 
 # Retrieve it later
-npx mcporter call vault.get_secret name="github"
+npx mcporter call aramb_mcp.vault_get_secret name="github"
 
 # What do I have stored?
-npx mcporter call vault.list_secrets
+npx mcporter call aramb_mcp.vault_list_secrets
 
 # Ask the user to provide a credential you must not see
-npx mcporter call vault.create_platform_secret name="SSH_PASSWORD" description="Enter your SSH password"
+npx mcporter call aramb_mcp.vault_create_platform_secret name="SSH_PASSWORD" description="Enter your SSH password"
 
 # Remove one
-npx mcporter call vault.delete_secret name="github"
+npx mcporter call aramb_mcp.vault_delete_secret name="github"
 ```
 
 ## Rules
 
-- When asked to store a secret for safekeeping, use `vault.store_secret` — never
+- When asked to store a secret for safekeeping, use `aramb_mcp.vault_store_secret` — never
   a file, git, `gh secret set`, or the memory tool.
 - Never print a stored secret's value back to the user unless they explicitly
   ask you to retrieve it; confirm with the name only ("Stored it as `github`.").
