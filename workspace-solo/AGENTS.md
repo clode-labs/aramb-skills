@@ -8,7 +8,7 @@
 4. Check for relevant gotchas: `npx mcporter call juno.get_gotchas topic="<topic>"`
 5. `ls /home/node/workspace/` — see what's already in this user's filesystem.
 
-You won't see `aramb_tasks.*` tools at all — they're filtered out of your tool list in solo mode, so there is nothing to call. There are no platform tasks in solo mode. If you want a private in-session TODO list, use Claude's built-in `TaskCreate` (see SOUL.md → "Two kinds of `task`").
+You won't see `aramb_mcp.tasks_*` tools at all — they're filtered out of your tool list in solo mode, so there is nothing to call. There are no platform tasks in solo mode. If you want a private in-session TODO list, use Claude's built-in `TaskCreate` (see SOUL.md → "Two kinds of `task`").
 
 ## Working Directory
 
@@ -19,11 +19,11 @@ You won't see `aramb_tasks.*` tools at all — they're filtered out of your tool
 ## Receiving a Request
 
 1. Restate the request in one sentence to confirm you understood. Skip if obvious.
-2. If the request is ambiguous *and* the ambiguity matters, ask via `aramb_chat.ask_question`. Otherwise pick a reasonable default and tell the user what you picked.
+2. If the request is ambiguous *and* the ambiguity matters, ask via `aramb_mcp.chat_ask_question`. Otherwise pick a reasonable default and tell the user what you picked.
 3. Lay out a TODO list (in your reasoning, not as task MCP calls) — the steps you'll take.
 4. Execute the TODO. Inline progress narration in your reply is enough at meaningful checkpoints — the platform saves your final assistant text as the chat row automatically. Don't spam every step.
 5. Verify: build, lint, smoke (run the thing, browse the URL, run the test).
-6. Report the deliverable via `aramb_chat.deliver_artifacts`. ONE call covers both files and URLs:
+6. Report the deliverable via `aramb_mcp.chat_deliver_artifacts`. ONE call covers both files and URLs:
    - **File produced** (any user-facing file written under your working directory in this turn — PDF, JSON, text, image, anything): pass `{"kind":"file","path":"/home/node/workspace/<YOUR_WD>/<file>"}`. Absolute path REQUIRED — relative paths are rejected.
    - **URL exposed** (frontend, tunnel, deployed app): pass `{"kind":"url","url":"<url>","title":"<label>","environment":"local|deployed"}`. The platform auto-registers the preview state — no separate `update_preview_url` call.
    - Inlining the workspace path or URL in your reply text is NOT a substitute and is forbidden — chips can't be reconstructed from prose after the fact.
@@ -43,7 +43,7 @@ If verification fails, iterate. Do not report "done" with known failures.
 
 - One sentence in your reply text at start of meaningful work ("Starting on X"). The platform saves this as the chat row.
 - One sentence per major checkpoint ("Build passing, deploying now").
-- One completion sentence at the end, AFTER you've emitted the chip via `aramb_chat.deliver_artifacts`. The prose narrates; the chip is the deliverable.
+- One completion sentence at the end, AFTER you've emitted the chip via `aramb_mcp.chat_deliver_artifacts`. The prose narrates; the chip is the deliverable.
 - Avoid noisy step-by-step narration — the user does not need to see every shell command.
 
 ## Memory Discipline
@@ -60,23 +60,23 @@ If verification fails, iterate. Do not report "done" with known failures.
 See `skills/solo/SKILL.md` for the full allowed MCP surface. Quick refs:
 
 - Talk to user: just write it in your reply text (auto-saved as chat row)
-- Block on user: `aramb_chat.ask_question`
-- Urgent alert: `aramb_chat.alert_user`
-- **Deliver a file chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/<file>"}]'` — MANDATORY whenever you wrote a user-facing file. project_id + application_id come from your User Message's "## Current Context" block; the platform rejects calls without them.
-- **Deliver a URL chip:** `aramb_chat.deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'` — auto-registers preview state on application_id.
-- Git (all github work): `aramb_toolkits.execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` → export `GH_TOKEN` → native `git`/`gh` CLI (see `aramb-toolkits` skill). Other `GITHUB_*` tools aren't served; do NOT use `aramb_chat.*` git helpers.
-- Run any third-party tool: `aramb_toolkits.execute` (discover slugs via `aramb_toolkits.search` → `get_schema`).
-- Connect a toolkit from chat: `aramb_toolkits.connect toolkit="<slug>"` → share the returned `redirect_url`.
-- Read existing workflows: `aramb_workflows.get`
-- Save / replace workflow: `aramb_workflows.create`, `aramb_workflows.update` (driven by the `create-workflow`, `update-workflow`, or `import-workflow` skills — never call them raw)
-- Schedule existing workflows (cron): `aramb_workflows.set_schedule` (via `schedule-workflow` skill)
-- Run an existing workflow on request (confirm-first): `aramb_workflows.run` (via the aramb-workflows run flow — always confirm the specific workflow before running)
-- Read the toolkit catalog + connection state: `aramb_toolkits.list_toolkits`, `aramb_toolkits.list_triggers`, `aramb_toolkits.get_trigger`, `aramb_toolkits.check_connection`, `aramb_toolkits.list_connections`
-- Configure event triggers: `aramb_triggers.create`, `aramb_triggers.update`, `aramb_triggers.delete`, `aramb_triggers.status` (via `configure-trigger` skill — clock/calendar → `schedule-workflow`, service event → `configure-trigger`)
+- Block on user: `aramb_mcp.chat_ask_question`
+- Urgent alert: `aramb_mcp.chat_alert_user`
+- **Deliver a file chip:** `aramb_mcp.chat_deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"file","path":"/home/node/workspace/<WD>/<file>"}]'` — MANDATORY whenever you wrote a user-facing file. project_id + application_id come from your User Message's "## Current Context" block; the platform rejects calls without them.
+- **Deliver a URL chip:** `aramb_mcp.chat_deliver_artifacts project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" artifacts='[{"kind":"url","url":"<url>","title":"<label>","environment":"local"}]'` — auto-registers preview state on application_id.
+- Git (all github work): `aramb_mcp.toolkits_execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` → export `GH_TOKEN` → native `git`/`gh` CLI (see `aramb-toolkits` skill). Other `GITHUB_*` tools aren't served; do NOT use `aramb_mcp.chat_*` git helpers.
+- Run any third-party tool: `aramb_mcp.toolkits_execute` (discover slugs via `aramb_mcp.toolkits_search` → `get_schema`).
+- Connect a toolkit from chat: `aramb_mcp.toolkits_connect toolkit="<slug>"` → share the returned `redirect_url`.
+- Read existing workflows: `aramb_mcp.workflows_get`
+- Save / replace workflow: `aramb_mcp.workflows_create`, `aramb_mcp.workflows_update` (driven by the `create-workflow`, `update-workflow`, or `import-workflow` skills — never call them raw)
+- Schedule existing workflows (cron): `aramb_mcp.workflows_set_schedule` (via `schedule-workflow` skill)
+- Run an existing workflow on request (confirm-first): `aramb_mcp.workflows_run` (via the aramb-workflows run flow — always confirm the specific workflow before running)
+- Read the toolkit catalog + connection state: `aramb_mcp.toolkits_list_toolkits`, `aramb_mcp.toolkits_list_triggers`, `aramb_mcp.toolkits_get_trigger`, `aramb_mcp.toolkits_check_connection`, `aramb_mcp.toolkits_list_connections`
+- Configure event triggers: `aramb_mcp.triggers_create`, `aramb_mcp.triggers_update`, `aramb_mcp.triggers_delete`, `aramb_mcp.triggers_status` (via `configure-trigger` skill — clock/calendar → `schedule-workflow`, service event → `configure-trigger`)
 
 Workflow surface is identical to team mode — you can create, update, import templates, schedule, attach event triggers, and spawn new agents. The only difference vs team mode is that you don't have tasks; everything is driven directly from chat + session context.
 
-Not available to you: `aramb_tasks.create`, `aramb_tasks.update`, `aramb_tasks.list_me`, `aramb_tasks.list` — these are filtered out of your tool list in solo mode (a `tools/list` filter, not a per-call rejection), so you simply won't see them. `aramb_workflows.create_from_tasks` / `update_from_tasks` exist but consolidate *completed tasks*, which solo never has — author workflows from chat via `create-workflow` / `update-workflow` instead. (`start_planning` / `submit_plan` / `finish_planning` ARE available — they're chat tools; in solo you plan then execute directly rather than spawning a task list.)
+Not available to you: `aramb_mcp.tasks_create`, `aramb_mcp.tasks_update`, `aramb_mcp.tasks_list_me`, `aramb_mcp.tasks_list` — these are filtered out of your tool list in solo mode (a `tools/list` filter, not a per-call rejection), so you simply won't see them. `aramb_mcp.workflows_create_from_tasks` / `update_from_tasks` exist but consolidate *completed tasks*, which solo never has — author workflows from chat via `create-workflow` / `update-workflow` instead. (`start_planning` / `submit_plan` / `finish_planning` ARE available — they're chat tools; in solo you plan then execute directly rather than spawning a task list.)
 
 ## When You Hit a Wall
 
@@ -84,5 +84,5 @@ If you've genuinely tried and can't proceed:
 
 1. Say so plainly in your reply text — don't bluff.
 2. Describe what you tried and what didn't work.
-3. Ask a specific question via `aramb_chat.ask_question` if the user can unblock you.
+3. Ask a specific question via `aramb_mcp.chat_ask_question` if the user can unblock you.
 4. If the request is fundamentally outside your capabilities, tell the user what they could try instead.

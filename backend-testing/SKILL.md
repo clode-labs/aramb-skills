@@ -132,13 +132,13 @@ Compile all results and report using the verdict protocol:
 
 **All tests pass:**
 ```bash
-npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
+npx mcporter call aramb_mcp.tasks_update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
   outputs='{"verdict":"pass","summary":"All 15 endpoints tested (45 test cases), all passing"}'
 ```
 
 **Some tests fail:**
 ```bash
-npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
+npx mcporter call aramb_mcp.tasks_update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
   outputs='{"verdict":"fail","summary":"12/15 endpoints passing, 3 failing","details":"POST /api/users: 500 on valid input (expected 201). GET /api/users/:id: returns 404 for valid ID. DELETE /api/users/:id: timeout after 30s."}'
 ```
 

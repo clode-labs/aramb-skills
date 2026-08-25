@@ -159,13 +159,13 @@ Compile all results and report:
 
 **All flows pass:**
 ```bash
-npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
+npx mcporter call aramb_mcp.tasks_update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
   outputs='{"verdict":"pass","summary":"All 6 UI flows verified — login, signup, dashboard, create, edit, delete"}'
 ```
 
 **Some flows fail:**
 ```bash
-npx mcporter call aramb_tasks.update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
+npx mcporter call aramb_mcp.tasks_update project_id="<PROJECT_ID>" task_id="<TASK_UUID>" status="done" \
   outputs='{"verdict":"fail","summary":"4/6 flows passing, 2 failing","details":"Create flow: submit button unresponsive (screenshot: /tmp/test-screenshots/create-fail.png). Delete flow: confirmation modal never appears (screenshot: /tmp/test-screenshots/delete-fail.png)."}'
 ```
 

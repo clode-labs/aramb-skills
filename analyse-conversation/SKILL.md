@@ -25,13 +25,13 @@ handled that chat and say what to change.
 
 ## The two read tools
 
-- **`aramb_agents.conversation_search`** — list an agent's conversations,
+- **`aramb_mcp.agents_conversation_search`** — list an agent's conversations,
   most-recent-activity first. Optional `from`/`to` (RFC3339) window the
   activity, `order` is `recent` (default) or `oldest`, `limit` defaults to 50
   (max 200). Returns `{conversations: [{conversation_id, title, created_at,
   last_message_at}], has_more}`. This is the entry point when you were **not**
   handed a specific conversation — start here to find one.
-- **`aramb_agents.conversation_get`** — one conversation's messages, oldest
+- **`aramb_mcp.agents_conversation_get`** — one conversation's messages, oldest
   first. Optional `from`/`to` (RFC3339) window the messages (`to` is also the
   backwards-paging cursor — pass the returned `next_before` to page older),
   `order` is `asc` (default) or `desc`, `limit` defaults to 50 (max 200). Set
@@ -42,17 +42,17 @@ handled that chat and say what to change.
 
 ```bash
 # Handed a conversation (Analyze button): read that transcript directly.
-npx mcporter call aramb_agents.conversation_get agent_id="<AGENT_ID>" conversation_id="<CONVERSATION_ID>"
+npx mcporter call aramb_mcp.agents_conversation_get agent_id="<AGENT_ID>" conversation_id="<CONVERSATION_ID>"
 
 # Not handed one: find recent conversations first, then read one.
-npx mcporter call aramb_agents.conversation_search agent_id="<AGENT_ID>" order="recent" limit="20"
-npx mcporter call aramb_agents.conversation_get agent_id="<AGENT_ID>" conversation_id="<CONVERSATION_ID>"
+npx mcporter call aramb_mcp.agents_conversation_search agent_id="<AGENT_ID>" order="recent" limit="20"
+npx mcporter call aramb_mcp.agents_conversation_get agent_id="<AGENT_ID>" conversation_id="<CONVERSATION_ID>"
 
 # Diagnosing a tool problem — pull the tool-call/lifecycle stream alongside the transcript.
-npx mcporter call aramb_agents.conversation_get agent_id="<AGENT_ID>" conversation_id="<CONVERSATION_ID>" include_run_events="true"
+npx mcporter call aramb_mcp.agents_conversation_get agent_id="<AGENT_ID>" conversation_id="<CONVERSATION_ID>" include_run_events="true"
 
 # Narrow to a time window when triaging a reported incident.
-npx mcporter call aramb_agents.conversation_get agent_id="<AGENT_ID>" conversation_id="<CONVERSATION_ID>" from="2026-07-01T00:00:00Z" to="2026-07-08T00:00:00Z"
+npx mcporter call aramb_mcp.agents_conversation_get agent_id="<AGENT_ID>" conversation_id="<CONVERSATION_ID>" from="2026-07-01T00:00:00Z" to="2026-07-08T00:00:00Z"
 ```
 
 These reads are **transcript-only**: they surface `role` (user / assistant),
@@ -86,13 +86,13 @@ fix. Vague praise ("looks good") is not an analysis.
 An analysis is only worth something if it lands as a change. Feed what you
 found straight into the persona-editing loop:
 
-1. **`aramb_agents.get`** — read the current DRAFT (the source of truth, not
+1. **`aramb_mcp.agents_get`** — read the current DRAFT (the source of truth, not
    this conversation; someone may have edited it since).
-2. **`aramb_agents.update`** — patch the draft with the fix, grounded in the
+2. **`aramb_mcp.agents_update`** — patch the draft with the fix, grounded in the
    turn you quoted (partial merge — pass only the keys that change).
-3. Let the user confirm, then **`aramb_agents.publish`** to make it live.
+3. Let the user confirm, then **`aramb_mcp.agents_publish`** to make it live.
 
 For anything beyond a single read-and-diagnose — inspecting/revising/publishing
 the persona itself — see the **aramb-agents** skill. To prove the fix with a
 scripted, repeatable multi-turn test rather than one anecdote, see the
-**agent-tests** skill (`aramb_agents.test_*`).
+**agent-tests** skill (`aramb_mcp.agents_test_*`).

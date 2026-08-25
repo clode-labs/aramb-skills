@@ -25,7 +25,7 @@ few things that materially change the build:
   pass mark, ranking cutoff) — confirm, don't guess. (The incident's Proceed
   threshold: built at 65, user wanted 80.)
 - **Toolkit connectivity** — self-verify **every** external system via
-  `aramb_toolkits.check_connection`; if any is unconnected, tell the user what to
+  `aramb_mcp.toolkits_check_connection`; if any is unconnected, tell the user what to
   connect *before* the build rather than discovering it mid-run. (Sheets + GitHub
   were both disconnected in the incident.)
 - **Scale / cost heads-up** — for large input sets, state rough scale/time/cost and
@@ -36,7 +36,7 @@ few things that materially change the build:
 
 Framed as "confirm-then-build, not build-then-apologize," consistent with the
 skill's existing voice (guidance, not a rigid script). The pre-existing
-chat-dispatch `aramb_chat.ask_question` clarifier (§1) is complementary and left
+chat-dispatch `aramb_mcp.chat_ask_question` clarifier (§1) is complementary and left
 in place.
 
 ---
@@ -58,7 +58,7 @@ status.
     "4/382 scored, working through the rest…" as the anti-example); the system's
     messages are the source of truth.
   - On a "what's the status?" query, report **only verifiable** state read from
-    `aramb_workflows.get` / `list`, or acknowledge the run is in progress and the
+    `aramb_mcp.workflows_get` / `list`, or acknowledge the run is in progress and the
     system will post updates — never a fabricated number.
   - If a lookup shows failure/stuck, say so plainly.
 - `create-workflow/SKILL.md` — extended **non-negotiable #3** ("Never claim a
@@ -85,7 +85,7 @@ A production audit (production-audit.md rubric, scoped to commits `73ef2ca` +
 `c776c1f`) raised one HIGH finding and one nit. Both fixed:
 
 - **HIGH — `get`/`list` don't return run/step status.** The #6 edit told the agent,
-  on a status question, to read "run status, step states" via `aramb_workflows.get`
+  on a status question, to read "run status, step states" via `aramb_mcp.workflows_get`
   / `list`. But those tools return the workflow's **definition/lifecycle** state
   (`status` = `draft`/`active`/paused, plus schedule/nodes/edges), not per-step run
   progress — there is no documented run-status read tool; the system's automatic

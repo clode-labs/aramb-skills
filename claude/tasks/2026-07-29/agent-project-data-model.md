@@ -7,7 +7,7 @@ Spec: `/Users/siva/workspace/claude/tasks/2026-07-28/agent-project-data-model/is
 
 ## Why
 
-brahmi now hides `aramb_toolkits.connect_toolkit` / `request_connection` /
+brahmi now hides `aramb_mcp.toolkits_connect_toolkit` / `request_connection` /
 `get_github_credential` from the **Architect** persona's MCP surface (`FilterToolsByMode`),
 because an Architect-brokered connect scopes to the Architect's own project — which never
 executes, so the authorized account is invisible at run time. Connecting is the user's
@@ -29,7 +29,7 @@ The skills must not instruct a persona to reach for a tool it cannot see.
 > Left unchanged deliberately.
 
 **`aramb-agents/SKILL.md`** — the section "Required toolkits — connect the accounts an
-agent needs (`aramb_toolkits.request_connection`)" is rewritten to
+agent needs (`aramb_mcp.toolkits_request_connection`)" is rewritten to
 "Required toolkits — you DECLARE them, the USER connects them": ground slugs via
 `list_toolkits`, set `required_toolkits`, hand the connect step to the user on the Tools
 page. States why (a builder-brokered connection scopes to a project that never executes)

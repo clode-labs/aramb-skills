@@ -7,8 +7,8 @@ Ref workspace findings: `/Users/siva/workspace/claude/tasks/2026-07-24/local-tes
 ## Problem
 
 The old `export-template/SKILL.md` told the Architect to variabilize by **writing
-`{{placeholders}}` back into the live agent** via `aramb_agents.update` +
-`aramb_workflows.update`. That pollutes the user's working agent AND is a long
+`{{placeholders}}` back into the live agent** via `aramb_mcp.agents_update` +
+`aramb_mcp.workflows_update`. That pollutes the user's working agent AND is a long
 tool-call chain that outruns the run `lifetime_cap` before `export_template` is
 even reached.
 
@@ -20,11 +20,11 @@ Rewrite the skill so the Architect:
    verifies completeness (nothing dropped, every sub-agent spec authored). Read-only.
 2. **IDENTIFIES + MAPS + QUESTIONS** — finds every org-specific value and builds a
    **variabilization map** (`{"Aramb":"{{company_name}}", …}`) in memory, plus one
-   `wizard` question per distinct placeholder. **No `aramb_agents.update` /
-   `aramb_workflows.update` — the live draft is never rewritten.**
+   `wizard` question per distinct placeholder. **No `aramb_mcp.agents_update` /
+   `aramb_mcp.workflows_update` — the live draft is never rewritten.**
 3. **DANGER-SCAN** — screen every layer for secrets / internal endpoints / PII /
    private knowledge; strip or map, never ship.
-4. **EXPORT** — one `aramb_agents.export_template` call passing `variabilization_map`
+4. **EXPORT** — one `aramb_mcp.agents_export_template` call passing `variabilization_map`
    + `wizard` (+ optional `include_knowledge_doc_ids`). brahmi applies the map to the
    exported envelope only; the live agent stays exactly as the user built and tested it.
 

@@ -48,11 +48,11 @@ design doc `/Users/siva/workspace/claude/tasks/2026-06-23/workflow-reliability-b
   - **One-line general principle** mirroring the aramb-browser fetch hierarchy.
 
 ### #5 — publish/run doc alignment — `aramb-workflows/SKILL.md` (commit `8589eb1`)
-- `aramb_workflows.publish`: documented param **`workflow_id`** (required); success
+- `aramb_mcp.workflows_publish`: documented param **`workflow_id`** (required); success
   return updated to **`{ workflow_id, status: "active", version, published_at }`**
   (was `{ published, version }`); noted idempotency and the structured
   missing-toolkit error contract; clarified the agent can publish directly.
-- `aramb_workflows.run`: documented params **`workflow_id`** (required) +
+- `aramb_mcp.workflows_run`: documented params **`workflow_id`** (required) +
   **`custom_instruction`** (optional); success return **`{ run_id, status }`**; added
   the **auto-publish-a-draft-first** behavior (with the toolkit gate applying on that
   first publish). **Confirm-first guidance retained** unchanged.
@@ -77,8 +77,8 @@ design doc `/Users/siva/workspace/claude/tasks/2026-06-23/workflow-reliability-b
 
 | Tool | Params | Returns | Notes |
 |------|--------|---------|-------|
-| `aramb_workflows.publish` | `workflow_id` (required) | `{ workflow_id, status: "active", version, published_at }` | Idempotent if already active; structured error names missing toolkits |
-| `aramb_workflows.run` | `workflow_id` (required), `custom_instruction` (optional) | `{ run_id, status }` | **Auto-publishes a draft first**, then triggers; confirm-first enforced by the skill |
+| `aramb_mcp.workflows_publish` | `workflow_id` (required) | `{ workflow_id, status: "active", version, published_at }` | Idempotent if already active; structured error names missing toolkits |
+| `aramb_mcp.workflows_run` | `workflow_id` (required), `custom_instruction` (optional) | `{ run_id, status }` | **Auto-publishes a draft first**, then triggers; confirm-first enforced by the skill |
 
 Both **exactly match** the cross-repo contract in the workspace design doc
 (§ "Cross-repo contract (the only shared surface: #5)").

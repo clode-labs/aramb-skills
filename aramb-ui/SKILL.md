@@ -1,7 +1,7 @@
 ---
 name: aramb-ui
 description: >
-  MCP toolkit for driving the console UI (aramb_ui.*). Use these to move the
+  MCP toolkit for driving the console UI (aramb_mcp.ui_*). Use these to move the
   user's view to a specific console page (navigate) and to read a page's
   structured layout — its buttons, tabs, and where they sit — so you can point
   the user at the exact on-screen control. You live in the console side panel,
@@ -11,10 +11,10 @@ description: >
 
 # Aramb UI Toolkit
 
-The `aramb_ui.*` tools let you act on the console the user is looking at while they talk to you. Two tools:
+The `aramb_mcp.ui_*` tools let you act on the console the user is looking at while they talk to you. Two tools:
 
-- `aramb_ui.navigate` — move the user's console to an in-app page.
-- `aramb_ui.read_layout` — read a page's structured layout (actions + where they are) so you can guide a click when there is no navigable target.
+- `aramb_mcp.ui_navigate` — move the user's console to an in-app page.
+- `aramb_mcp.ui_read_layout` — read a page's structured layout (actions + where they are) so you can guide a click when there is no navigable target.
 
 Prefer *showing* over *telling*: when you finish an action, take the user to where it landed instead of reciting a path.
 
@@ -25,10 +25,10 @@ Prefer *showing* over *telling*: when you finish an action, take the user to whe
 
 ## Navigate the user's view
 
-`aramb_ui.navigate` sends the console to a page. The path must be a **relative** console path under `/app/` — never a full URL, never a domain.
+`aramb_mcp.ui_navigate` sends the console to a page. The path must be a **relative** console path under `/app/` — never a full URL, never a domain.
 
 ```bash
-npx mcporter call aramb_ui.navigate project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" path="/app/agents/<AGENT_ID>/configure" reason="Opening the Configure page"
+npx mcporter call aramb_mcp.ui_navigate project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" path="/app/agents/<AGENT_ID>/configure" reason="Opening the Configure page"
 ```
 
 - `path` — a relative `/app/…` path. Get the exact path for a screen from `read_layout` (or the console map you already know), e.g. `/app/agents/<AGENT_ID>/knowledge`, `/app/agents/<AGENT_ID>/tools`, `/app/integrations`.
@@ -42,15 +42,15 @@ Rules:
 
 ## Read a page's layout
 
-`aramb_ui.read_layout` returns the structured layout of a console screen: its title, purpose, and the actions on it — label, kind, on-screen location, where each routes or what it does, and when it's enabled. Use it to guide the user to a control you can't navigate to directly (a button, a tab, a toggle).
+`aramb_mcp.ui_read_layout` returns the structured layout of a console screen: its title, purpose, and the actions on it — label, kind, on-screen location, where each routes or what it does, and when it's enabled. Use it to guide the user to a control you can't navigate to directly (a button, a tab, a toggle).
 
 ```bash
 # One screen — by path or by short key
-npx mcporter call aramb_ui.read_layout project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" screen="/app/agents/<AGENT_ID>/configure"
-npx mcporter call aramb_ui.read_layout project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" screen="agent.configure"
+npx mcporter call aramb_mcp.ui_read_layout project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" screen="/app/agents/<AGENT_ID>/configure"
+npx mcporter call aramb_mcp.ui_read_layout project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" screen="agent.configure"
 
 # Omit screen → the full index of screens (key, path, title, group)
-npx mcporter call aramb_ui.read_layout project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>"
+npx mcporter call aramb_mcp.ui_read_layout project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>"
 ```
 
 - `screen` — a console path (`/app/agents/<AGENT_ID>/configure`) OR a short key (`agent.configure`). Concrete ids in the path are fine — they are normalized for lookup. Omit it to get the index of every screen.

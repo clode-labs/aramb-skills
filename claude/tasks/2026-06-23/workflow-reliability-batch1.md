@@ -58,12 +58,12 @@ fetch tool in the node prompt itself, so the evaluator doesn't rediscover toolin
 
 ## #5 — Align publish/run skill docs with the now-registered tools
 
-brahmi is registering `aramb_workflows.publish` and `aramb_workflows.run` this batch (see workspace
+brahmi is registering `aramb_mcp.workflows_publish` and `aramb_mcp.workflows_run` this batch (see workspace
 doc cross-repo contract). The skill already documents them — verify and tighten:
 
 - Confirm the documented **tool names and params exactly match** the contract:
-  - `aramb_workflows.publish` — `workflow_id` (required). Returns `{workflow_id, status, version, published_at}`.
-  - `aramb_workflows.run` — `workflow_id` (required), `custom_instruction` (optional). Returns `{run_id, status}`. Auto-publishes a draft first.
+  - `aramb_mcp.workflows_publish` — `workflow_id` (required). Returns `{workflow_id, status, version, published_at}`.
+  - `aramb_mcp.workflows_run` — `workflow_id` (required), `custom_instruction` (optional). Returns `{run_id, status}`. Auto-publishes a draft first.
 - Keep the **confirm-first** guidance for `run` (the agent should confirm with the user before
   triggering a real run, especially at scale).
 - Remove/repair any text implying the agent CANNOT publish/run (e.g. "those controls live in the

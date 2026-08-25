@@ -59,7 +59,7 @@ URL visits to JS-rendered or restricted pages, search-engine queries, scraping, 
 
 ## Deliver the session — mandatory after create, mandatory when asking the user
 
-Every browser session you open or attach to must be surfaced to the user via `aramb_chat.deliver_artifacts` with a `browser_session` artifact. The chip routes the workbench's browser panel to the live session so the user can see exactly what you're doing.
+Every browser session you open or attach to must be surfaced to the user via `aramb_mcp.chat_deliver_artifacts` with a `browser_session` artifact. The chip routes the workbench's browser panel to the live session so the user can see exactly what you're doing.
 
 **Fire it in two cases — no exceptions:**
 
@@ -67,7 +67,7 @@ Every browser session you open or attach to must be surfaced to the user via `ar
 2. **Every time you're about to pause and ask the user for input or attention** — captcha challenge, login wall, "stop and ask" path, "open the viewer and clear it yourself" prompts. The chip is what gives the user a one-click route into the live browser; surfacing the question without the chip leaves them blind.
 
 ```bash
-npx mcporter call aramb_chat.deliver_artifacts \
+npx mcporter call aramb_mcp.chat_deliver_artifacts \
   project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
   artifacts='[{"kind":"browser_session","session_id":"<app-slug>","title":"<short label>"}]' \
   summary="<one-line context, e.g. 'LinkedIn login — open the viewer and sign in'>"
@@ -142,7 +142,7 @@ npx mcporter call aramb_browser.browser_create name=<app-slug> provider=steel br
 
 The browser clears most captchas (reCAPTCHA, Cloudflare Turnstile, hCaptcha, etc.) in the background. If you hit a challenge, **wait 30-60s** and re-check — `navigate_page` to refresh, or `evaluate_script` to read `location.href` / `document.title` / page content. Most pages clear on their own in that window.
 
-If after ~60s the page is still blocked, **stop and ask the user — but first deliver the session chip**. The chip is what makes "open the browser viewer" a one-click action; without it, the user has nowhere to click. Fire `aramb_chat.deliver_artifacts` with a `browser_session` artifact (see the deliver-the-session section above), then ask.
+If after ~60s the page is still blocked, **stop and ask the user — but first deliver the session chip**. The chip is what makes "open the browser viewer" a one-click action; without it, the user has nowhere to click. Fire `aramb_mcp.chat_deliver_artifacts` with a `browser_session` artifact (see the deliver-the-session section above), then ask.
 
 Don't retry, don't loop, don't recreate the browser.
 
@@ -215,7 +215,7 @@ Error behavior:
 - `browser=` AND `target=` on every page-level call.
 - One browser per app slug. Siblings reuse via `new_page`, not a second `browser_create`.
 - **Never call `browser_destroy`.** TTL cleans up.
-- **Deliver a `browser_session` artifact via `aramb_chat.deliver_artifacts` (a) immediately after `browser_create` succeeds, and (b) every time you stop to ask the user for input or attention.** Both are mandatory. Prose mentions don't open the workbench tab.
+- **Deliver a `browser_session` artifact via `aramb_mcp.chat_deliver_artifacts` (a) immediately after `browser_create` succeeds, and (b) every time you stop to ask the user for input or attention.** Both are mandatory. Prose mentions don't open the workbench tab.
 - **Never save or load a context without explicit user approval.** Before `browser_create`, run `browser_context_list` and prompt the user to pick or skip. After a successful login, prompt before `browser_save_context`.
 - `evaluate_script` uses `function=` (NOT `script=`). Body is a JS arrow function: `function="() => JSON.stringify(...)"`.
 - On CAPTCHA / bot wall / 403: **wait 30-60s** for the browser to clear it in the background, then re-check the page. If still blocked, deliver the session chip and stop to ask the user — describe what you saw, never auto-recommend a specific fix.
@@ -232,7 +232,7 @@ npx mcporter call aramb_browser.browser_list
 #                && navigate_page browser=<app-slug> url=...
 
 # Immediately after a successful create OR a list-reuse, deliver the session chip:
-npx mcporter call aramb_chat.deliver_artifacts \
+npx mcporter call aramb_mcp.chat_deliver_artifacts \
   project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
   artifacts='[{"kind":"browser_session","session_id":"<app-slug>","title":"<short label>"}]' \
   summary="Browser is up — opened the workbench tab so you can watch."

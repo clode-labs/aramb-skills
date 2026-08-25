@@ -11,7 +11,7 @@ the agreed contract (brahmi implements the same) — match exactly.
 
 ## 1. Random delay on cron schedules (cron-only)
 
-Two new args on `aramb_workflows.set_schedule`:
+Two new args on `aramb_mcp.workflows_set_schedule`:
 - `random_delay_enabled` (bool, default false)
 - `random_delay_max_minutes` (int, optional) — absolute cap; the effective delay is
   `min(this, 80% of the interval gap)`, chosen fresh each fire. Omit ⇒ cap is just 80% of the gap.
@@ -33,9 +33,9 @@ next scheduled tick. Cron-only — does not apply to event/toolkit triggers.
 
 ## 2. Workflow-level callback_url (run status webhook)
 
-New tool `aramb_workflows.set_callback`:
+New tool `aramb_mcp.workflows_set_callback`:
 ```
-npx mcporter call aramb_workflows.set_callback \
+npx mcporter call aramb_mcp.workflows_set_callback \
   workflow_id="<WORKFLOW_ID>" \
   callback_url="https://example.com/hooks/run-status"
 ```

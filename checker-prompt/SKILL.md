@@ -11,9 +11,9 @@ Use this skill whenever you set `enable_checker: true` on a task **or a workflow
 
 The `checker_prompt` is **only** the guideline of what to verify (context + criteria, below). The gatekeeper's behavior — read-only auditing, how it decides, and how it commits the outcome — is supplied by the platform's `checker_executor` system prompt, not by you. Do NOT bake verdict-reporting or tool-call instructions into the `checker_prompt`.
 
-For reference (so you know what the gatekeeper does with what you write): **the STATUS the checker writes IS the verdict.** There is no `verdict` field in `outputs` — the status field carries the decision, and a DIRTY verdict's gaps travel in a top-level `feedback` arg. The checker uses `aramb_tasks.update` (with `task_id`) or `aramb_workflows.update_step` (with `step_id`) — both rendered into its dispatch User Message. (Session-implicit variants no longer exist; the runtime rejects cross-task/step writes as `context_drift`.) It picks exactly one of four terminal calls:
+For reference (so you know what the gatekeeper does with what you write): **the STATUS the checker writes IS the verdict.** There is no `verdict` field in `outputs` — the status field carries the decision, and a DIRTY verdict's gaps travel in a top-level `feedback` arg. The checker uses `aramb_mcp.tasks_update` (with `task_id`) or `aramb_mcp.workflows_update_step` (with `step_id`) — both rendered into its dispatch User Message. (Session-implicit variants no longer exist; the runtime rejects cross-task/step writes as `context_drift`.) It picks exactly one of four terminal calls:
 
-- **CLEAN** → `aramb_tasks.update task_id="<TASK_UUID>" status="done" outputs='{"audit":"clean","notes":"<summary>"}'`
+- **CLEAN** → `aramb_mcp.tasks_update task_id="<TASK_UUID>" status="done" outputs='{"audit":"clean","notes":"<summary>"}'`
 - **DIRTY, retry** (rounds remain) → task: `status="inbox"` · workflow step: `status="pending"`, with the gaps in `feedback='{"round":N,"previous_gaps":[{id,fixed,fix_note}],"new_gaps":[{description,severity}]}'`
 - **DIRTY, exhausted** (final round) → `status="failed" error="<MAX> rounds; integrity gaps remain: <list>"`
 - **CAN'T AUDIT** → task: `status="needs_master_attention"` · workflow step: `status="failed"` (steps have no master-escalation path), with `error="cannot audit: <reason>"`

@@ -6,7 +6,7 @@ File: `aramb-agents/SKILL.md`. (Docs only — no build.)
 
 ## Problem (findings #4)
 
-The brahmi change added `soul` + `agents_doc` to `aramb_agents.create`/`update`,
+The brahmi change added `soul` + `agents_doc` to `aramb_mcp.agents_create`/`update`,
 but the aramb-agents skill never mentions them, so the Architect left them empty
 (`soul=false, agents_doc=false`) on the main persona while authoring souls on
 sub-agents (whose skill documents them).

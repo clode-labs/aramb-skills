@@ -1,14 +1,14 @@
 ---
 name: aramb-workflows
 description: >
-  MCP toolkit for workflows (aramb_workflows.*). Use these to create,
+  MCP toolkit for workflows (aramb_mcp.workflows_*). Use these to create,
   read, update, schedule, and consolidate workflows, plus to update
   workflow run steps when dispatched as a workflow step agent.
 ---
 
 # Aramb Workflows Toolkit
 
-The `aramb_workflows.*` tools cover workflow definition CRUD, schedule management, manual run (`aramb_workflows.run` — confirm-first), run-step updates, and "consolidate from tasks" / "update from tasks" dispatch.
+The `aramb_mcp.workflows_*` tools cover workflow definition CRUD, schedule management, manual run (`aramb_mcp.workflows_run` — confirm-first), run-step updates, and "consolidate from tasks" / "update from tasks" dispatch.
 
 **Workflows are project-scoped (appless is the norm).** A workflow's identity is
 its `lineage_id` (returned as `workflow_id`); `application_id` is **optional and
@@ -23,7 +23,7 @@ exist, query **by project** (`list project_id=…`), not by application.
 
 ## Find workflows — `list` by agent OR by project
 
-`aramb_workflows.list` takes **one** of two optional keys — pick by what you're
+`aramb_mcp.workflows_list` takes **one** of two optional keys — pick by what you're
 looking for:
 
 - **`agent_id` — the workflows you built FOR an agent.** A workflow bound to an
@@ -34,14 +34,14 @@ looking for:
   org-fenced, wherever they live):
 
   ```bash
-  npx mcporter call aramb_workflows.list agent_id="<AGENT_ID>"
+  npx mcporter call aramb_mcp.workflows_list agent_id="<AGENT_ID>"
   ```
 
 - **`project_id` — a project's workflows.** To answer "what workflows exist in
   this project?" enumerate by project:
 
   ```bash
-  npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"
+  npx mcporter call aramb_mcp.workflows_list project_id="<PROJECT_ID>"
   ```
 
 If you pass **both**, `agent_id` wins (the project_id is ignored). If you pass
@@ -62,7 +62,7 @@ Both return BOTH appless and app-bound workflows, wrapped as
 callbacks" below). The signing secret is **never** returned here — only once, when
 the callback is first set.
 
-`aramb_workflows.get project_id="<PROJECT_ID>"` (no `workflow_id`) returns the
+`aramb_mcp.workflows_get project_id="<PROJECT_ID>"` (no `workflow_id`) returns the
 same `{ "workflows": [ … ], "count": N }` shape — so your habitual `get` reach
 works project-scoped too.
 
@@ -76,7 +76,7 @@ will answer "none" when the project actually has workflows. Use `list project_id
 ### Create a workflow (consolidated definition)
 
 ```bash
-npx mcporter call aramb_workflows.create \
+npx mcporter call aramb_mcp.workflows_create \
   agent_id="<AGENT_ID>" \
   project_id="<PROJECT_ID>" \
   name="<workflow name>" \
@@ -90,13 +90,13 @@ npx mcporter call aramb_workflows.create \
 
 - **Workflows are standalone by default; `agent_id` is an OPTIONAL binding — not a requirement.** A workflow exists in its own right (project-scoped or app-bound) exactly as it always has — creating one without `agent_id` is fully supported and is the right thing when the workflow isn't tied to a specific agent. Passing `agent_id="<agent>"` on `create` is an **additive** binding: that one call creates the workflow AND stamps the ownership edge (create-and-link in one step), after which the workflow is filed under the agent and discoverable + runnable **by that agent**. The binding constrains the *bound* workflow (one owning agent); it does NOT demote or replace standalone workflows.
   - **When you are building a workflow FOR an agent (the Architect flow), prefer binding** — pass `agent_id` so it's owned and discoverable by the agent you're building. Otherwise, omit it and create a plain standalone workflow.
-  - To bind a workflow that already exists to an agent, use `aramb_agents.attach_workflow`. To keep one standalone, just don't pass `agent_id`.
+  - To bind a workflow that already exists to an agent, use `aramb_mcp.agents_attach_workflow`. To keep one standalone, just don't pass `agent_id`.
 - **`instruction` and `enabled` (both optional, top-level) — wire the workflow to its owning agent's invocation behavior** (the console **Tools ▸ Workflows** tab). `instruction` is free-text on HOW and WHEN the owning agent should invoke this workflow and what input to pass — surfaced **verbatim** in the agent's "## Your workflows" prompt injection. `enabled` (`true`/`false`) is a per-agent toggle: `false` hides the bound workflow from the owning agent; `true` (or omitted) surfaces it. On `update` these are **merged, not clobbering** — see the note under "Update an existing workflow".
 - **`project_id` is required; `application_id` is optional/legacy.** Pass `project_id` (alongside `agent_id`) to create the workflow. The workflow is keyed by its own lineage (`workflow_id`) and belongs to its owning agent.
-- **`application_id` (optional, legacy app-bound)** — passing it binds the workflow to one application. App-bound workflows retain the old "at most one per application" behavior, so a second `create` with the same `application_id` fails (use `aramb_workflows.update` to modify it). Appless workflows have no such limit — a project can hold many.
+- **`application_id` (optional, legacy app-bound)** — passing it binds the workflow to one application. App-bound workflows retain the old "at most one per application" behavior, so a second `create` with the same `application_id` fails (use `aramb_mcp.workflows_update` to modify it). Appless workflows have no such limit — a project can hold many.
 - Per-user **system** workflows (e.g. the discovery report) are appless workflows in the user's **private project**. They deliver output via **DM** (the chat toolkit's `chat.send_dm`), never a public channel-app post. `get` / `update` by `workflow_id` work identically for appless workflows. (Template imports of system workflows arrive pre-created — polish them via the `import-workflow` skill, don't `create` them.)
 - **Edges are top-level**, not per-node. Do NOT emit `dependencies` or `dependsOn` on nodes.
-- **Never invent or bind hidden toolkits.** Set a node's `toolkit` / `required_toolkits` only to toolkits the workspace actually exposes. Platform-internal/hidden toolkits (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) are REJECTED by `aramb_workflows.create`/`update` — never bind them. For Slack/Discord/Teams messaging deliverables, deliver via the chat toolkit's `chat.send_dm` (no toolkit).
+- **Never invent or bind hidden toolkits.** Set a node's `toolkit` / `required_toolkits` only to toolkits the workspace actually exposes. Platform-internal/hidden toolkits (`composio`, `composio_search`, `browser_tool`, `slackbot`, `discord`, `discordbot`, `microsoft_teams`) are REJECTED by `aramb_mcp.workflows_create`/`update` — never bind them. For Slack/Discord/Teams messaging deliverables, deliver via the chat toolkit's `chat.send_dm` (no toolkit).
 - `template_slug` (optional) is forwarded verbatim from a dispatched `<template-import slug="...">` block when this call originates from template import.
 - **`agent_specs` (optional, top-level array) — inline sub-agent definitions carried WITH the workflow.** When a workflow's nodes are genuinely different roles, author each distinct role's FULL sub-agent spec here and reference it from a node by setting that node's `assigned_agent` to the spec's `name`. the platform stores these on `workflows.agent_specs` and provisions them **deterministically at claim/run** — you do NOT route bespoke node agents through any separate agent-creation flow. Each entry is a `TemplateAgent`:
   - `name` (REQUIRED, unique) — the role identifier a node's `assigned_agent` references.
@@ -107,22 +107,22 @@ npx mcporter call aramb_workflows.create \
   - `skills` (optional) — registry skill ids, e.g. `["clode-labs/aramb-skills/<slug>"]`.
   - `defaultModel` (optional; `""` = inherit workflow default), `defaultBackend` (e.g. `"claude-sdk"`), `defaultThinking` (e.g. `"medium"`).
 
-  **A node whose `assigned_agent` has no matching spec (and is not an existing roster agent) is a DANGLING reference** — the platform rejects it at author time for an agent-bound workflow; there is no "main agent" to fall back to. Minting a distinct spec per genuinely-distinct role is the DEFAULT. A **single-role workflow may keep `agent_specs` empty (or omitted)** — then every node names **the agent you are building**, by its routing name (`aramb_agents.get` → `benji_agent_id`, e.g. `inbox-digest-5248d2e7`). Never `"main"` (not a routing token) and never `"master"`/`"solo"` (platform infra agents — the team orchestrator and the solo runtime, never the agent you built). See "Multi-agent workflow" below for a worked example.
+  **A node whose `assigned_agent` has no matching spec (and is not an existing roster agent) is a DANGLING reference** — the platform rejects it at author time for an agent-bound workflow; there is no "main agent" to fall back to. Minting a distinct spec per genuinely-distinct role is the DEFAULT. A **single-role workflow may keep `agent_specs` empty (or omitted)** — then every node names **the agent you are building**, by its routing name (`aramb_mcp.agents_get` → `benji_agent_id`, e.g. `inbox-digest-5248d2e7`). Never `"main"` (not a routing token) and never `"master"`/`"solo"` (platform infra agents — the team orchestrator and the solo runtime, never the agent you built). See "Multi-agent workflow" below for a worked example.
 
 ### Multi-agent workflow — nodes + edges + `agent_specs` in one call
 
-When the nodes do genuinely different work, pass `agent_specs` alongside `nodes` and `edges` in the **same** `aramb_workflows.create` call. Each node's `assigned_agent` names a spec; the spec carries that role's full identity/soul/agentsDoc:
+When the nodes do genuinely different work, pass `agent_specs` alongside `nodes` and `edges` in the **same** `aramb_mcp.workflows_create` call. Each node's `assigned_agent` names a spec; the spec carries that role's full identity/soul/agentsDoc:
 
 ```bash
-npx mcporter call aramb_workflows.create \
+npx mcporter call aramb_mcp.workflows_create \
   agent_id="<AGENT_ID>" \
   project_id="<PROJECT_ID>" \
   name="Blog Post Pipeline" \
   description="Research an outline, draft the sections, then copy-edit into a publishable post." \
   nodes='[
-    {"unique_id":1,"name":"Research & outline","prompt":"Read <run_input> for the topic and angle. Research the topic (web search / browser) and produce a structured outline (H2/H3 headings + one-line intent per section). Save it to .planning/outline.md and, in your summary, state the topic and section count so the drafter can act on it.\n\nWhen done — record your output for the next step:\n  npx mcporter call aramb_workflows.update_step project_id=\"<your Project ID>\" step_id=\"<your Workflow Run Step ID>\" status=\"done\" outputs='"'"'{\"summary\":\"Outline for <topic>: N sections.\",\"files\":[\".planning/outline.md\"]}'"'"'","assigned_agent":"outline-writer","acceptance_criteria":"outline.md written with headings + per-section intent","required_toolkits":[]},
-    {"unique_id":2,"name":"Draft sections","prompt":"Read your parent step summary + .planning/outline.md. Write full prose for every section, on-topic and in the requested voice, to .planning/draft.md. Summarize word count and any gaps.\n\nWhen done — record your output for the next step:\n  npx mcporter call aramb_workflows.update_step project_id=\"<your Project ID>\" step_id=\"<your Workflow Run Step ID>\" status=\"done\" outputs='"'"'{\"summary\":\"Draft written: ~M words across N sections.\",\"files\":[\".planning/draft.md\"]}'"'"'","assigned_agent":"section-drafter","acceptance_criteria":"draft.md covers every outlined section","required_toolkits":[]},
-    {"unique_id":3,"name":"Copy-edit & polish","prompt":"Read .planning/draft.md. Tighten prose, fix grammar/flow, enforce a consistent voice, and produce the final publishable post at .planning/final.md. Summarize what you changed.\n\nWhen done — record your output for the next step:\n  npx mcporter call aramb_workflows.update_step project_id=\"<your Project ID>\" step_id=\"<your Workflow Run Step ID>\" status=\"done\" outputs='"'"'{\"summary\":\"Final post polished and saved.\",\"files\":[\".planning/final.md\"]}'"'"'","assigned_agent":"copy-editor","acceptance_criteria":"final.md is a clean, publishable post","required_toolkits":[]}
+    {"unique_id":1,"name":"Research & outline","prompt":"Read <run_input> for the topic and angle. Research the topic (web search / browser) and produce a structured outline (H2/H3 headings + one-line intent per section). Save it to .planning/outline.md and, in your summary, state the topic and section count so the drafter can act on it.\n\nWhen done — record your output for the next step:\n  npx mcporter call aramb_mcp.workflows_update_step project_id=\"<your Project ID>\" step_id=\"<your Workflow Run Step ID>\" status=\"done\" outputs='"'"'{\"summary\":\"Outline for <topic>: N sections.\",\"files\":[\".planning/outline.md\"]}'"'"'","assigned_agent":"outline-writer","acceptance_criteria":"outline.md written with headings + per-section intent","required_toolkits":[]},
+    {"unique_id":2,"name":"Draft sections","prompt":"Read your parent step summary + .planning/outline.md. Write full prose for every section, on-topic and in the requested voice, to .planning/draft.md. Summarize word count and any gaps.\n\nWhen done — record your output for the next step:\n  npx mcporter call aramb_mcp.workflows_update_step project_id=\"<your Project ID>\" step_id=\"<your Workflow Run Step ID>\" status=\"done\" outputs='"'"'{\"summary\":\"Draft written: ~M words across N sections.\",\"files\":[\".planning/draft.md\"]}'"'"'","assigned_agent":"section-drafter","acceptance_criteria":"draft.md covers every outlined section","required_toolkits":[]},
+    {"unique_id":3,"name":"Copy-edit & polish","prompt":"Read .planning/draft.md. Tighten prose, fix grammar/flow, enforce a consistent voice, and produce the final publishable post at .planning/final.md. Summarize what you changed.\n\nWhen done — record your output for the next step:\n  npx mcporter call aramb_mcp.workflows_update_step project_id=\"<your Project ID>\" step_id=\"<your Workflow Run Step ID>\" status=\"done\" outputs='"'"'{\"summary\":\"Final post polished and saved.\",\"files\":[\".planning/final.md\"]}'"'"'","assigned_agent":"copy-editor","acceptance_criteria":"final.md is a clean, publishable post","required_toolkits":[]}
   ]' \
   edges='[{"source":1,"target":2},{"source":2,"target":3}]' \
   agent_specs='[
@@ -147,16 +147,16 @@ When a node's `prompt` will have the runtime agent fetch external content (scori
 
 ```bash
 # By workflow_id (the canonical identity — lineage_id)
-npx mcporter call aramb_workflows.get workflow_id="<WORKFLOW_ID>"
+npx mcporter call aramb_mcp.workflows_get workflow_id="<WORKFLOW_ID>"
 
 # By project_id (no workflow_id) — returns the project's workflows array
 # (appless + app-bound). Use this to enumerate; see "Find a project's workflows".
-npx mcporter call aramb_workflows.get project_id="<PROJECT_ID>"
+npx mcporter call aramb_mcp.workflows_get project_id="<PROJECT_ID>"
 
 # By application_id (legacy, app-bound only) — returns the single workflow bound
 # to that one application, if any. Misses appless workflows — don't use it to
 # answer "what workflows exist?".
-npx mcporter call aramb_workflows.get application_id="<APPLICATION_ID>"
+npx mcporter call aramb_mcp.workflows_get application_id="<APPLICATION_ID>"
 ```
 
 A single-workflow fetch returns nodes, edges, env_variables, schedule, stateful flag, `auto_triggerable` / `missing_required_env` status, and `callback_url` (the run-status webhook, `null` if unset — the signing secret is never returned here).
@@ -164,7 +164,7 @@ A single-workflow fetch returns nodes, edges, env_variables, schedule, stateful 
 ### Update an existing workflow (atomic full replace)
 
 ```bash
-npx mcporter call aramb_workflows.update \
+npx mcporter call aramb_mcp.workflows_update \
   workflow_id="<WORKFLOW_ID>" \
   nodes='[<full new node set>]' \
   edges='[<full new edge set>]'
@@ -178,7 +178,7 @@ npx mcporter call aramb_workflows.update \
 
 ```bash
 # Set an invocation instruction on an existing workflow — merges, so nodes/edges/input_schema stay intact:
-npx mcporter call aramb_workflows.update \
+npx mcporter call aramb_mcp.workflows_update \
   workflow_id="<WORKFLOW_ID>" \
   instruction="Run whenever the user gives a topic; pass the topic as input." \
   enabled=true
@@ -190,18 +190,18 @@ When the user asks master in main chat to create / update / regenerate the workf
 
 ```bash
 # First-time create — application has no workflow yet
-npx mcporter call aramb_workflows.create_from_tasks application_id="<APPLICATION_ID>" project_id="<PROJECT_ID>"
+npx mcporter call aramb_mcp.workflows_create_from_tasks application_id="<APPLICATION_ID>" project_id="<PROJECT_ID>"
 
 # Update an existing workflow — pulls fresh task corpus, regenerates the definition
-npx mcporter call aramb_workflows.update_from_tasks workflow_id="<WORKFLOW_ID>"
+npx mcporter call aramb_mcp.workflows_update_from_tasks workflow_id="<WORKFLOW_ID>"
 
 # Update with an explicit change request (forwarded verbatim to the dispatched skill)
-npx mcporter call aramb_workflows.update_from_tasks \
+npx mcporter call aramb_mcp.workflows_update_from_tasks \
   workflow_id="<WORKFLOW_ID>" \
   change_request="add a Slack DM step after the standup comment"
 ```
 
-Decide between them by checking the project's workflows first (`aramb_workflows.list project_id="..."`) — no workflow for this application yet → `create_from_tasks`; an existing one → `update_from_tasks` with its `workflow_id`.
+Decide between them by checking the project's workflows first (`aramb_mcp.workflows_list project_id="..."`) — no workflow for this application yet → `create_from_tasks`; an existing one → `update_from_tasks` with its `workflow_id`.
 
 Both tools return `{status: "ok", task_id: "<uuid>", message: "..."}`. The actual workflow design happens later when the system task arrives back at master and loads the appropriate skill.
 
@@ -209,7 +209,7 @@ Both tools return `{status: "ok", task_id: "<uuid>", message: "..."}`. The actua
 
 ### Set / update schedule
 ```bash
-npx mcporter call aramb_workflows.set_schedule \
+npx mcporter call aramb_mcp.workflows_set_schedule \
   workflow_id="<WORKFLOW_ID>" \
   cron_expression="0 9 * * 1" \
   cron_timezone="America/Los_Angeles" \
@@ -224,7 +224,7 @@ npx mcporter call aramb_workflows.set_schedule \
 
 ### Read schedule
 ```bash
-npx mcporter call aramb_workflows.get_schedule workflow_id="<WORKFLOW_ID>"
+npx mcporter call aramb_mcp.workflows_get_schedule workflow_id="<WORKFLOW_ID>"
 ```
 
 Returns `cron_expression`, `cron_timezone`, `enabled`, `env_overrides`, `next_run_at`, `random_delay_enabled`, `random_delay_max_minutes`, paused state, and env-readiness flags.
@@ -239,7 +239,7 @@ excluded. Each run fires twice: on **start** (`running`) and on **terminal**
 ### Set / update the callback
 
 ```bash
-npx mcporter call aramb_workflows.set_callback \
+npx mcporter call aramb_mcp.workflows_set_callback \
   workflow_id="<WORKFLOW_ID>" \
   callback_url="https://example.com/hooks/run-status"
 ```
@@ -286,10 +286,10 @@ Delivery is persisted and retried with exponential backoff, so the same
 ## Publishing a workflow — rides on publishing the AGENT
 
 A workflow is part of its owning agent, so it does NOT have a separate publish step
-of its own. **`aramb_workflows.create` leaves the workflow a DRAFT — it is NOT
-auto-published.** The builder TESTS the draft (via Preview / `aramb_workflows.run` —
+of its own. **`aramb_mcp.workflows_create` leaves the workflow a DRAFT — it is NOT
+auto-published.** The builder TESTS the draft (via Preview / `aramb_mcp.workflows_run` —
 see below), and the workflow becomes a live, frozen version **automatically when the
-AGENT is published** (`aramb_agents.publish`). There is no "publish this workflow"
+AGENT is published** (`aramb_mcp.agents_publish`). There is no "publish this workflow"
 action for you to perform as part of building.
 
 - **Do NOT call a workflow-publish tool as a build step.** Publishing is a property
@@ -297,25 +297,25 @@ action for you to perform as part of building.
   version alongside it. Never tell the user to "publish the workflow from the
   Workflows tab" either — that step does not exist in this model.
 - **Test the draft with Preview.** While the workflow is a draft, the builder
-  validates it by running/previewing it — `aramb_workflows.run` works on the draft
+  validates it by running/previewing it — `aramb_mcp.workflows_run` works on the draft
   (see "Running an existing workflow"). Iterate on the draft until it does what the
   user wants; publishing the agent is what makes it live for end-users.
 - **Toolkit connections still matter for a run to succeed**, but they are no longer a
   publish gate you operate. If a node needs a toolkit the user hasn't connected, the
-  run surfaces that — verify connections up front (`aramb_toolkits.check_connection`)
+  run surfaces that — verify connections up front (`aramb_mcp.toolkits_check_connection`)
   and tell the user which to connect, rather than calling any publish tool.
 
 ## Running an existing workflow (manual run)
 
 When the user asks to run a workflow that already exists — "run X", "run the X
 workflow", "execute X", "kick off X", "trigger X now", "start X" — kick off a
-single manual run with `aramb_workflows.run`. **Policy: ALWAYS confirm the specific
+single manual run with `aramb_mcp.workflows_run`. **Policy: ALWAYS confirm the specific
 workflow before running, even on an exact name match.** The flow is
 list → fuzzy-match → confirm → run.
 
 ### 1. List + match
 ```bash
-npx mcporter call aramb_workflows.list project_id="<PROJECT_ID>"
+npx mcporter call aramb_mcp.workflows_list project_id="<PROJECT_ID>"
 ```
 Fuzzy-match the user's phrase against the returned `name`s (partial / typo /
 synonym is fine — you do the matching).
@@ -333,18 +333,18 @@ State the matched workflow's **exact `name`** (note its `status`, and
 
 ### 3. Run — only after explicit confirmation
 ```bash
-npx mcporter call aramb_workflows.run \
+npx mcporter call aramb_mcp.workflows_run \
   workflow_id="<WORKFLOW_ID>" \
   custom_instruction="<optional per-run context the user gave>"
 ```
-`aramb_workflows.run` takes **`workflow_id`** (required) and **`custom_instruction`**
+`aramb_mcp.workflows_run` takes **`workflow_id`** (required) and **`custom_instruction`**
 (optional). On success it returns `{ "run_id", "status" }`.
 
 `custom_instruction` is optional free-form text passed into the workflow's first
 step (`<run_input>`) — include it only if the user supplied extra instructions for
 this run; omit it otherwise.
 
-**Running never blocks on publish.** `aramb_workflows.run` runs the **draft** if the
+**Running never blocks on publish.** `aramb_mcp.workflows_run` runs the **draft** if the
 agent is unpublished, or the **published version** if the agent has been published —
 either way the run just works, with no separate publish call. So during building the
 Architect can rely on `run` (Preview) to test the draft. If a node needs a toolkit
@@ -352,7 +352,7 @@ the user hasn't connected, the run surfaces that (no `run_id`) — verify connec
 up front and tell the user which to connect (see step 4).
 
 ### 4. Report — only what the tool actually returned
-Read `aramb_workflows.run`'s result before you say anything:
+Read `aramb_mcp.workflows_run`'s result before you say anything:
 - **Success (a `run_id` came back):** echo the `run_id`, say the run started, and
   then **hand off to the run** — the system posts real progress and the final
   success/failure note to the conversation on its own. Tell the user updates will
@@ -376,7 +376,7 @@ not to narrate it:
 - **When the user asks "what's the status?", point at the run's own updates.** The
   conversation thread is the source of truth for run/step progress — the platform posts it
   there as it happens. So acknowledge the run is in progress and that its updates
-  (and the final result) arrive here automatically. `aramb_workflows.get` / `list`
+  (and the final result) arrive here automatically. `aramb_mcp.workflows_get` / `list`
   do **not** return run progress — they return the workflow's **definition and
   lifecycle** state (`status` is the workflow's `draft`/`active`/paused state, plus
   schedule/nodes/edges), not per-step run state. Use them only to answer
@@ -387,9 +387,9 @@ not to narrate it:
   — don't paper over it with reassuring narration.
 
 **Guardrails:**
-- Never call `aramb_workflows.run` without an explicit user confirmation of the
+- Never call `aramb_mcp.workflows_run` without an explicit user confirmation of the
   specific workflow.
-- Never guess a `workflow_id` — always resolve via `aramb_workflows.list` first.
+- Never guess a `workflow_id` — always resolve via `aramb_mcp.workflows_list` first.
 - **Run exactly the workflow the user named.** If it can't run (unpublished, wrong
   status, error), say so — NEVER substitute a different, runnable workflow to make
   the action appear to succeed. Running the wrong workflow and reporting success is
@@ -399,7 +399,7 @@ not to narrate it:
 
 ## Update a workflow run step (workflow dispatch only)
 
-If you were dispatched as part of a workflow run (not an ad-hoc task), use `aramb_workflows.update_step` with the `step_id` rendered into your dispatch prompt (the "## Current Context" block, `Workflow Run Step ID:` line). The downstream step reads your `outputs.summary` and `outputs.files` as its preamble — so both fields are mandatory on `status="done"`.
+If you were dispatched as part of a workflow run (not an ad-hoc task), use `aramb_mcp.workflows_update_step` with the `step_id` rendered into your dispatch prompt (the "## Current Context" block, `Workflow Run Step ID:` line). The downstream step reads your `outputs.summary` and `outputs.files` as its preamble — so both fields are mandatory on `status="done"`.
 
 ```bash
 # Save your IDs from the User Message once and reuse them.
@@ -407,39 +407,39 @@ PROJECT_ID="<your Project ID>"
 STEP_ID="<your Workflow Run Step ID>"
 
 # Success — outputs REQUIRED on done:
-npx mcporter call aramb_workflows.update_step project_id="$PROJECT_ID" step_id="$STEP_ID" status="done" outputs='{"summary":"One-paragraph hand-off for the next agent (under 500 chars).","files":["relative/path/to/output.md","another/file.json"]}'
+npx mcporter call aramb_mcp.workflows_update_step project_id="$PROJECT_ID" step_id="$STEP_ID" status="done" outputs='{"summary":"One-paragraph hand-off for the next agent (under 500 chars).","files":["relative/path/to/output.md","another/file.json"]}'
 
 # Failure — error REQUIRED on failed:
-npx mcporter call aramb_workflows.update_step project_id="$PROJECT_ID" step_id="$STEP_ID" status="failed" error="What blocked the step and any partial progress"
+npx mcporter call aramb_mcp.workflows_update_step project_id="$PROJECT_ID" step_id="$STEP_ID" status="failed" error="What blocked the step and any partial progress"
 
 # In-progress (optional progress ping):
-npx mcporter call aramb_workflows.update_step project_id="$PROJECT_ID" step_id="$STEP_ID" status="in_progress"
+npx mcporter call aramb_mcp.workflows_update_step project_id="$PROJECT_ID" step_id="$STEP_ID" status="in_progress"
 ```
 
 Rules for `update_step`:
 - `outputs.summary` is one paragraph under 500 characters describing what the step produced, for the next agent. Focus on what's useful downstream, not how you did it.
 - `outputs.files` is an array of paths RELATIVE to the workspace working directory. Paths only, no contents. Use `"files":[]` if you produced no files.
-- Do NOT call `aramb_tasks.update` from within a workflow step session — it targets a different domain row (tasks, not workflow run steps) and the run will stall on the safety net.
+- Do NOT call `aramb_mcp.tasks_update` from within a workflow step session — it targets a different domain row (tasks, not workflow run steps) and the run will stall on the safety net.
 - The runtime rejects cross-step writes (`context_drift`): the `step_id` you pass MUST match the one your run was dispatched against. Copy it verbatim from your User Message — don't re-use a stale UUID.
 
 ## Checker verdict on a workflow step (maker-checker gate)
 
 When a workflow node has the maker-checker gate enabled, the platform runs the node's maker, then dispatches an independent **checker review** against the same step before the step advances. The review is the step's own assigned agent re-run in a fresh, read-only session under a gatekeeper system prompt — there is no separate checker persona. If your dispatch tells you to validate a workflow step (you'll get a gatekeeper system prompt, not the maker's execution prompt), **the STATUS you write IS the verdict** — there is no `verdict` field in `outputs` anymore. A DIRTY verdict's gaps travel in a top-level `feedback` arg, not in `outputs`.
 
-**Report via `aramb_workflows.update_step` with the `step_id` from your dispatch User Message.** Your dispatch gives you the exact command (with the real `step_id`) under "Report your verdict" — run that. Pick exactly ONE:
+**Report via `aramb_mcp.workflows_update_step` with the `step_id` from your dispatch User Message.** Your dispatch gives you the exact command (with the real `step_id`) under "Report your verdict" — run that. Pick exactly ONE:
 
 ```bash
 # CLEAN — work has integrity; the step completes and children promote:
-npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="done" outputs='{"audit":"clean","notes":"All criteria met."}'
+npx mcporter call aramb_mcp.workflows_update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="done" outputs='{"audit":"clean","notes":"All criteria met."}'
 
 # DIRTY, RETRY — gaps found and rounds remain; the platform re-runs the maker with these gaps:
-npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="pending" feedback='{"round":1,"previous_gaps":[{"id":"gap_1","fixed":false}],"new_gaps":[{"description":"POST /users returns 500 on valid input","severity":"critical"}]}'
+npx mcporter call aramb_mcp.workflows_update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="pending" feedback='{"round":1,"previous_gaps":[{"id":"gap_1","fixed":false}],"new_gaps":[{"description":"POST /users returns 500 on valid input","severity":"critical"}]}'
 
 # DIRTY, EXHAUSTED — gaps found and this is the final round (or the platform rejects your retry as budget-exhausted):
-npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="failed" error="3 rounds; integrity gaps remain: <list>"
+npx mcporter call aramb_mcp.workflows_update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="failed" error="3 rounds; integrity gaps remain: <list>"
 
 # CAN'T AUDIT — environment broken (working dir or files missing). Steps have NO master-escalation path, so this closes failed:
-npx mcporter call aramb_workflows.update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="failed" error="cannot audit: <reason>"
+npx mcporter call aramb_mcp.workflows_update_step project_id="<PROJECT_ID>" step_id="<STEP_UUID>" status="failed" error="cannot audit: <reason>"
 ```
 
 Verdict rules (same as the task checker — see the `checker-prompt` skill):
@@ -451,5 +451,5 @@ Verdict rules (same as the task checker — see the `checker-prompt` skill):
 ## Rules
 
 - ALWAYS use the top-level `edges` array on `create` / `update`. NEVER emit per-node `dependencies` / `dependsOn`.
-- ALWAYS use `aramb_workflows.update_step` with the `step_id` rendered into your dispatch User Message — there is no session-implicit variant.
+- ALWAYS use `aramb_mcp.workflows_update_step` with the `step_id` rendered into your dispatch User Message — there is no session-implicit variant.
 - ALWAYS close a workflow step before ending the session — without it the run stalls.
