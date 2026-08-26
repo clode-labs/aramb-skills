@@ -73,10 +73,11 @@ Each entry is structured the same way:
 
 ### Knowledge Base
 - **What it is:** reference material the agent answers *from* — policies, product facts, brand voice, FAQs.
-- **Supporting tools / params:** text/markdown YOU author → `aramb_mcp.agents_kb_add` (`kb_list` / `kb_remove` to manage). Binaries/PDFs → the user uploads them (you can't add inline).
+- **Supporting tools / params:** `aramb_mcp.agents_kb_add` — args are **`filename`** (must end `.txt`/`.md`) + **`content`** (NOT `title`/`name`; a `title=` call fails `missing required argument: filename`). `kb_list` / `kb_remove` to manage.
 - **When to use:** whenever the agent should answer from a fixed body of reference material rather than general knowledge or guesswork.
-- **Gotchas:** scope the persona to answer *from* the KB and say so when it doesn't know. Inline text you add yourself; a **binary/PDF is a build-summary completion item** (only the user can upload it).
-- **Where:** Configure → **Knowledge Base → Sources** (**Add document** for uploads).
+- **⚠️ NEVER fabricate the user's real-world data as `[PLACEHOLDER]` KB docs.** Their schedule, prices, policies, addresses, contacts — you don't have them, and **KB docs cannot be edited in the console** (Add / download / delete only — no inline edit), so a placeholder is *worse than none*: the user must delete each and re-add. Author a KB doc yourself **only** from content the user actually gave you (or genuinely-general reference that isn't their private data). Otherwise, list what to upload and make it a **completion item with a clickable link** to Knowledge Base → Add document — one doc or many, their format.
+- **Gotchas:** scope the persona to answer *from* the KB and to say it doesn't know (and hand off) when the KB is empty/silent — so the draft is correct before and after the upload. What you couldn't author from real content (text you don't have, and every binary/PDF) is a **build-summary completion item**.
+- **Where:** Configure → **Knowledge Base → Sources** (`/app/agents/<agent-id>/knowledge`, **Add document**).
 
 ---
 
@@ -158,10 +159,11 @@ Toolkits, browser, external MCP, model tools, and (emerging) voice all live here
 
 ### Secrets (Vault)
 - **What it is:** a labeled, write-only placeholder for a credential the platform doesn't manage for you — a custom API key, an external-MCP header token, a webhook signing secret.
-- **Supporting tools / params:** the vault skill → `aramb_mcp.vault_create_platform_secret` (a write-only placeholder the USER fills). You never see or ask for the real value.
+- **Supporting tools / params:** `aramb_mcp.vault_create_platform_secret` — args **`name`** + **`description`** (+ optional `value`, a dummy the user overwrites). A write-only placeholder the USER fills; you never see or ask for the real value.
 - **When to use:** only when the design introduces a genuine standalone credential (a custom API, an external MCP server's auth). **NOT for OAuth toolkits** — those are connected, not keyed.
-- **Gotchas:** you create the placeholder; the user fills the real value. **A placeholder secret is a build-summary completion item** ("put the real value in under the Vault tab").
-- **Where:** the agent's **Vault** tab.
+- **✅ DO create the placeholder with a dummy value + give a clickable edit link.** Unlike KB docs, **secrets ARE editable in the console** — so a dummy-valued placeholder is the *right* move (the opposite of KB): the user just edits the value in place. Create it, then make it a **build-summary completion item with a link** to the Vault tab.
+- **Gotchas:** you create the placeholder; the user fills the real value. Never put the real secret anywhere you can see it.
+- **Where:** the agent's **Vault** tab (`/app/agents/<agent-id>/vault`).
 
 ### Guardrails
 - **What it is:** enforced safety/behavior rules — refusals, escalation, hand-off, "don't invent policy".
