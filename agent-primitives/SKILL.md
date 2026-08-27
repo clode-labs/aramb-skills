@@ -54,18 +54,8 @@ Each entry is structured the same way:
 - **When to use:** leave default unless there's a concrete reason (cost, a capability the task needs).
 - **Where:** Configure → **Agent** (right rail, LLM picker).
 
-### Behavior mode — solo vs team
-- **What it is:** whether the agent works alone (solo) or can create tasks and delegate to sub-agents (team).
-- **Supporting tools / params:** `mode` (solo|team).
-- **When to use:** solo is the default; team only when the job is genuinely a multi-task orchestration the agent itself manages.
-- **Where:** Configure → **Agent** (right rail, Agent behavior).
-
-### Isolation
-- **What it is:** whether each end-user gets an isolated space (`per_user`) or all end-users share one (`shared`).
-- **Supporting tools / params:** `isolation_mode` (per_user|shared).
-- **When to use:** `per_user` is the default and almost always correct. Use `shared` only when every end-user is meant to see the same collective state.
-- **Gotchas:** ⚠️ `shared` collapses all end-users onto one space and changes what History/conversations show — don't set it casually; it has surprised builders. When unsure, `per_user`.
-- **Where:** Configure → **Agent**.
+### Behavior mode & isolation — fixed, don't touch
+- Every agent you build is **solo** (it works alone) and **per_user** (each end-user gets their own isolated space). These are the only supported modes — never set `mode=team` or `isolation_mode=shared`. There is no decision to make here; leave both at their defaults.
 
 ---
 
@@ -93,8 +83,8 @@ Toolkits, browser, external MCP, model tools, and (emerging) voice all live here
 - **Gotchas:** search before attaching; if nothing fits, tell the user skills can be added later from the Skills page.
 - **Where:** agent sidebar → **Skills** (its own page).
 
-### Toolkits / Integrations (Composio)
-- **What it is:** managed connections to external SaaS the agent uses — mail, sheets, drive, calendars, chat apps, CRMs (1,000+ services).
+### Toolkits / Integrations
+- **What it is:** managed connections to external SaaS the agent uses — mail, sheets, drive, calendars, chat apps, CRMs (1,000+ services). The provider behind them is an implementation detail; all you touch is `aramb_toolkits`.
 - **Supporting tools / params:** ground slugs with `aramb_mcp.toolkits_list_toolkits`; record on the agent as `required_toolkits` (uppercase catalog slugs). The USER connects each account.
 - **When to use:** whenever the job touches an external service you can name (send mail, read a sheet, post to Slack).
 - **Gotchas:** ⚠️ **you DECLARE, the user CONNECTS.** No OAuth, no authorization link, no inspecting connection state, never claim a toolkit is connected — a connection authorized through you lands on the wrong project. A run is gated until every required toolkit has a connected account. **Declared toolkits are a build-summary completion item.**
@@ -108,7 +98,7 @@ Toolkits, browser, external MCP, model tools, and (emerging) voice all live here
 - **Where:** set on the agent; no separate user connect step.
 
 ### External MCP servers
-- **What it is:** connect the agent to an external Model Context Protocol server so it gains that server's tools — a company's own MCP, or a third-party MCP not covered by Composio toolkits.
+- **What it is:** connect the agent to an external Model Context Protocol server so it gains that server's tools — a company's own MCP, or a third-party MCP not covered by the toolkit catalog.
 - **Supporting tools / params:** the connection (URL + write-only, multi-header credentials) is created by the USER in the console and proxied so the secret never enters the container. You can **read** an agent's connected servers with `aramb_mcp.agents_list_mcp_connections`; when exporting a template, mark each required/optional via `mcp_required`.
 - **When to use:** when the agent needs tools from a specific external MCP server the platform's managed toolkits don't cover — a bespoke internal service, a niche provider's MCP.
 - **Gotchas:** like toolkits, this is **declare/recommend for you, connect for the user** — you name the server the agent needs and why; the user creates the connection (its URL + header secrets) themselves. Its header secrets are handled through the agent's Vault. **A required external MCP is a build-summary completion item.**
