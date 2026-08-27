@@ -26,13 +26,17 @@ handoff, and one scheduled digest workflow."
    signals* from the request — data source, trigger cadence, output channel, decision points,
    human-in-loop needs — and match one **primary** archetype plus any **secondary** ones. A blend is
    normal and expected; compose their capability sets.
-3. **Let the match gate your questions.** Each archetype lists the 2-3 questions that genuinely change
-   its design. Ask *those*, one at a time. When two archetypes match closely **and imply different
-   primitives**, the fork between them is exactly what to ask about — that ambiguity is your signal to
-   ground, not to guess. **Ask each grounding question through `aramb_mcp.chat_ask_question`, never as
-   prose** — pass `options` (2–4 choices) whenever the answer is a discrete pick (which inbox, which
-   channel, what cadence) so the user clicks instead of typing; a question written into a paragraph
-   renders as unanswerable text in the console.
+3. **Extract first, then let the match gate the questions that are LEFT.** Subtract everything the
+   request already gave you — including config the user handed over (a pasted credential, a stated
+   cadence, a named channel): that is *decided*, never re-asked. Each archetype lists the questions that
+   genuinely change its design; ask only the ones the request did **not** already answer. **The count
+   scales with how little was given — as few as possible, a hard ceiling of five, often zero for a
+   detailed request.** When two archetypes match closely **and imply different primitives**, the fork
+   between them is exactly what to ask about — that ambiguity is your signal to ground, not to guess.
+   **Ask each grounding question through `aramb_mcp.chat_ask_question`, never as prose** — pass `options`
+   (2–4 choices) whenever the answer is a discrete pick (which inbox, which channel, what cadence) so the
+   user clicks instead of typing; a question written into a paragraph renders as unanswerable text in the
+   console.
 4. **Carry the recipe into Phase 2.** The archetype's default capability set is your starting point for
    the primitive-decision table — adjust for this specific request (add, drop, defer with a reason),
    don't apply it blindly.
