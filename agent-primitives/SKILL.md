@@ -148,7 +148,7 @@ Toolkits, browser, external MCP, model tools, and (emerging) voice all live here
 
 ### Agent triggers
 - **What it is:** make the AGENT itself run on its own — on a clock (cron), on a service event, or on a webhook.
-- **Supporting tools / params:** `aramb_mcp.agents_trigger_create` / `trigger_list` (kinds: cron, webhook, toolkit_event).
+- **Supporting tools / params:** `aramb_mcp.agents_trigger_create` / `trigger_list`. `trigger_create` requires `agent_id` + `name` (phrase it as the task) + `kind` (cron / webhook / toolkit_event); **cron also requires `cron_expression` (5-field, e.g. `0 8 * * *`)** + optional `cron_timezone` (IANA). Create it yourself when a cadence is given — never hand the schedule back, never use `workflows_set_schedule` for an agent-bound workflow.
 - **When to use:** when the agent should act without a user prompt — a Monday-morning digest, a "when a new lead arrives" reaction.
 - **Gotchas:** ⚠️ the trigger goes on the **agent**, never on a bound workflow. A trigger fires the agent's PUBLISHED version, so publish before relying on it. A recurring routine that's created but left un-triggered/draft will never fire — the classic recurring-digest failure.
 - **Where:** agent sidebar → **Triggers**.
