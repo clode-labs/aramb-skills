@@ -1,48 +1,35 @@
 ---
 name: agent-archetypes
 description: >
-  The Architect's library of agent patterns ("archetypes"). Use in Phase 1 (Decide WHAT) of every
-  build: match the user's problem to one or more archetypes to know the agent's shape before you
-  build it — its default capability set, the 2-3 questions that actually change the design, its
-  standard guardrails, and its known failure modes. This is what makes deciding WHAT to build
-  scientific and repeatable instead of improvised. Read it after Phase 0 enrichment, before you
-  write the plan.
+  An OPTIONAL shortcut library of a few common agent shapes for the Architect. It is NOT how you decide
+  what to build — that comes from Phase-0 research of the specific business (aramb-browser) plus the
+  primitive-decision table (agent-primitives), which works for any request. Reach for this only when a
+  request OBVIOUSLY matches one of these common shapes, for a head-start on the usual pieces, guardrails,
+  and failure modes. Most real requests won't fit cleanly — that's expected; never force one.
 ---
 
-# Agent Archetypes — the pattern library
+# Agent Archetypes — a shortcut library of common shapes
 
-A non-technical user hands the Architect a *problem*, not a design. An archetype is the bridge:
-a reusable recipe for a *kind* of agent that tells you, before you build anything, what this shape
-of agent usually needs and usually gets wrong. Matching the request to an archetype is Phase 1 of
-the four-phase flow (see SOUL.md). It turns "answer my emails and send me a Monday summary" into
-"this is *support-email-triage* + *recurring-digest*, so it needs a KB, an inbox toolkit, a human
-handoff, and one scheduled digest workflow."
+**This is an optional accelerator, not how you decide what to build.** You decide WHAT to build from
+Phase-0 research of the *specific* business (aramb-browser) + the primitive-decision table
+(agent-primitives) — that works for any request. These archetypes just name a handful of shapes that
+come up a lot, so when a request *obviously* is one, you get a head-start on the usual pieces,
+guardrails, and failure modes. **Most real requests won't match one cleanly — they blend, or they're
+off-catalogue entirely. That's expected. Never contort a request to fit a recipe.**
 
-## How to use this library
+## How to use it (only when a shape obviously fits)
 
-1. **Enrich first (Phase 0).** Understand the industry and how people solve this problem (aramb-browser)
-   before you match — the match is only as good as your understanding of the request.
-2. **Match multi-label, not single-select.** Real requests blend shapes. Extract the *capability
-   signals* from the request — data source, trigger cadence, output channel, decision points,
-   human-in-loop needs — and match one **primary** archetype plus any **secondary** ones. A blend is
-   normal and expected; compose their capability sets.
-3. **Extract first, then let the match gate the questions that are LEFT.** Subtract everything the
-   request already gave you — including config the user handed over (a pasted credential, a stated
-   cadence, a named channel): that is *decided*, never re-asked. Each archetype lists the questions that
-   genuinely change its design; ask only the ones the request did **not** already answer. **The count
-   scales with how little was given — as few as possible, a hard ceiling of five, often zero for a
-   detailed request.** When two archetypes match closely **and imply different primitives**, the fork
-   between them is exactly what to ask about — that ambiguity is your signal to ground, not to guess.
-   **Ask each grounding question through `aramb_mcp.chat_ask_question`, never as prose** — pass `options`
-   (2–4 choices) whenever the answer is a discrete pick (which inbox, which channel, what cadence) so the
-   user clicks instead of typing; a question written into a paragraph renders as unanswerable text in the
-   console.
-4. **Carry the recipe into Phase 2.** The archetype's default capability set is your starting point for
-   the primitive-decision table — adjust for this specific request (add, drop, defer with a reason),
-   don't apply it blindly.
-5. **Heed the failure modes.** Each recipe lists what builds of this shape get wrong. These are the
-   things to verify by tool result before you claim them done (an unscheduled digest workflow, an
-   assumed vendor backend, a missing escalation path).
+1. **Research first (Phase 0), then check for a shape.** Ground yourself in what *this* business does
+   and how AI helps it. If that lands squarely on one of the shapes below, use its capability set and
+   failure modes as a *starting point* — adjusted for this request, never applied blindly. If it
+   doesn't, ignore this file and design from the research + the primitive-decision table.
+2. **Compose, don't force.** A request may blend two shapes (support + a weekly digest) — compose their
+   pieces. If it fits none, that's fine and common — build from primitives.
+3. **Heed the failure modes.** Each recipe lists what builds of this shape get wrong (an unscheduled
+   digest, an assumed vendor backend, a missing escalation path) — verify against these by tool result.
+
+(Questioning discipline — extract-first, the five-question ceiling, batching via `chat_ask_questions` —
+lives in SOUL.md / AGENTS.md and applies to every build, archetype or not.)
 
 **This library is a starting vocabulary, not a closed set.** If a request doesn't fit any archetype,
 say so, build from the raw primitive-decision table, and note the new shape in memory/juno so the
@@ -115,25 +102,6 @@ An agent that takes a topic or question, gathers current information, and return
 - **Known failure modes:** answering from memory instead of actually looking; no structure to the output;
   building a workflow when a single well-prompted agent would do (only decompose if it genuinely repeats).
 
-## Content-Pipeline (multi-agent)
-
-An agent that produces finished content through genuinely distinct stages — the canonical case for a
-multi-agent workflow.
-
-- **Trigger signals:** "write and edit", "draft then review", "research → write → polish", "content
-  factory", "turn briefs into posts", a pipeline with clearly different roles.
-- **Core loop:** research/outline → draft → edit/fact-check → finalize, each a distinct role.
-- **Default capability set:** a **bound multi-agent workflow** with `agent_specs` for each distinct role ·
-  KB for brand voice/style · workflow invocation wiring (`instruction` + `enabled`) · optional publishing
-  toolkit (CMS, social).
-- **The questions that matter:** What are the real stages (are they genuinely distinct roles)? What's the
-  house style/voice? Where does the output go?
-- **Standard guardrails:** fact-check stage before publish; keep the human in the loop on final publish
-  unless explicitly told to auto-post.
-- **Known failure modes:** forcing a workflow when one prompt could do it (only build multi-agent when the
-  roles are genuinely distinct); putting invocation rules in the system prompt instead of the workflow's
-  `instruction`; leaving `enabled=false` so the agent never fires it.
-
 ## Recurring-Digest / Report
 
 An agent (or an agent-level trigger + workflow) that runs on a schedule and delivers a periodic summary.
@@ -151,20 +119,6 @@ An agent (or an agent-level trigger + workflow) that runs on a schedule and deli
   is an **agent-level trigger**, not something on the bound workflow. Verify the trigger exists and the
   agent is published before calling it live.
 
-## Meeting / Calendar-Coordinator
-
-An agent that manages scheduling — finds times, books, reschedules, reminds.
-
-- **Trigger signals:** "schedule meetings", "coordinate calendars", "book time with", "send reminders",
-  "find a slot".
-- **Core loop:** request → check availability → propose/book → confirm → remind.
-- **Default capability set:** a calendar toolkit (Google Calendar) · often an email/chat toolkit for
-  confirmations · persona with clear time-zone and double-booking rules · optional reminder trigger.
-- **The questions that matter:** Which calendar? Whose availability / what constraints? What channel for
-  confirmations and reminders?
-- **Standard guardrails:** never double-book; confirm before committing; respect working hours / time zones.
-- **Known failure modes:** assuming a calendar system; no confirmation step; ignoring time zones.
-
 ## Internal-Knowledge-QA
 
 An agent that answers questions from an organization's internal documents — an on-demand expert over a
@@ -181,56 +135,6 @@ knowledge base.
   guessing; don't leak documents outside the intended audience.
 - **Known failure modes:** answering from general knowledge instead of the KB; over-refusing when the answer
   IS in the docs; no fallback for the not-found case.
-
-## Data-Entry / Ops-Automator
-
-An agent that moves and transforms structured data between systems on request or on a trigger.
-
-- **Trigger signals:** "log this into a sheet", "sync X to Y", "update the CRM when", "process form
-  submissions", "file these into".
-- **Core loop:** input event/request → read source → transform → write to destination → confirm.
-- **Default capability set:** the source + destination toolkits (Sheets, CRM, DB) · often a **workflow** for
-  the multi-step transform · frequently an **event trigger** (on new row / new submission) · secrets if a
-  destination is a custom API.
-- **The questions that matter:** What's the source and destination? What triggers it (on demand vs on event)?
-  What's the mapping/transform?
-- **Standard guardrails:** validate before writing; don't overwrite/delete without confirmation; report what
-  it changed.
-- **Known failure modes:** silent data loss on a bad mapping; missing the trigger wiring; assuming schemas.
-
-## Review / Reputation-Responder
-
-An agent that monitors reviews/mentions and drafts or posts on-brand responses.
-
-- **Trigger signals:** "respond to reviews", "monitor mentions", "reply to feedback", "manage our
-  reputation", Google/Yelp/App-Store/social responses.
-- **Core loop:** new review/mention → assess sentiment → draft on-brand response → post or route for approval.
-- **Default capability set:** the review/social toolkit · KB for brand voice + response policy · an **event
-  trigger** on new review · persona with escalation rules for negative/legal cases.
-- **The questions that matter:** Which platforms? Auto-respond or draft-for-approval? What's the escalation
-  line for angry/legal reviews?
-- **Standard guardrails:** escalate legal threats, safety issues, and severe complaints to a human; never
-  argue with a customer; stay on-brand.
-- **Known failure modes:** auto-posting when the user wanted approval-first; tone mismatch (no brand KB);
-  no escalation for the cases that most need a human.
-
-## Onboarding-Concierge
-
-An agent that walks a new user/customer/employee through getting started — guided, stateful, helpful.
-
-- **Trigger signals:** "onboard new customers", "welcome and set up", "guide users through", "activation
-  assistant", "help people get started".
-- **Core loop:** greet → understand where they are → guide the next step → check in → hand off when needed.
-- **Default capability set:** persona with the onboarding path and tone · KB (setup docs, FAQs) · often a
-  channel toolkit (email/chat) · optional recurring check-in trigger · conversation starters that map to the
-  common first steps.
-- **The questions that matter:** What's the onboarding journey (the steps)? What channel? Where does a stuck
-  user get escalated?
-- **Standard guardrails:** don't overwhelm; meet the user where they are; hand off to a human when they're
-  blocked or frustrated.
-- **Known failure modes:** dumping the whole journey at once; no state/awareness of progress; no human handoff.
-
----
 
 ## When nothing fits
 
