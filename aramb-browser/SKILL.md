@@ -93,7 +93,13 @@ npx mcporter call aramb_browser.browser_list
 - Slug matches an existing browser → **reuse it**. `new_page browser=<app-slug>`, capture `target` from the footer, navigate.
 - No match → run the provider flow below.
 
-**Never call `browser_destroy`** — with one exception: the aramb→steel provider fallback (below), where you destroy the aramb session precisely to recreate the same slug on steel. Outside that, the browser persists across tasks and sibling sub-agents on the same app; destroying it forces every other task to recreate. TTL handles cleanup. When your work is done, leave it.
+`browser_list` reconciles the local registry against **live sessions on the server**, so it also flags **orphaned live sessions** — ones that are still running (and still billing) but have no local entry, typically left behind by an earlier session that failed mid-handshake. If it reports one, close it before creating a new browser:
+
+```bash
+npx mcporter call aramb_browser.browser_destroy session_id=<id>
+```
+
+**Never call `browser_destroy`** — with two exceptions: (1) the aramb→steel provider fallback (below), where you destroy the aramb session precisely to recreate the same slug on steel; (2) closing an **orphaned live session** that `browser_list` surfaced (`browser_destroy session_id=<id>`). Outside those, the browser persists across tasks and sibling sub-agents on the same app; destroying it forces every other task to recreate. When your work is done, leave it.
 
 ## `target=` on every page-level call
 
@@ -142,6 +148,18 @@ npx mcporter call aramb_browser.browser_destroy browser=<app-slug> \
 ```
 
 `browser_destroy browser=<app-slug>` unregisters the slug and auto-terminates its Aramb session. This is the **one sanctioned exception** to the never-destroy rule — provider fallback only, never to "reset" a working browser. Steel ships with its own residential proxy and managed captcha solving.
+
+**Before switching, clean up a half-created session.** A `browser_create` can provision a live session and *then* fail the CDP handshake — the create (or the chained first `navigate_page`/`new_page`) returns an error like `Protocol error (Target.getBrowserContexts): Target closed` or `upstream connection failed`. The session is still live on the server even though the browser is unusable, so it will keep billing until it expires. This counts as "aramb unavailable" (trigger 1) — but do NOT just recreate on steel, or you leak the first session. Reconcile and close it first:
+
+```bash
+npx mcporter call aramb_browser.browser_list
+# closes the slug's session if it registered locally:
+npx mcporter call aramb_browser.browser_destroy browser=<app-slug>
+# if browser_list shows an orphaned live session with no local entry, close it by id:
+npx mcporter call aramb_browser.browser_destroy session_id=<id>
+```
+
+Then recreate on steel with the switch command above. The rule: **every abandoned session gets a `browser_destroy` (by slug or by `session_id`) — never leave a failed session for TTL to reap.**
 
 Both providers fail → stop and report. Don't autonomously retry a third time or loop back to a provider that already failed.
 
