@@ -165,6 +165,7 @@ Both providers fail → stop and report. Don't autonomously retry a third time o
 
 ### Optional `browser_create` inputs
 
+- `context_name=<slug>` — the **managed per-user context** (see "Contexts" below). When the platform gives you a slug, always pass it: the platform loads that user's cookies/logged-in state on start and saves them before teardown, automatically. Distinct from `session_context` (Steel-only inline blob); use `context_name` for the managed per-user context.
 - `session_context=<string>` — replay a previously captured browser-context string (cookies + per-origin storage) inline at create time, instead of running `browser_load_context` afterwards. Pass the opaque value returned by `browser_save_context` verbatim. **Carry it onto the steel fallback too** — pass the same `session_context` (or re-run `browser_load_context` after create) so the fallback session keeps the logged-in state you loaded on aramb.
 - `use_proxy=true|false` — opt into the residential proxy. Defaults to true.
 - `auto_solve_captcha=true|false` — opt into automatic captcha solving. Defaults to true.
@@ -190,29 +191,31 @@ Don't retry a provider that already failed, don't loop, and don't recreate the b
 
 Let the user pick. When they take the viewer route, **don't refresh, navigate, or recreate the browser** while they're working — same session = same cookies + challenge progress. After they confirm they're through, re-run your last `evaluate_script` to extract from the now-cleared page.
 
-## Named contexts — save & reuse logged-in state
+## Contexts — persistent cookies + logged-in state
 
-A **context** is a tarball of cookies + per-origin storage saved against your user, identified by name. Replay it on future sessions to skip re-authentication.
+A **context** is a tarball of cookies + per-origin storage keyed to a single end user. Replaying it on a fresh browser restores that user's logged-in sessions so they don't re-authenticate every chat.
 
-### When to use — always ask the user first
+### Managed per-user context — automatic, the default
 
-**Never save or load a context without explicit user approval.** Both directions require a prompt.
+When your instructions give you a **context name** (a per-user slug the platform provides, e.g. `context_name=<slug>`), pass it straight through on `browser_create`:
 
-**Before `browser_create`** (any task that needs a new browser): run `browser_context_list`. If saved contexts exist, show them and let the user pick or skip:
+```bash
+npx mcporter call aramb_browser.browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 context_name=<slug>
+```
 
-> Starting a browser for `<app-slug>`. Saved contexts:
-> - `<name-1>`
-> - `<name-2>`
->
-> Load one to reuse a logged-in session, or start fresh? Reply with a name, or "skip".
+The platform then owns the whole lifecycle for that context, keyed to this user: it **loads it once the browser is ready** and **saves it before the browser is torn down** — automatically, on every session. So a user who logged into a site in one chat is still logged in the next.
 
-User picks a name → pass `session_context=<value>` to `browser_create`, or call `browser_load_context` after create. User says "skip" / no contexts exist → vanilla `browser_create`. Never auto-load.
+For this managed context you do **NOT**:
 
-**After a successful login** (you completed an auth flow, or the user confirmed they signed in via the viewer): ask before saving.
+- prompt the user to load or save it — it is automatic and per-user;
+- call `browser_save_context` / `browser_load_context` for it — the platform already does, on start and on teardown;
+- pass it as `session_context=` — that is a different (Steel-only, create-time) field. Use `context_name=`.
 
-> Logged in to `<site>`. Save this session as a context so the next run for `<app-slug>` skips the login? Suggested name: `<app-slug>-login`. (yes / no / different name)
+First run for a user has nothing to load yet — that is expected; the platform saves it at teardown so the next chat picks it up. If no context name was given to you, just create normally; there is nothing to prompt for.
 
-Only call `browser_context_create` + `browser_save_context` if the user confirms. If they decline, leave the state in memory — the live browser still works for this task; nothing persists.
+### Manual named contexts — only when the user explicitly asks
+
+The commands below remain for the explicit case where a **user asks** to save or reuse a *named* login themselves (outside the managed per-user context). Only that user-driven flow prompts; never save/load a manual context without the user asking for it.
 
 ### Commands
 
@@ -252,7 +255,7 @@ Error behavior:
 - **Always create on `provider=aramb` first.** Steel is the fallback, used only when aramb is unavailable (create fails / never ready / 503) or can't clear a captcha after waiting ~60s. Never open on steel by default.
 - **Never call `browser_destroy`** — except to switch aramb→steel on the provider fallback (destroy the aramb session, recreate the slug on steel, reapply any loaded `session_context`). Otherwise TTL cleans up.
 - **Deliver a `browser_session` artifact via `aramb_mcp.chat_deliver_artifacts` (a) immediately after `browser_create` succeeds, and (b) every time you stop to ask the user for input or attention.** Both are mandatory. Prose mentions don't open the workbench tab.
-- **Never save or load a context without explicit user approval.** Before `browser_create`, run `browser_context_list` and prompt the user to pick or skip. After a successful login, prompt before `browser_save_context`.
+- **Managed per-user context: when given a `context_name`, always pass it on `browser_create`** — the platform auto-loads it on start and auto-saves it before teardown, per user. Do NOT prompt for it and do NOT call `browser_save_context`/`browser_load_context` for it. Only the explicit, user-requested *manual* named-context flow prompts.
 - `evaluate_script` uses `function=` (NOT `script=`). Body is a JS arrow function: `function="() => JSON.stringify(...)"`.
 - On CAPTCHA / bot wall / 403: **wait 30-60s** for aramb to clear it in the background, then re-check. Still blocked → **terminate aramb and switch to `provider=steel`** (reapply any loaded context) and give steel the same 30-60s. Only if steel is also still blocked, deliver the session chip and stop to ask the user — describe what you saw, never auto-recommend a specific fix.
 - Snapshots are heavy. Use only before click or when stuck. Prefer `evaluate_script` for data extraction.
@@ -263,8 +266,8 @@ Error behavior:
 ```bash
 npx mcporter call aramb_browser.browser_list
 # slug present → new_page browser=<app-slug>, capture target, navigate
-# slug absent  → browser_context_list, prompt user to load a saved context or skip,
-#                then browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 [session_context=<value>]
+# slug absent  → browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 [context_name=<slug>]
+#                (pass context_name=<slug> when the platform gave you one — it auto-loads/saves per user)
 #                && navigate_page browser=<app-slug> url=...
 #                aramb unavailable OR can't clear a captcha after ~60s → browser_destroy browser=<app-slug>
 #                && browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30 [session_context=<value>]  (steel = fallback)
