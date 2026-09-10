@@ -69,11 +69,11 @@ Every browser session you open or attach to must be surfaced to the user via `ar
 ```bash
 npx mcporter call aramb_mcp.chat_deliver_artifacts \
   project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
-  artifacts='[{"kind":"browser_session","session_id":"<app-slug>","title":"<short label>"}]' \
+  artifacts='[{"kind":"browser_session","session_id":"<session-id from browser_create footer>","title":"<short label>"}]' \
   summary="<one-line context, e.g. 'LinkedIn login — open the viewer and sign in'>"
 ```
 
-- `session_id` is the browser name you passed to `browser_create` (the `<app-slug>`). It IS the session identifier — reuse it verbatim. If `browser_create` returned a distinct opaque id in its response footer, prefer that.
+- `session_id` is the **`Session ID` value from the `browser_create` response footer** — the opaque per-session id, e.g. `Session ID: <uuid>`. Copy that verbatim. Do **not** pass the `<app-slug>`: the slug is only the browser *name* (the `browser=` handle for page calls), and the workbench can't resolve a slug — delivering it makes the viewer fail to open. If you reused an existing browser via `browser_list`, take its `session_id` from that listing.
 - `title` is a short human label: `"LinkedIn login"`, `"Reddit feed scrape"`, `"captcha — needs you"`.
 - Copy `project_id` + `application_id` verbatim from the `## Current Context` block of your User Message — same rule as every other MCP tool.
 - Mentioning the session in chat prose without the artifact is forbidden — the workbench tab won't open from prose, and "open the viewer" instructions become dead text.
@@ -272,7 +272,7 @@ npx mcporter call aramb_browser.browser_list
 # Immediately after a successful create OR a list-reuse, deliver the session chip:
 npx mcporter call aramb_mcp.chat_deliver_artifacts \
   project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
-  artifacts='[{"kind":"browser_session","session_id":"<app-slug>","title":"<short label>"}]' \
+  artifacts='[{"kind":"browser_session","session_id":"<session-id from browser_create footer>","title":"<short label>"}]' \
   summary="Browser is up — opened the workbench tab so you can watch."
 ```
 
