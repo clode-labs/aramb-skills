@@ -35,16 +35,19 @@ writing a webpage, an HTML file, or a script.
    It returns a `chat_id` and builds **asynchronously** (minutes). Don't block, and
    don't drop it — this build is yours to finish. Optionally
    `auto_publish=true` to have it publish when done.
-3. **Set a watcher** so you come back on your own (see the `watchers` skill):
-   `aramb_mcp.my_triggers_create_watcher(message="check the architect on chat
-   <chat_id> and continue the build", in="2m")`.
-4. **On wake, find out what actually happened.** A watcher carries no state — go
-   read it: `aramb_mcp.a2a_get_messages(chat_id)`.
+3. **End your turn — the platform wakes you automatically.** You do NOT set a
+   watcher for a delegated build. When the Architect responds or finishes (including
+   when it pauses to ask "Go ahead?"), you are woken back in this conversation on your
+   own (see the `wake-subscriptions` skill). Say what you kicked off and stop; don't
+   poll.
+4. **On wake, find out what actually happened.** The wake carries no state — go read
+   it: `aramb_mcp.a2a_get_messages(chat_id)`.
    - If the Architect asks a question → relay it to the user in short, plain
      WhatsApp words, take their answer, and feed it back with
-     `aramb_mcp.a2a_send_message(chat_id=<chat_id>, message=…)`; then re-arm a
-     watcher.
-   - If it's still working / not done → re-arm a watcher. Keep looping.
+     `aramb_mcp.a2a_send_message(chat_id=<chat_id>, message=…)`; then end your turn
+     again (the next response wakes you automatically).
+   - If it's still working / not done → end your turn; you'll be woken on the next
+     update. Keep looping until done.
 5. **Verify before you claim.** When the Architect says it built the agent, confirm
    the ground truth — `aramb_mcp.agents_get` (or `agents_list`): does the agent
    actually exist? "The Architect said so" is **not** enough; only report it built
@@ -62,7 +65,8 @@ writing a webpage, an HTML file, or a script.
 - `aramb_mcp.a2a_send_message` — talk to the Architect (`chat_id`) or any published
   agent (`agent_id` starts, returns a `chat_id`).
 - `aramb_mcp.a2a_get_messages(chat_id)` — read any agent's reply.
-- `aramb_mcp.my_triggers_create_watcher` — come back to async work (see `watchers`).
+- Delegated work wakes you **automatically** — no tool needed (see `wake-subscriptions`).
+  For a time-based check that isn't a delegation, `aramb_mcp.wake_at`.
 - `aramb_mcp.agents_list` / `agents_get` — see and **verify** the agents you manage.
 - `aramb_mcp.agents_publish` — make a built agent live.
 
