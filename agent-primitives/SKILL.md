@@ -153,8 +153,8 @@ Toolkits, browser, external MCP, model tools, and (emerging) voice all live here
 ## E · Credentials & safety
 
 ### Secrets (Vault)
-- **What it is:** a labeled, write-only placeholder for a credential the platform doesn't manage for you — a custom API key, an external-MCP header token, a webhook signing secret.
-- **Supporting tools / params:** `aramb_mcp.vault_create_platform_secret` — args **`name`** + **`description`** (+ optional `value`, a dummy the user overwrites). A write-only placeholder the USER fills; you never see or ask for the real value.
+- **What it is:** a labeled, write-only **platform** placeholder for a credential the platform doesn't manage for you — a custom API key, an external-MCP header token, a webhook signing secret. This is the **org-wide, user-fills** class (scope `{org}/platform`), shared across the org's projects and readable only by the platform on the agent's behalf. It is DISTINCT from the agent's own secrets (`vault_store_secret`, see the `vault-mcp` skill), which the agent writes and reads itself at `agent` (project-private, default) or `workspace` (shared across the agent's family) scope.
+- **Supporting tools / params:** `aramb_mcp.vault_create_platform_secret` — args **`name`** + **`description`** (+ optional `value`, a dummy the user overwrites). A write-only placeholder the USER fills; you never see or ask for the real value. (To store a credential the agent itself keeps or shares, use `vault_store_secret` with `scope` instead — not this.)
 - **When to use:** only when the design introduces a genuine standalone credential (a custom API, an external MCP server's auth). **NOT for OAuth toolkits** — those are connected, not keyed.
 - **✅ DO create the placeholder with a dummy value + give a clickable edit link.** Unlike KB docs, **secrets ARE editable in the console** — so a dummy-valued placeholder is the *right* move (the opposite of KB): the user just edits the value in place. Create it, then make it a **build-summary completion item with a link** to the Vault tab.
 - **Gotchas:** you create the placeholder; the user fills the real value. Never put the real secret anywhere you can see it.
