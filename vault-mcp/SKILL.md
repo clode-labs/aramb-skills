@@ -2,19 +2,35 @@
 name: vault-mcp
 description: >
   Your own secure secret vault via the aramb_mcp server (vault_* tools). Store, fetch, list, and
-  delete your project-scoped secrets (API tokens, keys, credentials) — kept in a
-  real secrets manager, never in chat, files, or git. Also create write-only
+  delete your secrets (API tokens, keys, credentials) at two scopes — private to
+  your project, or shared across your family of agents in the workspace — kept in
+  a real secrets manager, never in chat, files, or git. Also create write-only
   placeholder secrets for the USER to fill with a credential you must not see.
-  Use when you need to save or retrieve a credential for yourself, or to prompt
-  the user for one. NOT for GitHub repository secrets (that is `gh secret set`).
+  Use when you need to save or retrieve a credential for yourself, to share one
+  across your agents, or to prompt the user for one. NOT for GitHub repository
+  secrets (that is `gh secret set`).
 ---
 
 # Secret Vault
 
-The vault is **your private, secure secret store**. Secrets you put here live in
-a real secrets manager, **scoped to you automatically** — no other agent can read
-them. Use it to keep credentials out of chat, files, and git while still being
-able to retrieve them later.
+The vault is **your secure secret store**. Secrets you put here live in a real
+secrets manager, scoped automatically from your signed identity — you never pass
+an org, workspace, or project. Use it to keep credentials out of chat, files, and
+git while still being able to retrieve them later.
+
+Your secrets live at one of **two scopes** (you pick with the `scope` arg on a
+write; the default is unchanged from before):
+
+- **`agent` (default)** — private to **your project**. No other agent sees it.
+  This is exactly the old behavior; omit `scope` and nothing changes.
+- **`workspace`** — **shared across your family of agents** in the same workspace.
+  Use it for a credential your sibling agents should all reach (a shared API key).
+  Other agents in **your** workspace can read it; agents in other workspaces or
+  orgs never can.
+
+**Reads resolve most-specific-first:** `get_secret` returns your project secret if
+one exists, otherwise falls back to the workspace secret. So a project secret
+**shadows** a same-named workspace one for you, without affecting other agents.
 
 ## When to use this
 
@@ -36,9 +52,13 @@ Never claim you have no secrets tool — you do, it is the vault.
 
 ## Model
 
-- **Scoped to you automatically.** Every secret is keyed to you from your signed
-  identity and session — you do not pass any org/project/scope. You only ever see
-  and touch your own secrets.
+- **Two scopes within your own identity.** `agent` (default) is private to your
+  project; `workspace` is shared across your agents in the workspace. You pass only
+  the tier name on a write (`scope="agent"|"workspace"`) — the org/workspace/project
+  ids are always derived from your signed identity, never passed.
+- **Reads fall back project → workspace.** `get_secret`/`list_secrets` resolve your
+  project scope first, then the workspace scope. A project secret shadows a
+  same-named workspace secret on read; `list_secrets` shows the union of both.
 - **A secret is a single named string value.** e.g. a secret named `github`
   holding `ghp_...`, or `openai` holding `sk-...`. One name → one string (not a
   multi-key object).
@@ -53,14 +73,22 @@ npx mcporter call aramb_mcp.vault_<tool> name="<secret-name>" value="<secret str
 
 - `name` is a plain string (the key).
 - `value` (store only) is the secret string stored under that name.
+- `scope` (store/delete only) is `agent` (default) or `workspace`; omit it for the
+  old project-private behavior.
 - All args are named `key="value"`; no positional args.
 
 ## Tools
 
-- `store_secret` — create/overwrite one of your secrets. Args: `name`, `value`.
-- `get_secret` — fetch a secret's string value. Args: `name`.
-- `list_secrets` — list the names of all your secrets. No args.
-- `delete_secret` — delete a secret. Args: `name`.
+- `store_secret` — create/overwrite one of your secrets. Args: `name`, `value`,
+  optional `scope` (`agent` default | `workspace`). `scope="workspace"` shares it
+  across your agents; omit for project-private.
+- `get_secret` — fetch a secret's string value. Args: `name`. Resolves your project
+  scope first, then falls back to the workspace scope.
+- `list_secrets` — list the names you can resolve (the union of your project and
+  workspace scopes). No args.
+- `delete_secret` — delete a secret. Args: `name`, optional `scope` (`agent`
+  default | `workspace`). Deletes only the targeted scope — deleting your project
+  copy never removes the workspace secret, and vice versa.
 - `create_platform_secret` — create a **write-only placeholder** for the **user**
   to fill with the real value. Args: `name`, `description` (guidance shown to the
   user), `value` (optional placeholder). Create-only: it fails if the secret
@@ -88,10 +116,13 @@ read it back — the platform uses it on your behalf.
 ## Examples
 
 ```bash
-# Store a GitHub token securely (returns {"ok":true} — nothing else)
+# Store a GitHub token securely, private to this project (returns {"ok":true})
 npx mcporter call aramb_mcp.vault_store_secret name="github" value="ghp_xxx"
 
-# Retrieve it later
+# Share one key across all your agents in this workspace
+npx mcporter call aramb_mcp.vault_store_secret name="shared_api_key" value="sk_live_xxx" scope="workspace"
+
+# Retrieve it later (resolves your project scope, then the workspace scope)
 npx mcporter call aramb_mcp.vault_get_secret name="github"
 
 # What do I have stored?
@@ -110,7 +141,11 @@ npx mcporter call aramb_mcp.vault_delete_secret name="github"
   a file, git, `gh secret set`, or the memory tool.
 - Never print a stored secret's value back to the user unless they explicitly
   ask you to retrieve it; confirm with the name only ("Stored it as `github`.").
-- You never pass org/agent/scope — the vault scopes to you from your token.
+- You never pass org/workspace/project ids — the vault derives them from your
+  token. The only scope you choose is the `scope` tier on a write: `agent`
+  (default, project-private) or `workspace` (shared across your agents).
+- Use `workspace` scope only for a secret your sibling agents genuinely should
+  share; keep per-agent credentials at the default `agent` scope.
 - When a credential is one you must not see (a user's password / personal token),
   use `create_platform_secret` to have the USER fill it — do not ask for the raw
   value in chat.
