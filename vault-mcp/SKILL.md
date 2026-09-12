@@ -6,9 +6,11 @@ description: >
   your project, or shared across your family of agents in the workspace — kept in
   a real secrets manager, never in chat, files, or git. Also create write-only
   placeholder secrets for the USER to fill with a credential you must not see.
-  Use when you need to save or retrieve a credential for yourself, to share one
-  across your agents, or to prompt the user for one. NOT for GitHub repository
-  secrets (that is `gh secret set`).
+  Also list the user's saved browser credentials (logins, addresses, cards) to
+  fill into web forms with the browser skill. Use when you need to save or
+  retrieve a credential for yourself, to share one across your agents, to prompt
+  the user for one, or to discover a saved login to sign in with. NOT for GitHub
+  repository secrets (that is `gh secret set`).
 ---
 
 # Secret Vault
@@ -113,6 +115,37 @@ your guidance, then tell the user it is waiting for them to fill it in. It is
 create-only (it never clobbers a value the user already supplied), and you cannot
 read it back — the platform uses it on your behalf.
 
+## Browser credentials — the user's saved logins, addresses and cards
+
+Separate from your own secrets above. The user can save **browser credentials**
+in their console — logins, addresses and cards — for their agents to use when
+filling forms on live web pages. They are **scoped to the user** (shared across
+all the user's agents), **read-only to you**, and their values are **never**
+returned to you. You can only _discover_ them here; the browser skill fills a
+value straight into a page without it ever passing through you.
+
+`vault_list_browser_creds` — list the user's saved browser credentials. No args.
+Each entry has:
+
+- `alias` — the name to reference it by (e.g. `LINKEDIN_ACC1`).
+- `kind` — what it is: `site_creds` (a site login), `address`, or `card`.
+- `fields` — the field names inside it (e.g. `["username","password"]`), never
+  the values.
+
+Use `kind` to pick the right credential for the task — a `site_creds` to sign
+in, an `address` or `card` to complete a checkout — then reference a single field
+as `"ALIAS.field"` (e.g. `LINKEDIN_ACC1.username`) to fill it with the browser
+skill. The value goes from the vault into the page; it never reaches you.
+
+```bash
+# What browser credentials has the user saved?
+npx mcporter call aramb_mcp.vault_list_browser_creds
+```
+
+There is no store / get / delete for browser credentials here — the user manages
+them in their console (an "Add credential" flow). If the user has none for a form
+you hit, ask them to add it there; never ask for these values in chat.
+
 ## Examples
 
 ```bash
@@ -133,6 +166,9 @@ npx mcporter call aramb_mcp.vault_create_platform_secret name="SSH_PASSWORD" des
 
 # Remove one
 npx mcporter call aramb_mcp.vault_delete_secret name="github"
+
+# What browser credentials (logins / addresses / cards) has the user saved?
+npx mcporter call aramb_mcp.vault_list_browser_creds
 ```
 
 ## Rules
@@ -151,3 +187,6 @@ npx mcporter call aramb_mcp.vault_delete_secret name="github"
   value in chat.
 - A successful `store_secret` / `create_platform_secret` returns `{"ok":true}` —
   report success from that, do not fabricate a value or a location.
+- `vault_list_browser_creds` only _lists_ the user's browser credentials (alias,
+  kind, field names) — never their values. Pick by `kind`, reference a field as
+  `"ALIAS.field"`, and let the browser fill it; never ask for these values in chat.
