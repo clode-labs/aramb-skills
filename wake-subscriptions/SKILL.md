@@ -4,8 +4,8 @@ description: >
   How you get woken to drive async / long-running work to done. TWO mechanisms:
   (1) AUTOMATIC — when you delegate a job (aramb_a2a / aramb_architect) and end your
   turn, the platform wakes you by itself the moment that job responds; you do NOT
-  set anything. (2) TIMED — you wake YOURSELF at a chosen time with aramb_wake.at
-  (one-shot) or aramb_wake.schedule (recurring), for genuinely clock-based follow-ups
+  set anything. (2) TIMED — you wake YOURSELF at a chosen time with aramb_mcp.wake_at
+  (one-shot) or aramb_mcp.wake_schedule (recurring), for genuinely clock-based follow-ups
   ("re-check in 10 min", "every morning at 9"). Use whenever a job can't finish in
   one turn and no one is there to poke you. NOT for firing another agent's workflow
   on an external service event (that's a toolkit trigger).
@@ -50,17 +50,17 @@ For a genuinely **time-based** follow-up that isn't tied to a delegated job — 
 the deploy in 10 minutes", "remind the user tomorrow morning", "post a digest every
 day at 9" — wake yourself:
 
-- `aramb_wake.at(message, in | fire_at)` — a **one-shot** self-wake. `in` is a Go
+- `aramb_mcp.wake_at(message, in | fire_at)` — a **one-shot** self-wake. `in` is a Go
   duration (`"30s"`, `"2m"`, `"2h"`); `fire_at` is an absolute RFC3339 UTC time. Pass
   exactly one. `message` is handed back to you verbatim on wake, so write a clear
   instruction to your future self **including any id you'll need** (a `chat_id`, an
   agent id, a browser session id / `context_name`).
-- `aramb_wake.schedule(name, cron_expression, cron_timezone)` — a **recurring**
+- `aramb_mcp.wake_schedule(name, cron_expression, cron_timezone)` — a **recurring**
   wake, for "every morning / every hour / every Monday". Use this (not a chain of
   one-shots) when the cadence repeats. `cron_expression` is a standard 5-field cron;
   `cron_timezone` is IANA (default UTC).
-- `aramb_wake.cancel(watcher_id)` — drop a pending one-shot.
-- `aramb_wake.list` — see your pending wakes (and their ids).
+- `aramb_mcp.wake_cancel(watcher_id)` — drop a pending one-shot.
+- `aramb_mcp.wake_list` — see your pending wakes (and their ids).
 
 These wakes are invisible and private to you — the user never sees them fire; they
 only see you follow up when there's something real to say.
@@ -72,7 +72,7 @@ timed-wake case**, because the browser often **blocks on something you can't fin
 one turn** — and no one is watching it to nudge it along. The automatic completion-wake
 does NOT cover this: it fires only for delegated `aramb_a2a` / `aramb_architect` jobs,
 and a browser wait is not a delegated job. So a browser wait needs a **timed
-`aramb_wake.at`** you set yourself.
+`aramb_mcp.wake_at`** you set yourself.
 
 The loop, whenever a browser step will take time OR needs the user to act out-of-band:
 
@@ -80,7 +80,7 @@ The loop, whenever a browser step will take time OR needs the user to act out-of
    a `browser.creds` vault link (see the `aramb-browser` skill's *"Login & credential
    walls"*), or you kicked off a slow checkout, a background captcha auto-solve, or a
    page you must poll.
-2. **End your turn and set `aramb_wake.at`** — put in the `message` everything future-you
+2. **End your turn and set `aramb_mcp.wake_at`** — put in the `message` everything future-you
    needs to resume: the browser **session id / `context_name`**, the site, the alias, and
    what you were mid-doing. Pick a sensible delay (a creds fill: minutes; a slow page:
    seconds-to-minutes).
@@ -122,7 +122,7 @@ Then end the wake in exactly ONE typed outcome — this is the decision, not loo
   real result to deliver.
 - **continue** — re-arm and keep going, and be honest about whether anything actually
   changed. For a delegated job, just end your turn again (the automatic wake fires on the
-  next response); for a time-based / browser check, set a **new** `aramb_wake.at`. If
+  next response); for a time-based / browser check, set a **new** `aramb_mcp.wake_at`. If
   **nothing changed** this tick (`progressed = false` — the delegate is still working, the
   vault is still empty, the page hasn't moved), re-arm **silently**: do NOT message the
   user. A silent re-check that surfaces "still working / nothing yet / all done" is spam —
@@ -134,18 +134,18 @@ Then end the wake in exactly ONE typed outcome — this is the decision, not loo
   filled past your wait budget, an approval, an outage). Say plainly what's blocking and
   what you need, then stop or park — don't keep re-arming into a wall.
 
-A one-shot `aramb_wake.at` does **not** repeat — a `continue` re-arm is how you carry a
+A one-shot `aramb_mcp.wake_at` does **not** repeat — a `continue` re-arm is how you carry a
 slow, time-based job to the last mile. Keep the interval sensible (short for something
 imminent, longer for a slow build), and don't re-arm forever on no progress: after several
 silent no-progress ticks, `stop` or go `blocked` rather than waking indefinitely (the
 platform also caps runaway re-arm chains). For a genuinely repeating cadence, use
-`aramb_wake.schedule` instead of re-arming forever.
+`aramb_mcp.wake_schedule` instead of re-arming forever.
 
 ## Honesty
 
 Never tell the user you're "watching", "monitoring", or "keeping an eye on" something
 unless it's actually true — either you delegated a job (whose completion-wake is
-automatic) or you set an `aramb_wake.at` / `aramb_wake.schedule`. A claimed watch that
+automatic) or you set an `aramb_mcp.wake_at` / `aramb_mcp.wake_schedule`. A claimed watch that
 doesn't exist is a broken promise the user is counting on.
 
 And stay **silent by default**: a wake that found nothing new says nothing (that's a

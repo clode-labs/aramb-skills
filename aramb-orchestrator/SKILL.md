@@ -66,7 +66,7 @@ writing a webpage, an HTML file, or a script.
   agent (`agent_id` starts, returns a `chat_id`).
 - `aramb_mcp.a2a_get_messages(chat_id)` — read any agent's reply.
 - Delegated work wakes you **automatically** — no tool needed (see `wake-subscriptions`).
-  For a time-based check that isn't a delegation, `aramb_wake.at`.
+  For a time-based check that isn't a delegation, `aramb_mcp.wake_at`.
 - `aramb_mcp.agents_list` / `agents_get` — see and **verify** the agents you manage.
 - `aramb_mcp.agents_publish` — make a built agent live.
 
