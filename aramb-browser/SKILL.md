@@ -42,7 +42,8 @@ system prompt on external surfaces); trust that fact over any instinct below.
 
 Every step below that mentions a chip, viewer, or panel is a **viewer-only** step. On a
 no-viewer channel, skip it and take the autonomous path instead — at a login or
-credential wall that means **check the vault → `aramb_vaultlink.request_browser_creds_link`
+credential wall that means **check browser creds (`aramb_mcp.vault_list_browser_creds`) →
+`aramb_browser.vault_fill` if present, else `aramb_vaultlink.request_browser_creds_link`
 → wake and resume** (see *Login & credential walls*), never "open the viewer".
 
 ## Fetch hierarchy — reach for the browser LAST
@@ -106,48 +107,68 @@ npx mcporter call aramb_mcp.chat_deliver_artifacts \
 
 Re-fire on every new attention-request even if you've already delivered the chip earlier in the conversation — each call repins the tab and signals "look here now".
 
-## Login & credential walls — check the vault first, then collect
+## Login & credential walls — check browser creds, then fill or collect
 
 When you hit a **login form, an auth wall, or a payment form**, run this fixed sequence. It
-is how you keep going without a human watching, and it is the single correct path — it
-agrees with the vault guidance brahmi injects into your prompt.
+is how you keep going without a human watching, and it is the single correct path.
 
-1. **Check the vault FIRST — always, before anything else.** Look up the credential for
-   this site/alias: `vault_list_secrets` (what's stored) then `vault_get_secret name=<alias>`
-   (the value). You CAN read your own vault; a stored credential means you do **not**
-   collect again.
-   - **Present →** go to step 3 (inform), then use it.
-   - **Absent →** go to step 2 (collect).
-2. **Collect — the path depends on whether there is a viewer** (see *Know your channel*):
+**The browser-creds security model — internalise this first.** Website logins live in a
+dedicated **browser-credential store**, and **you (the agent) never read a browser
+credential's value** — not from chat, not from a tool. You only ever see its **metadata**
+(which aliases exist, what fields each has). To use one, the **browser** fetches and types
+the value itself via `vault_fill`; the plaintext never passes through you or the chat. That
+separation *is* the guarantee — do not try to read the value.
+
+> This store is SEPARATE from your own agent vault (`vault_store_secret` /
+> `vault_get_secret` / `vault_list_secrets`, the `vault-mcp` skill), which holds **your own
+> API keys** for tasks. Those agent-vault tools are NOT for website logins, and you must
+> never use `vault_get_secret` to read a website credential — a browser credential's value
+> is never read into the agent at all.
+
+1. **Check the browser-creds store FIRST — always, before anything else.** Call
+   `aramb_mcp.vault_list_browser_creds` — it returns the aliases you have and each one's
+   field names (**metadata only, never values**). See whether creds for this site/alias
+   already exist.
+   - **Present →** go to step 2 (inform, then fill).
+   - **Absent →** go to step 3 (collect).
+2. **Present → inform, then let the BROWSER fill (you never touch the value).** After
+   informing (per the gate below), fill each field with `aramb_browser.vault_fill`:
+   `session_id` (the live session), `target` (the login/payment URL or origin), `key` in
+   the form `"ALIAS.field"` (e.g. `"linkedin.username"`), and the `selector` of the input.
+   One call per field. The browser fetches the value and types it directly; it returns only
+   confirmation, never the secret. Then continue the login / payment.
+3. **Absent → collect. The path depends on whether there is a viewer** (see *Know your
+   channel*):
    - **No viewer (WhatsApp / Slack / voice) → your FIRST action is
      `aramb_vaultlink.request_browser_creds_link`**, with a short `alias` (e.g.
      `"linkedin"`), the exact `fields` the form needs (e.g. `["username","password"]`), and
      a human `label`. It sends the user a secure one-time link to add those fields to their
-     vault. Do NOT ask them to type the values in chat, and do NOT tell them to "log in in
-     the browser" — there is no browser they can reach. **This is the primary action, not a
-     fallback.** After emitting the link, **end your turn and set an `aramb_wake.at`** so
-     you come back when they've filled it (see the `wake-subscriptions` skill's *Waking
-     around browser work*). On the wake, **re-open the SAME managed browser context** (same
-     session id / `context_name`), `vault_get_secret`, and continue.
+     browser-creds store. Do NOT ask them to type the values in chat, and do NOT tell them
+     to "log in in the browser" — there is no browser they can reach. **This is the primary
+     action, not a fallback.** After emitting the link, **end your turn and set an
+     `aramb_wake.at`** so you come back when they've filled it (see the `wake-subscriptions`
+     skill's *Waking around browser work*). On the wake, **re-open the SAME managed browser
+     context** (same session id / `context_name`), re-check with
+     `aramb_mcp.vault_list_browser_creds`, then `aramb_browser.vault_fill` and continue.
    - **Viewer present (console web) →** you may instead offer the viewer route ("open the
      browser and sign in yourself"), OR still use `request_browser_creds_link` — both work,
-     and the link keeps the creds in the vault for next time.
-3. **Inform before you USE a stored credential (required).** Never fill a saved credential
-   silently — tell the user first. Two tiers, keyed on the credential's **risk class**
-   (structural, not guessed: class is `payment` iff the fields include `card_number` /
-   `cvv` / `expiry` / `upi`, else `login`):
-   - **Login-class** — inform **once** per task: *"Using your saved LinkedIn login to sign
-     in."* Don't re-nag every step.
-   - **Payment-class** — stricter: inform **before EVERY transaction, with the amount and
-     recipient**: *"About to pay ₹3,499 to Flipkart with your saved card ending 1234 —
-     going ahead."* A single "once" is never enough for money; each charge is a distinct
-     movement and its amount is exactly what the user is consenting to.
-4. **Continue** the login / payment in the same session once the credential is available.
+     and the link keeps the creds in the store for next time.
+
+**Inform before you USE a stored credential (required).** Never fill a saved credential
+silently — tell the user first, then `vault_fill` (never reveal the value). Two tiers,
+keyed on the credential's **risk class** (structural, not guessed: class is `payment` iff
+the fields include `card_number` / `cvv` / `expiry` / `upi`, else `login`):
+- **Login-class** — inform **once** per task: *"Using your saved LinkedIn login to sign
+  in."* Don't re-nag every step.
+- **Payment-class** — stricter: inform **before EVERY transaction, with the amount and
+  recipient**: *"About to pay ₹3,499 to Flipkart with your saved card ending 1234 — going
+  ahead."* A single "once" is never enough for money; each charge is a distinct movement
+  and its amount is exactly what the user is consenting to.
 
 `request_browser_creds_link` is emitted **only when nothing is stored** — never when the
-credential already exists (then you skip straight to inform-and-use). This is the primary
-fix for the WhatsApp case: at a login wall with no saved creds, the link is your next
-action, not "open the viewer".
+credential already exists (then you skip straight to inform-and-`vault_fill`). This is the
+primary fix for the WhatsApp case: at a login wall with no saved creds, the link is your
+next action, not "open the viewer".
 
 ## Browser name = app slug. Always reuse.
 
@@ -332,7 +353,7 @@ Error behavior:
 - **Never call `browser_destroy`** — except to switch aramb→steel on the provider fallback (destroy the aramb session, recreate the slug on steel, reapply any loaded `session_context`). Otherwise TTL cleans up.
 - **Know your channel first (see *Know your channel*).** On a **no-viewer** channel (WhatsApp / Slack / voice) NEVER tell the user to "tap the chip", "open the viewer", "log in in the live browser", or "do it in the browser panel" — none of it exists there. Drive the browser autonomously.
 - **Deliver a `browser_session` artifact via `aramb_mcp.chat_deliver_artifacts` — VIEWER CHANNELS ONLY** — (a) immediately after `browser_create` succeeds, and (b) every time you stop to ask the user for input or attention. Both are mandatory **when there is a viewer**; on a no-viewer channel, SKIP the chip entirely (it's inert). Prose mentions don't open the workbench tab.
-- **At a login / auth / payment wall: check the vault FIRST** (`vault_list_secrets` / `vault_get_secret`). If stored → **inform before use** (login: once per task; payment: before each transaction, with amount + recipient), then use it. If not stored → on a **no-viewer channel your FIRST action is `aramb_vaultlink.request_browser_creds_link(alias, fields, label)`**, then end the turn and `aramb_wake.at` to resume (see *Login & credential walls*). Never "have the user log in" on a no-viewer channel.
+- **At a login / auth / payment wall: check the browser-creds store FIRST** with `aramb_mcp.vault_list_browser_creds` (metadata only — you NEVER read a browser credential's value). If present → **inform before use** (login: once per task; payment: before each transaction, with amount + recipient), then `aramb_browser.vault_fill` (the browser types the value; you never see it). If absent → on a **no-viewer channel your FIRST action is `aramb_vaultlink.request_browser_creds_link(alias, fields, label)`**, then end the turn and `aramb_wake.at` to resume (see *Login & credential walls*). Never `vault_get_secret` a website login (that's your own separate API-key vault), and never "have the user log in" on a no-viewer channel.
 - **Managed per-user context: when given a `context_name`, always pass it on `browser_create`** — the platform auto-loads it on start and auto-saves it before teardown, per user. Do NOT prompt for it and do NOT call `browser_save_context`/`browser_load_context` for it. Only the explicit, user-requested *manual* named-context flow prompts.
 - `evaluate_script` uses `function=` (NOT `script=`). Body is a JS arrow function: `function="() => JSON.stringify(...)"`.
 - On CAPTCHA / bot wall / 403: **wait 30-60s** for aramb to clear it in the background, then re-check. Still blocked → **terminate aramb and switch to `provider=steel`** (reapply any loaded context) and give steel the same 30-60s. Only if steel is also still blocked: **viewer present** → deliver the session chip and stop to ask the user; **no viewer** → report the hard block plainly (site + what you saw + what you need), never reference a chip/viewer. Describe what you saw, never auto-recommend a specific fix. (A login/credential wall is the vault path, not this captcha stop — see *Login & credential walls*.)
@@ -359,19 +380,22 @@ npx mcporter call aramb_mcp.chat_deliver_artifacts \
   summary="Browser is up — opened the workbench tab so you can watch."
 ```
 
-### Login wall on a no-viewer channel (WhatsApp/Slack/voice) — check vault, link, resume
+### Login wall on a no-viewer channel (WhatsApp/Slack/voice) — check creds, fill or link
 ```bash
-# 1. Check the vault FIRST — is the credential already stored?
-npx mcporter call vault_list_secrets
-npx mcporter call vault_get_secret name=<alias>     # e.g. name=linkedin
-# 2a. STORED → inform the user (login: once; payment: amount + recipient), then fill & continue.
+# 1. Check the BROWSER-CREDS store FIRST (metadata only — you never read the value):
+npx mcporter call aramb_mcp.vault_list_browser_creds
+# 2a. PRESENT → inform (login: once; payment: amount + recipient), then let the BROWSER fill:
+npx mcporter call aramb_browser.vault_fill \
+  session_id=<session-id> target="https://www.linkedin.com/login" \
+  key="linkedin.username" selector="#username"
+#      (one call per field; the browser types the value — it never returns to you) → continue login.
 # 2b. ABSENT → send the secure creds link (this is your FIRST action — not "open the viewer"):
 npx mcporter call aramb_vaultlink.request_browser_creds_link \
   alias=linkedin fields='["username","password"]' label="LinkedIn login"
 #     then END the turn and set a timed wake to resume when they've filled it:
 npx mcporter call aramb_wake.at in="3m" \
-  message="creds link for linkedin sent — re-check vault, re-open browser session <session-id>/<context_name>, log in, continue"
-# 3. On wake: vault_get_secret name=linkedin → re-open the SAME session/context → continue login.
+  message="creds link for linkedin sent — re-check vault_list_browser_creds, re-open browser session <session-id>/<context_name>, vault_fill, continue"
+# 3. On wake: vault_list_browser_creds → re-open the SAME session/context → vault_fill → continue login.
 ```
 
 ### Scrape Reddit / social — browser, never `.json` curl
