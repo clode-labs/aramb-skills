@@ -3,6 +3,7 @@ name: aramb-browser
 description: >
   The way to touch JS-rendered, authenticated, or visually-inspected web
   content — every URL visit, scrape, search engine query, form fill,
+  filling a credential the user saved in their vault (vault_fill),
   screenshot, JS evaluation, or live data fetch on a rendered/restricted
   site goes through this skill. For those sites do NOT use WebSearch,
   WebFetch, curl, wget, or HTTP libraries — they use the datacenter UA,
@@ -259,6 +260,45 @@ Error behavior:
 - `evaluate_script` uses `function=` (NOT `script=`). Body is a JS arrow function: `function="() => JSON.stringify(...)"`.
 - On CAPTCHA / bot wall / 403: **wait 30-60s** for aramb to clear it in the background, then re-check. Still blocked → **terminate aramb and switch to `provider=steel`** (reapply any loaded context) and give steel the same 30-60s. Only if steel is also still blocked, deliver the session chip and stop to ask the user — describe what you saw, never auto-recommend a specific fix.
 - Snapshots are heavy. Use only before click or when stuck. Prefer `evaluate_script` for data extraction.
+
+## Filling a saved credential — `vault_fill` (the value never reaches you)
+
+When a page needs a login (or address / card) the user has **saved in their
+vault**, fill it with **`aramb_browser.vault_fill`**. Do **not** use `fill` /
+`fill_form` / `type_text` for these: the vault never hands you the value, so you
+have nothing to type. `vault_fill` has the browser fetch the stored value and
+type it itself — the secret is never returned to you or placed in your context.
+
+Flow:
+
+1. **Discover** what's saved with the vault's `aramb_mcp.vault_list_browser_creds`
+   (returns `alias` + `kind` + field names, never values). Pick by `kind`
+   (`site_creds` to sign in). A field is referenced as `"ALIAS.field"`, e.g.
+   `LINKEDIN_ACC1.username`.
+2. On the live session, navigate to the login page and `take_snapshot` to get each
+   input's CSS selector.
+3. Fill each field, then submit the form with a normal `click`:
+
+```bash
+# one field per call. key="ALIAS.field"; selector is the input on the page.
+# session_id = the live session id (from the browser_session chip / browser_list),
+# NOT the app-slug. target = the URL the field is on (fill is refused if the
+# session's active page is not on it).
+npx mcporter call aramb_browser.vault_fill \
+  session_id=<browser-session-id> target=https://www.linkedin.com/login \
+  key="LINKEDIN_ACC1.username" selector="#username"
+npx mcporter call aramb_browser.vault_fill \
+  session_id=<browser-session-id> target=https://www.linkedin.com/login \
+  key="LINKEDIN_ACC1.password" selector="#password"
+```
+
+- Errors: **404** = session gone (`browser_list`); **422** = precheck failed — the
+  page is not on `target`, or `selector` matched no field → re-`take_snapshot` and
+  retry with the right target/selector; **504** = the browser didn't ack in time →
+  check `browser_session_info` and retry.
+- **No saved credential for this form?** Do not ask for the value in chat — tell
+  the user to add it in their vault (the console, or the channel's add-credential
+  link), then `vault_fill` once it is saved.
 
 ## Scenarios
 
