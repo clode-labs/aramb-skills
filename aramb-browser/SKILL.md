@@ -25,6 +25,26 @@ All tools: `npx mcporter call aramb_browser.<tool> [param=value ...]`
 > `aramb_browser.<tool>` — the hyphenated form is no longer registered, so a
 > `aramb-browser.<tool>` call will be rejected as an unknown server.
 
+## Know your channel — is there a viewer, or not?
+
+**Before you rely on ANY "show the user the browser" step, know which channel you are
+on.** brahmi tells you at dispatch (a no-viewer channel clause is injected into your
+system prompt on external surfaces); trust that fact over any instinct below.
+
+- **Console web chat (the workbench) — there IS a viewer.** The browser panel, the
+  `browser_session` chip, and "open it yourself" all work. Deliver the chip, and you may
+  offer the viewer route at a wall.
+- **External channels (WhatsApp / Slack / voice) — there is NO viewer.** No browser
+  panel, no session chip, no live page the user can open, nothing to "tap". You drive the
+  browser **autonomously**. NEVER tell the user to "tap the chip", "open the viewer",
+  "log in in the live browser", or "do it in the browser panel" — none of that exists
+  here, and saying so strands the user.
+
+Every step below that mentions a chip, viewer, or panel is a **viewer-only** step. On a
+no-viewer channel, skip it and take the autonomous path instead — at a login or
+credential wall that means **check the vault → `aramb_vaultlink.request_browser_creds_link`
+→ wake and resume** (see *Login & credential walls*), never "open the viewer".
+
 ## Fetch hierarchy — reach for the browser LAST
 
 Before you open a browser, ask: **does this content actually need a rendered DOM, JS execution, a login, or visual inspection?** If not, fetch it the cheap, reliable way. The browser is 30–120s per call and **hiccups** under load (mid-run batch failures, partial fetches); `curl` / `git clone` do not. Routing public files through a headless browser is the single biggest cause of slow, flaky big-node runs — don't.
@@ -57,11 +77,17 @@ URL visits to JS-rendered or restricted pages, search-engine queries, scraping, 
 
 **Forbidden for this class of content:** built-in `WebSearch` / `WebFetch` / `Fetch`, `curl`, `wget`, `httpie`, Node `fetch`, Python `requests`, or any script that makes HTTP calls — against restricted / JS-rendered / gated sites they hit the datacenter-UA wall and return SPA HTML or 403. There is no "this restricted site is simple, let me just curl it" exception. (The opposite case — public/static files like GitHub raw — is exactly what the **Fetch hierarchy** sends to `curl`; don't browser those.)
 
-## Deliver the session — mandatory after create, mandatory when asking the user
+## Deliver the session — viewer channels only
 
-Every browser session you open or attach to must be surfaced to the user via `aramb_mcp.chat_deliver_artifacts` with a `browser_session` artifact. The chip routes the workbench's browser panel to the live session so the user can see exactly what you're doing.
+**This whole section applies ONLY when there is a viewer (console web chat).** On a
+no-viewer channel (WhatsApp / Slack / voice), **skip every `browser_session` chip
+delivery here** — the chip is inert (nothing renders it) and a stray one only confuses the
+delivery path. See *Know your channel*, and drive autonomously per *Login & credential
+walls*.
 
-**Fire it in two cases — no exceptions:**
+When there IS a viewer, every browser session you open or attach to must be surfaced to the user via `aramb_mcp.chat_deliver_artifacts` with a `browser_session` artifact. The chip routes the workbench's browser panel to the live session so the user can see exactly what you're doing.
+
+**Fire it in two cases (viewer present) — no exceptions:**
 
 1. **Right after `browser_create` succeeds** (or right after a `browser_list` reuse hits an existing session you're about to drive). The first chip pins the workbench tab open before you do anything visible — the user shouldn't have to hunt for it after the fact.
 2. **Every time you're about to pause and ask the user for input or attention** — captcha challenge, login wall, "stop and ask" path, "open the viewer and clear it yourself" prompts. The chip is what gives the user a one-click route into the live browser; surfacing the question without the chip leaves them blind.
@@ -79,6 +105,49 @@ npx mcporter call aramb_mcp.chat_deliver_artifacts \
 - Mentioning the session in chat prose without the artifact is forbidden — the workbench tab won't open from prose, and "open the viewer" instructions become dead text.
 
 Re-fire on every new attention-request even if you've already delivered the chip earlier in the conversation — each call repins the tab and signals "look here now".
+
+## Login & credential walls — check the vault first, then collect
+
+When you hit a **login form, an auth wall, or a payment form**, run this fixed sequence. It
+is how you keep going without a human watching, and it is the single correct path — it
+agrees with the vault guidance brahmi injects into your prompt.
+
+1. **Check the vault FIRST — always, before anything else.** Look up the credential for
+   this site/alias: `vault_list_secrets` (what's stored) then `vault_get_secret name=<alias>`
+   (the value). You CAN read your own vault; a stored credential means you do **not**
+   collect again.
+   - **Present →** go to step 3 (inform), then use it.
+   - **Absent →** go to step 2 (collect).
+2. **Collect — the path depends on whether there is a viewer** (see *Know your channel*):
+   - **No viewer (WhatsApp / Slack / voice) → your FIRST action is
+     `aramb_vaultlink.request_browser_creds_link`**, with a short `alias` (e.g.
+     `"linkedin"`), the exact `fields` the form needs (e.g. `["username","password"]`), and
+     a human `label`. It sends the user a secure one-time link to add those fields to their
+     vault. Do NOT ask them to type the values in chat, and do NOT tell them to "log in in
+     the browser" — there is no browser they can reach. **This is the primary action, not a
+     fallback.** After emitting the link, **end your turn and set an `aramb_wake.at`** so
+     you come back when they've filled it (see the `wake-subscriptions` skill's *Waking
+     around browser work*). On the wake, **re-open the SAME managed browser context** (same
+     session id / `context_name`), `vault_get_secret`, and continue.
+   - **Viewer present (console web) →** you may instead offer the viewer route ("open the
+     browser and sign in yourself"), OR still use `request_browser_creds_link` — both work,
+     and the link keeps the creds in the vault for next time.
+3. **Inform before you USE a stored credential (required).** Never fill a saved credential
+   silently — tell the user first. Two tiers, keyed on the credential's **risk class**
+   (structural, not guessed: class is `payment` iff the fields include `card_number` /
+   `cvv` / `expiry` / `upi`, else `login`):
+   - **Login-class** — inform **once** per task: *"Using your saved LinkedIn login to sign
+     in."* Don't re-nag every step.
+   - **Payment-class** — stricter: inform **before EVERY transaction, with the amount and
+     recipient**: *"About to pay ₹3,499 to Flipkart with your saved card ending 1234 —
+     going ahead."* A single "once" is never enough for money; each charge is a distinct
+     movement and its amount is exactly what the user is consenting to.
+4. **Continue** the login / payment in the same session once the credential is available.
+
+`request_browser_creds_link` is emitted **only when nothing is stored** — never when the
+credential already exists (then you skip straight to inform-and-use). This is the primary
+fix for the WhatsApp case: at a login wall with no saved creds, the link is your next
+action, not "open the viewer".
 
 ## Browser name = app slug. Always reuse.
 
@@ -178,9 +247,16 @@ Step through it in order — never skip straight to asking the user:
 
 1. **Hit a challenge → wait 30-60s and re-check.** `navigate_page` to refresh, or `evaluate_script` to read `location.href` / `document.title` / page content. Most pages clear on their own in that window.
 2. **Still blocked after ~60s → aramb couldn't solve it. Terminate and switch to steel** (the fallback command above), reapplying any loaded context. Give steel the same 30-60s to clear the challenge with its managed captcha solving, then re-check.
-3. **Steel still blocked after ~60s → stop and ask the user — but first deliver the session chip.** The chip is what makes "open the browser viewer" a one-click action; without it, the user has nowhere to click. Fire `aramb_mcp.chat_deliver_artifacts` with a `browser_session` artifact (see the deliver-the-session section above), then ask.
+3. **Steel still blocked after ~60s → the branch depends on the channel:**
+   - **First, is this actually a login/credential wall (not a captcha)?** If so, it's the
+     vault path, not a captcha stop — go to *Login & credential walls* (check vault →
+     `aramb_vaultlink.request_browser_creds_link` on a no-viewer channel).
+   - **Viewer present (console web) →** deliver the session chip (`aramb_mcp.chat_deliver_artifacts` with a `browser_session` artifact — see *Deliver the session*), then ask the user, offering the "open the viewer and clear it yourself" route.
+   - **No viewer (WhatsApp / Slack / voice) →** there is no chip and no viewer. For a genuine **hard block** (an unsolvable captcha with nothing stored to get past it), **report the blocker plainly** — what site, what you saw, what you need — and never reference a chip / viewer / panel. Don't tell the user to "open the browser".
 
 Don't retry a provider that already failed, don't loop, and don't recreate the browser beyond the single aramb→steel fallback.
+
+**Viewer channels only** — this "ask the user" menu assumes a workbench viewer. On a no-viewer channel, use *Login & credential walls* for a credential wall, or report the hard block plainly (above) — do not present the "open the browser viewer" option, it does not exist there.
 
 > `<site>` is still blocked after aramb and steel both tried. Looks like a `<captcha challenge | login wall | rate limit | empty body / generic block>`. How would you like to proceed?
 >
@@ -254,10 +330,12 @@ Error behavior:
 - One browser per app slug. Siblings reuse via `new_page`, not a second `browser_create`.
 - **Always create on `provider=aramb` first.** Steel is the fallback, used only when aramb is unavailable (create fails / never ready / 503) or can't clear a captcha after waiting ~60s. Never open on steel by default.
 - **Never call `browser_destroy`** — except to switch aramb→steel on the provider fallback (destroy the aramb session, recreate the slug on steel, reapply any loaded `session_context`). Otherwise TTL cleans up.
-- **Deliver a `browser_session` artifact via `aramb_mcp.chat_deliver_artifacts` (a) immediately after `browser_create` succeeds, and (b) every time you stop to ask the user for input or attention.** Both are mandatory. Prose mentions don't open the workbench tab.
+- **Know your channel first (see *Know your channel*).** On a **no-viewer** channel (WhatsApp / Slack / voice) NEVER tell the user to "tap the chip", "open the viewer", "log in in the live browser", or "do it in the browser panel" — none of it exists there. Drive the browser autonomously.
+- **Deliver a `browser_session` artifact via `aramb_mcp.chat_deliver_artifacts` — VIEWER CHANNELS ONLY** — (a) immediately after `browser_create` succeeds, and (b) every time you stop to ask the user for input or attention. Both are mandatory **when there is a viewer**; on a no-viewer channel, SKIP the chip entirely (it's inert). Prose mentions don't open the workbench tab.
+- **At a login / auth / payment wall: check the vault FIRST** (`vault_list_secrets` / `vault_get_secret`). If stored → **inform before use** (login: once per task; payment: before each transaction, with amount + recipient), then use it. If not stored → on a **no-viewer channel your FIRST action is `aramb_vaultlink.request_browser_creds_link(alias, fields, label)`**, then end the turn and `aramb_wake.at` to resume (see *Login & credential walls*). Never "have the user log in" on a no-viewer channel.
 - **Managed per-user context: when given a `context_name`, always pass it on `browser_create`** — the platform auto-loads it on start and auto-saves it before teardown, per user. Do NOT prompt for it and do NOT call `browser_save_context`/`browser_load_context` for it. Only the explicit, user-requested *manual* named-context flow prompts.
 - `evaluate_script` uses `function=` (NOT `script=`). Body is a JS arrow function: `function="() => JSON.stringify(...)"`.
-- On CAPTCHA / bot wall / 403: **wait 30-60s** for aramb to clear it in the background, then re-check. Still blocked → **terminate aramb and switch to `provider=steel`** (reapply any loaded context) and give steel the same 30-60s. Only if steel is also still blocked, deliver the session chip and stop to ask the user — describe what you saw, never auto-recommend a specific fix.
+- On CAPTCHA / bot wall / 403: **wait 30-60s** for aramb to clear it in the background, then re-check. Still blocked → **terminate aramb and switch to `provider=steel`** (reapply any loaded context) and give steel the same 30-60s. Only if steel is also still blocked: **viewer present** → deliver the session chip and stop to ask the user; **no viewer** → report the hard block plainly (site + what you saw + what you need), never reference a chip/viewer. Describe what you saw, never auto-recommend a specific fix. (A login/credential wall is the vault path, not this captcha stop — see *Login & credential walls*.)
 - Snapshots are heavy. Use only before click or when stuck. Prefer `evaluate_script` for data extraction.
 
 ## Scenarios
@@ -272,11 +350,28 @@ npx mcporter call aramb_browser.browser_list
 #                aramb unavailable OR can't clear a captcha after ~60s → browser_destroy browser=<app-slug>
 #                && browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30 [session_context=<value>]  (steel = fallback)
 
-# Immediately after a successful create OR a list-reuse, deliver the session chip:
+# VIEWER CHANNELS ONLY — immediately after a successful create OR a list-reuse, deliver
+# the session chip. On a no-viewer channel (WhatsApp/Slack/voice) SKIP this — the chip is
+# inert; drive autonomously (see "Know your channel" + "Login & credential walls").
 npx mcporter call aramb_mcp.chat_deliver_artifacts \
   project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
   artifacts='[{"kind":"browser_session","session_id":"<session-id from browser_create footer>","title":"<short label>"}]' \
   summary="Browser is up — opened the workbench tab so you can watch."
+```
+
+### Login wall on a no-viewer channel (WhatsApp/Slack/voice) — check vault, link, resume
+```bash
+# 1. Check the vault FIRST — is the credential already stored?
+npx mcporter call vault_list_secrets
+npx mcporter call vault_get_secret name=<alias>     # e.g. name=linkedin
+# 2a. STORED → inform the user (login: once; payment: amount + recipient), then fill & continue.
+# 2b. ABSENT → send the secure creds link (this is your FIRST action — not "open the viewer"):
+npx mcporter call aramb_vaultlink.request_browser_creds_link \
+  alias=linkedin fields='["username","password"]' label="LinkedIn login"
+#     then END the turn and set a timed wake to resume when they've filled it:
+npx mcporter call aramb_wake.at in="3m" \
+  message="creds link for linkedin sent — re-check vault, re-open browser session <session-id>/<context_name>, log in, continue"
+# 3. On wake: vault_get_secret name=linkedin → re-open the SAME session/context → continue login.
 ```
 
 ### Scrape Reddit / social — browser, never `.json` curl
