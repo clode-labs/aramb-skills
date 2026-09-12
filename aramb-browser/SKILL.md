@@ -269,6 +269,12 @@ ask for a password in chat and don't guess — check what the user has saved and
 it with **`aramb_browser.vault_fill`**, which has the browser fetch the stored value
 and type it itself. The secret is never returned to you or placed in your context.
 
+> **You can fill a value you cannot see — there IS a tool.** Not being able to
+> read a saved credential is by design; it does **not** mean you can't use it.
+> `vault_fill` drives it into the page for you. Never tell the user the vault is
+> "write-only," that "there's no tool to fill it," or that they must sign in by
+> hand — discover the credential and fill each field yourself.
+
 > **Never use `fill` / `fill_form` / `type_text` for a saved credential.** Those
 > need a value you'd have to hold — you don't have it and must not handle it. A
 > vault credential goes in **only** via `vault_fill`. (`fill` is for ordinary,
@@ -279,6 +285,9 @@ Flow:
 1. **Discover** what's saved: `aramb_mcp.vault_list_browser_creds` → each entry's
    `alias`, `kind` (`site_creds` / `address` / `card`), and **field names** (never
    values). A field is referenced as `"ALIAS.field"`, e.g. `LINKEDIN_ACC1.username`.
+   This is the **only** list for browser logins — **not** `vault_list_secrets`
+   (that is your own API keys; an empty or unrelated result there says nothing
+   about the user's saved logins).
 2. **Pick the relevant one and CONFIRM with the user** before filling — match by
    site/task (and `kind`), then ask e.g. "Use your saved `LINKEDIN_ACC1` login?".
    Don't silently choose when more than one could fit.
