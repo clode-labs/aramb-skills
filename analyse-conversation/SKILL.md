@@ -1,8 +1,8 @@
 ---
 name: analyse-conversation
 description: >
-  Read and analyse an agent's real end-user conversations (aramb_agents.
-  conversation_search / conversation_get) to judge how the persona actually
+  Read and analyse an agent's real end-user conversations
+  (aramb_mcp.agents_conversation_search / aramb_mcp.agents_conversation_get) to judge how the persona actually
   behaves and turn that evidence into a concrete improvement. Use when asked to
   review, evaluate, diagnose, or "analyse the conversation" for an agent — the
   console's Analyze button lands here with a transcript pre-filled. Grounds any

@@ -103,7 +103,7 @@ Rules for the `artifacts` payload (same in both surfaces):
 
 ## Git integration
 
-GitHub is NOT on `aramb_chat`. All git work goes through the `aramb-toolkits`
+GitHub is NOT on `aramb_mcp.chat_*`. All git work goes through the `aramb-toolkits`
 skill: call `aramb_mcp.toolkits_execute` `{tool:"GITHUB_GET_GIT_CREDENTIAL"}` to mint
 a token (under `result`), export it as `GH_TOKEN`, then use native `git` / `gh`
 CLI for everything. If the user has no github connection in scope, call

@@ -4,9 +4,9 @@ description: >
   MCP toolkit for voice notes (aramb_mcp.voice_transcribe / aramb_mcp.voice_synthesize).
   Use voice_transcribe to read an incoming voice note (audio file → text), and
   voice_synthesize to speak a reply (text → audio) that you then hand to
-  aramb_chat.deliver_artifacts as a downloadable/playable attachment. Use for
+  aramb_mcp.chat_deliver_artifacts as a downloadable/playable attachment. Use for
   chat surfaces that exchange voice messages (Slack, WhatsApp, Telegram, and
-  the like). NOT for placing phone calls — that is aramb_phone.
+  the like). NOT for placing phone calls — that is aramb_mcp.phone_call.
 ---
 
 # Aramb Voice Toolkit
@@ -16,7 +16,7 @@ voice notes people send** and **reply with a spoken voice note**.
 
 - `aramb_mcp.voice_transcribe` — an incoming audio file → its text.
 - `aramb_mcp.voice_synthesize` — your text → an audio file, returned as a blob
-  artifact you deliver through `aramb_chat`.
+  artifact you deliver through `aramb_mcp.chat_deliver_artifacts`.
 
 ## When to use this
 
@@ -25,8 +25,8 @@ voice notes people send** and **reply with a spoken voice note**.
   notes) → `voice_synthesize`, then deliver the result.
 - Accessibility or hands-free flows where a spoken reply is expected.
 
-**Do NOT** use this to place a real phone call (that is `aramb_phone`), or to send
-an ordinary text message (that is `aramb_chat`). Synthesizing audio is only worth
+**Do NOT** use this to place a real phone call (that is `aramb_mcp.phone_call`), or to send
+an ordinary text message (that is `aramb_mcp.chat_send_message`). Synthesizing audio is only worth
 it when the recipient actually wants a voice note.
 
 ## CRITICAL: mcporter syntax rules
