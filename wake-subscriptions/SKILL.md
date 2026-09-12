@@ -4,8 +4,8 @@ description: >
   How you get woken to drive async / long-running work to done. TWO mechanisms:
   (1) AUTOMATIC — when you delegate a job (aramb_a2a / aramb_architect) and end your
   turn, the platform wakes you by itself the moment that job responds; you do NOT
-  set anything. (2) TIMED — you wake YOURSELF at a chosen time with aramb_wake.at
-  (one-shot) or aramb_wake.schedule (recurring), for genuinely clock-based follow-ups
+  set anything. (2) TIMED — you wake YOURSELF at a chosen time with aramb_mcp.wake_at
+  (one-shot) or aramb_mcp.wake_schedule (recurring), for genuinely clock-based follow-ups
   ("re-check in 10 min", "every morning at 9"). Use whenever a job can't finish in
   one turn and no one is there to poke you. NOT for firing another agent's workflow
   on an external service event (that's a toolkit trigger).
@@ -54,7 +54,7 @@ day at 9" — wake yourself:
   duration (`"30s"`, `"2m"`, `"2h"`); `fire_at` is an absolute RFC3339 UTC time. Pass
   exactly one. `message` is handed back to you verbatim on wake, so write a clear
   instruction to your future self **including any id you'll need** (a `chat_id`, an
-  agent id, a browser session).
+  agent id, a browser session id / `context_name`).
 - `aramb_mcp.wake_schedule(name, cron_expression, cron_timezone)` — a **recurring**
   wake, for "every morning / every hour / every Monday". Use this (not a chain of
   one-shots) when the cadence repeats. `cron_expression` is a standard 5-field cron;
@@ -64,6 +64,39 @@ day at 9" — wake yourself:
 
 These wakes are invisible and private to you — the user never sees them fire; they
 only see you follow up when there's something real to say.
+
+## Waking around browser work — launch, end turn, wake, resume
+
+Driving a browser for a real WhatsApp / Slack / voice user is the **canonical
+timed-wake case**, because the browser often **blocks on something you can't finish in
+one turn** — and no one is watching it to nudge it along. The automatic completion-wake
+does NOT cover this: it fires only for delegated `aramb_a2a` / `aramb_architect` jobs,
+and a browser wait is not a delegated job. So a browser wait needs a **timed
+`aramb_mcp.wake_at`** you set yourself.
+
+The loop, whenever a browser step will take time OR needs the user to act out-of-band:
+
+1. **Launch / reach the blocking point** — e.g. you hit a login or payment wall and sent
+   a `browser.creds` vault link (see the `aramb-browser` skill's *"Login & credential
+   walls"*), or you kicked off a slow checkout, a background captcha auto-solve, or a
+   page you must poll.
+2. **End your turn and set `aramb_mcp.wake_at`** — put in the `message` everything future-you
+   needs to resume: the browser **session id / `context_name`**, the site, the alias, and
+   what you were mid-doing. Pick a sensible delay (a creds fill: minutes; a slow page:
+   seconds-to-minutes).
+3. **On wake, re-open the SAME browser context** (same session id / `context_name`) —
+   never start a fresh login you already began — read the real state, and continue:
+   `vault_get_secret` and fill, read the checkout result, re-check the page.
+4. **End in the typed outcome below.** Creds are in and you continued → `stop` (or
+   `notify_user` with the result). Still not filled / page still loading → `continue`
+   with `progressed=false` (a **silent** re-arm, no user message) up to your wait budget.
+   Wait budget exhausted → `blocked` (tell the user plainly what's still needed).
+
+Cases this covers: waiting for a user to fill a **`browser.creds` vault link** (send link
+→ end turn → wake → re-open session → continue login/payment), an **OTP / email** the
+user must forward, a **slow page or checkout**, a **captcha** auto-solving in the
+background, or **polling** a site for a state change. In every one: end the turn, set the
+wake, don't sit and spin.
 
 ## The rule that matters: a wake carries NO state — go check
 
@@ -75,26 +108,46 @@ waiting on:
   reply, and for a build cross-check the ground truth with `aramb_mcp.agents_get`
   (did the agent really get created / published?). Never trust the reply alone.
 - **Your own browser** → your `aramb_browser` tools: what page is it on, did the step
-  fail, a screenshot. A WhatsApp user isn't there to guide it, so an autonomous
-  browser step that failed is *yours* to recover — on wake, check it and act: retry,
-  open a fresh browser, save context, or tell the user what's blocking.
+  fail, a screenshot. A WhatsApp user isn't there to guide it, so an autonomous browser
+  step is *yours* to drive to done — on wake, re-open the same session, check it, and act:
+  fill the now-stored creds and continue, retry, save context, or tell the user what's
+  blocking. (This is how you drive a **long or blocked** browser task, not only recover a
+  failed one — see *Waking around browser work* above.)
 - **Something on the web / a price / a reply** → re-fetch / re-open and read it.
 
-Then decide:
+Then end the wake in exactly ONE typed outcome — this is the decision, not loose
+"am I done?" prose:
 
-1. **Done?** → act on the real result and tell the user. Don't set another wake.
-2. **Not done yet?** → for a delegated job, just end your turn again (the automatic
-   wake fires on the next response); for a time-based check, set a **new**
-   `wake_at` and keep going.
+- **stop** — the work is done or abandoned. Disarm; write to the user only if there's a
+  real result to deliver.
+- **continue** — re-arm and keep going, and be honest about whether anything actually
+  changed. For a delegated job, just end your turn again (the automatic wake fires on the
+  next response); for a time-based / browser check, set a **new** `aramb_mcp.wake_at`. If
+  **nothing changed** this tick (`progressed = false` — the delegate is still working, the
+  vault is still empty, the page hasn't moved), re-arm **silently**: do NOT message the
+  user. A silent re-check that surfaces "still working / nothing yet / all done" is spam —
+  the exact failure to avoid.
+- **notify the user** — surface something ONLY when there's a real result, a real
+  question, or a decision the user must make. This is the ONLY outcome that produces a
+  user message on its own.
+- **blocked** — you can't proceed without the user or an external event (creds still not
+  filled past your wait budget, an approval, an outage). Say plainly what's blocking and
+  what you need, then stop or park — don't keep re-arming into a wall.
 
-A one-shot `wake_at` does **not** repeat — that re-arm loop is how you carry a slow,
-time-based job to the last mile. Keep the interval sensible (short for something
-imminent, longer for a slow build) so you're not waking constantly. For a genuinely
-repeating cadence, use `wake_schedule` instead of re-arming forever.
+A one-shot `aramb_mcp.wake_at` does **not** repeat — a `continue` re-arm is how you carry a
+slow, time-based job to the last mile. Keep the interval sensible (short for something
+imminent, longer for a slow build), and don't re-arm forever on no progress: after several
+silent no-progress ticks, `stop` or go `blocked` rather than waking indefinitely (the
+platform also caps runaway re-arm chains). For a genuinely repeating cadence, use
+`aramb_mcp.wake_schedule` instead of re-arming forever.
 
 ## Honesty
 
 Never tell the user you're "watching", "monitoring", or "keeping an eye on" something
 unless it's actually true — either you delegated a job (whose completion-wake is
-automatic) or you set a `wake_at` / `wake_schedule`. A claimed watch that doesn't
-exist is a broken promise the user is counting on.
+automatic) or you set an `aramb_mcp.wake_at` / `aramb_mcp.wake_schedule`. A claimed watch that
+doesn't exist is a broken promise the user is counting on.
+
+And stay **silent by default**: a wake that found nothing new says nothing (that's a
+`continue` with `progressed=false`). You speak only on a real result, a real question, or
+a block — never to report "still working" or "nothing yet".
