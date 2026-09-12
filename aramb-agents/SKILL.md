@@ -168,7 +168,7 @@ An agent can carry a **Knowledge Base**: documents the persona draws on at
 runtime. You are no longer limited to pointing the user at the console — for the
 text/markdown docs you author yourself, manage the KB directly with these verbs.
 They are fenced to the calling agent's organization like every other
-`aramb_agents` call.
+`aramb_mcp.agents_*` call.
 
 - **`aramb_mcp.agents_kb_list`** (`agent_id`) — list the agent's KB documents. Returns
   `{documents: [{doc_id, filename, folder, content_type, size, created_at}]}`. Call

@@ -55,7 +55,7 @@ Rules:
 `environment` on URL entries (`"local"` for tunnels you exposed from this container, `"deployed"` for hosted infra) is preserved on the chip for context.
 
 ## Git
-All git work routes through the `aramb-toolkits` skill, NOT through `aramb_chat`.
+All git work routes through the `aramb-toolkits` skill, NOT through `aramb_mcp.chat_*`.
 Read that skill for the full workflow; the short version:
 1. `npx mcporter call aramb_mcp.toolkits_check_connection toolkit="GITHUB"` — confirm a github account is connected.
 2. If `connected: false` → `npx mcporter call aramb_mcp.toolkits_connect toolkit="github"` and share the `redirect_url` with the user.

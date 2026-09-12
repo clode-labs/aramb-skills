@@ -84,7 +84,7 @@ Toolkits, browser, external MCP, model tools, and (emerging) voice all live here
 - **Where:** agent sidebar → **Skills** (its own page).
 
 ### Toolkits / Integrations
-- **What it is:** managed connections to external SaaS the agent uses — mail, sheets, drive, calendars, chat apps, CRMs (1,000+ services). The provider behind them is an implementation detail; all you touch is `aramb_toolkits`.
+- **What it is:** managed connections to external SaaS the agent uses — mail, sheets, drive, calendars, chat apps, CRMs (1,000+ services). The provider behind them is an implementation detail; all you touch is `aramb_mcp.toolkits_*`.
 - **Supporting tools / params:** ground slugs with `aramb_mcp.toolkits_list_toolkits`; record on the agent as `required_toolkits` (uppercase catalog slugs). The USER connects each account.
 - **When to use:** whenever the job touches an external service you can name (send mail, read a sheet, post to Slack).
 - **Gotchas:** ⚠️ **you DECLARE, the user CONNECTS.** No OAuth, no authorization link, no inspecting connection state, never claim a toolkit is connected — a connection authorized through you lands on the wrong project. A run is gated until every required toolkit has a connected account. **Declared toolkits are a build-summary completion item.**

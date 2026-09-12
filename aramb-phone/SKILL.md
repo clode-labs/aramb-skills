@@ -5,7 +5,7 @@ description: >
   it to call a phone number from a published agent's claimed number; the agent
   speaks with whoever answers. Use when the user asks you to phone someone,
   confirm something by voice, or leave a spoken message. NOT for chat messages
-  or notifications — that is aramb_chat.
+  or notifications — that is aramb_mcp.chat_send_message.
 ---
 
 # Aramb Phone Toolkit
