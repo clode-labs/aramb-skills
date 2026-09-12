@@ -117,12 +117,24 @@ read it back — the platform uses it on your behalf.
 
 ## Browser credentials — the user's saved logins, addresses and cards
 
-Separate from your own secrets above. The user can save **browser credentials**
-in their console — logins, addresses and cards — for their agents to use when
-filling forms on live web pages. They are **scoped to the user** (shared across
-all the user's agents), **read-only to you**, and their values are **never**
-returned to you. You can only _discover_ them here; the browser skill fills a
-value straight into a page without it ever passing through you.
+Separate from your own secrets above, and a **different store** from `*_secret`.
+A site / browser **login wall** or any personalized, account-scoped task is these
+browser credentials — list them with `vault_list_browser_creds`, **not**
+`vault_list_secrets` (that is your own API keys and will not show the user's
+logins; an empty or unrelated result there does not mean the login is missing).
+
+The user can save **browser credentials** in their console — logins, addresses
+and cards — for their agents to use when filling forms on live web pages. They
+are **scoped to the user** (shared across all the user's agents) and their values
+are **never returned to you**. You only _discover_ them here (alias, kind, field
+names).
+
+You cannot _see_ a value — but you **can fill it**. **`aramb_browser.vault_fill`**
+(in the browser skill) has the browser fetch the stored value and type it into the
+page itself, without it ever passing through you. "You can't read the value" does
+**not** mean "you can't use it": there **is** a fill tool. Never tell the user no
+tool exists, that it is write-only so you're stuck, or that they must sign in by
+hand — discover the credential here, then fill each field with `vault_fill`.
 
 `vault_list_browser_creds` — list the user's saved browser credentials. No args.
 Each entry has:
@@ -134,8 +146,9 @@ Each entry has:
 
 Use `kind` to pick the right credential for the task — a `site_creds` to sign
 in, an `address` or `card` to complete a checkout — then reference a single field
-as `"ALIAS.field"` (e.g. `LINKEDIN_ACC1.username`) to fill it with the browser
-skill. The value goes from the vault into the page; it never reaches you.
+as `"ALIAS.field"` (e.g. `LINKEDIN_ACC1.username`) and fill it with
+`aramb_browser.vault_fill` (one call per field; see the browser skill). The value
+goes from the vault into the page; it never reaches you.
 
 ```bash
 # What browser credentials has the user saved?
@@ -189,4 +202,7 @@ npx mcporter call aramb_mcp.vault_list_browser_creds
   report success from that, do not fabricate a value or a location.
 - `vault_list_browser_creds` only _lists_ the user's browser credentials (alias,
   kind, field names) — never their values. Pick by `kind`, reference a field as
-  `"ALIAS.field"`, and let the browser fill it; never ask for these values in chat.
+  `"ALIAS.field"`, and let the browser fill it via `aramb_browser.vault_fill`;
+  never ask for these values in chat. Not seeing the value is by design and does
+  not block filling — never claim there is no tool, that it is write-only, or that
+  the user must sign in manually. A login wall uses these, not `vault_list_secrets`.
