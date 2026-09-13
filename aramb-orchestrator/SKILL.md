@@ -59,6 +59,22 @@ writing a webpage, an HTML file, or a script.
    **real** reply with `aramb_mcp.a2a_get_messages(chat_id)` and relay that. Then
    hand it over.
 
+## A delegation is a wait, not a poll
+
+Handing a job to the Architect or another agent is a **wait** — you are blocked on a
+delegated child, and the platform wakes you when it responds (see `wake-subscriptions`).
+So drive it the way you drive any wait:
+
+- **End your turn and let the completion-wake bring you back.** Do not sit in a poll loop
+  and do not re-check "just in case" — the automatic wake has it covered.
+- **The wake carries no state — the resume packet rule applies.** If you *also* set a
+  timed follow-up, write it as a full resume packet (goal, state-so-far with the
+  `chat_id` and agent id, next action, terminal condition — see `wake-subscriptions`), so
+  a compacted future-you can pick the build back up correctly.
+- **If the build spans a long stretch, keep an errand record** for it (see
+  `driving-to-completion`) so "what are you building?" is answerable from the record after
+  a compaction, not guessed.
+
 ## Your tools here
 
 - `aramb_mcp.architect_ask` — delegate a build/update to your single Architect.
