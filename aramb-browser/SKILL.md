@@ -110,6 +110,12 @@ Re-fire on every new attention-request even if you've already delivered the chip
 
 ## Login & credential walls — check browser creds, then fill or collect
 
+**A login / credential / payment wall is a *user wall* (class B in `driving-to-completion`),
+not a failure to retry.** The correct shape is always: **collect once and wait** — send the
+secure creds link, **end your turn**, and let the wake resume you. Never ask the user to
+type a credential value in chat, and never poll the user ("done yet?"). A timed retry
+against a wall you can't clear yourself is the wrong reflex here.
+
 When you hit a **login form, an auth wall, or a payment form**, run this fixed sequence. It
 is how you keep going without a human watching, and it is the single correct path.
 

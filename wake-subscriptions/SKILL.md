@@ -65,6 +65,28 @@ day at 9" — wake yourself:
 These wakes are invisible and private to you — the user never sees them fire; they
 only see you follow up when there's something real to say.
 
+## The resume packet — write every self-wake for a future self that forgot everything
+
+When a timed wake fires, your context may have compacted: you wake into a note and
+little else. So **every self-wake `message` you write must be a self-contained resume
+packet** — enough for a version of you that remembers nothing to pick the job up
+correctly. Five things, always:
+
+- **The goal** — what the user actually asked for, **in their words**.
+- **State so far** — what is done, with **concrete ids/URLs** (a `chat_id`, an agent id,
+  a browser session id / `context_name`, an errand id, a real URL). Never "made progress".
+- **The single next action** — the one specific thing to do on waking.
+- **Recovery pointers** — where to re-derive state if what you expect is gone: the chat
+  id, the errand id, the agent id. So a stale expectation becomes a lookup, not a restart.
+- **The terminal condition, stated as a check** — how you'll know the job is finished,
+  e.g. *"if the agent shows published and the test passes, report to the user and stop"*.
+
+And **rewrite the packet on every fire** so it always reflects current state — a stale
+packet sends you to re-do work you already did. Where the tooling lets you **update** a
+watcher, keep the **same watcher id** rather than delete-and-recreate, so earlier
+references stay valid. (When you have an errand record — see `driving-to-completion` —
+the packet is a pointer to it, not a second copy of the truth.)
+
 ## Waking around browser work — launch, end turn, wake, resume
 
 Driving a browser for a real WhatsApp / Slack / voice user is the **canonical
@@ -85,8 +107,11 @@ The loop, whenever a browser step will take time OR needs the user to act out-of
    what you were mid-doing. Pick a sensible delay (a creds fill: minutes; a slow page:
    seconds-to-minutes).
 3. **On wake, re-open the SAME browser context** (same session id / `context_name`) —
-   never start a fresh login you already began — read the real state, and continue:
-   `vault_get_secret` and fill, read the checkout result, re-check the page.
+   never start a fresh login you already began — read the real state, and continue. For a
+   credentials wall: re-check `aramb_mcp.vault_list_browser_creds`, then `aramb_browser.vault_fill`
+   each field so the *browser* types the value — never read the value into yourself.
+   (`vault_get_secret` is your own API-key vault, **never** a website login.) Then read the
+   checkout result, re-check the page.
 4. **End in the typed outcome below.** Creds are in and you continued → `stop` (or
    `notify_user` with the result). Still not filled / page still loading → `continue`
    with `progressed=false` (a **silent** re-arm, no user message) up to your wait budget.
@@ -140,6 +165,49 @@ imminent, longer for a slow build), and don't re-arm forever on no progress: aft
 silent no-progress ticks, `stop` or go `blocked` rather than waking indefinitely (the
 platform also caps runaway re-arm chains). For a genuinely repeating cadence, use
 `aramb_mcp.wake_schedule` instead of re-arming forever.
+
+## Silence is a valid outcome of a check
+
+**If a check fires and the work is healthy but not finished yet, say nothing.** A check
+firing is **not** evidence that anything happened — a timer went off, that's all. The
+user hears from you when there is something **real** to say (a result, a question, a
+block), never because a check ran. Without this rule, every extra check makes you more
+annoying, not more useful. (This is the `continue` / `progressed=false` re-arm above:
+re-arm **silently**.)
+
+## The safety check-in — a strategy audit, not a deadline
+
+Some waits carry an automatic **safety check-in** managed by the runtime — a backstop so
+a wait can never fail silently forever (e.g. a dropped event means the resume never
+comes). This runtime check-in may not be armed yet (it's T2.4), so **do not rely on it**:
+your own `aramb_mcp.wake_at` remains the primary backstop until it lands. You do **not**
+create the check-in and it does **not** appear in your `aramb_mcp.wake_list`. If/when it
+does fire, treat it correctly, because getting this wrong is how a check-in turns into
+user-visible noise:
+
+- **It is a strategy audit, not a deadline.** When it fires, the watched event has
+  **not** necessarily happened. Ask yourself: *am I still set up correctly? did I watch
+  the wrong thing? did I miss a notification? should I switch strategy or stop?*
+- **For a credentials wait, check the store yourself before asking the user anything.**
+  Call `aramb_mcp.vault_list_browser_creds` — the user may well have saved it already, in
+  which case you resume (re-open the same browser session, `vault_fill`, continue), and
+  the user hears nothing about the check-in.
+- **If everything looks healthy and the work simply isn't done yet, stay silent** (the
+  rule above). A check-in firing never produces a user message on its own.
+
+A separate **one-shot deadline wake** (`aramb_mcp.wake_at`) is the right tool when there
+is a *real* deadline with a *concrete* fallback action — "if the reply isn't in by 5pm,
+send the draft as-is". That is a different thing from the safety check-in; don't conflate
+the two.
+
+## When a wait expires — say so honestly, never purge silently
+
+A wait has a TTL. If it expires **unfired** — the event never came within the window —
+that is **not** a silent end. Tell the user plainly what you were waiting on and that it
+didn't happen ("I didn't see the credentials saved, so I stopped here — here's what's
+still needed"), and stop or offer the next step. A wait that silently never resolves is
+worse than one that resolves badly: the user is left counting on something that is never
+coming.
 
 ## Honesty
 
