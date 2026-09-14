@@ -67,7 +67,7 @@ For each skill in the spec:
 - **String** (e.g., `aramb-chat`, `juno`, `backend-testing`) — copy the skill directory from `$BENJI_HOME/workspace-solo/skills/<name>/` to `$BENJI_HOME/workspace-<agent-name>/skills/<name>/`. Copy the whole directory tree (SKILL.md + any `references/` files). Error if `$BENJI_HOME/workspace-solo/skills/<name>/SKILL.md` does not exist.
 - **Object** with `name` + `purpose` — create a new skill directory at `$BENJI_HOME/workspace-<agent-name>/skills/<name>/` with a `SKILL.md` containing YAML frontmatter (`name`, `description`) and body content tailored to the purpose. Do NOT write to `$BENJI_HOME/workspace-solo/skills` — that is read-only shared state.
 
-**Default skills (MANDATORY, non-negotiable):** Every agent you create MUST have `aramb-chat`, `aramb-tasks`, `aramb-workflows`, and `juno` in its skills dir, even if the caller doesn't list them. `aramb-chat`/`aramb-tasks`/`aramb-workflows` are how the agent receives tasks, reports status, and sends messages to main chat — without them the agent is deaf and mute. `juno` is how the agent stores and retrieves cross-session context memory — without it every session starts from zero. If these skills are not present in the new agent's workspace after copy, you have failed the task.
+**Default skills (MANDATORY, non-negotiable):** Every agent you create MUST have `aramb-chat`, `task-execution`, `aramb-workflows`, and `juno` in its skills dir, even if the caller doesn't list them. `aramb-chat`/`task-execution`/`aramb-workflows` are how the agent receives tasks, reports status, and sends messages to main chat — without them the agent is deaf and mute. `juno` is how the agent stores and retrieves cross-session context memory — without it every session starts from zero. If these skills are not present in the new agent's workspace after copy, you have failed the task.
 
 **Conditional mandatory — code-writing agents:** If the new agent's role involves writing application code, dev-server configs, or `docker-compose.yml` (any "developer"-flavored persona — `developer`, `backend-developer`, `frontend-developer`, `mobile-developer`, `data-engineer`, etc.), you MUST also include `dev-workflow` in its skills dir. That skill carries the environment-specific contract every code-writing agent needs: env-driven API URLs, env-driven CORS, dev-server `allowedHosts` for the proxy.clode.space tunnel, docker-compose env-var wiring, and branching/commit conventions. Without it, a freshly-spawned code agent ships configs that break under the local-deployment tunnel — and the deployer can only escalate back via `needs_master_attention`, wasting a full corrective round-trip. Validator/operator agents (testers, deployers, reviewers, content-writers, researchers) do NOT need `dev-workflow` and should not bloat their context with it.
 
@@ -104,7 +104,7 @@ See `references/agent-template.md` for the full template structure.
 
 Operating instructions for the agent. Include:
 - Session startup checklist (read SOUL.md, memory, check Juno context, check pending tasks)
-- Task protocol (receive via aramb-tasks → execute → report via `aramb_mcp.tasks_update` with the explicit `task_id` from the dispatch prompt)
+- Task protocol (receive via task-execution → execute → report via `aramb_mcp.tasks_update` with the explicit `task_id` from the dispatch prompt)
 - Memory conventions (daily logs, what to persist, Juno for cross-session persistence)
 - Tools & skills available to this agent
 - Safety rules relevant to the domain
@@ -120,7 +120,7 @@ ls -la $BENJI_HOME/workspace-<name>/skills/
 All three checks must pass:
 1. `benji agent list` MUST show `<name>` as a registered agent. If it is missing, Step 1 silently failed — you must re-run it and re-verify. File writes are meaningless without registration.
 2. IDENTITY.md, SOUL.md, AGENTS.md must all exist and be non-empty.
-3. Every required skill (including the mandatory `aramb-chat`, `aramb-tasks`, `aramb-workflows`, and `juno`) must have a `SKILL.md` file under `skills/`.
+3. Every required skill (including the mandatory `aramb-chat`, `task-execution`, `aramb-workflows`, and `juno`) must have a `SKILL.md` file under `skills/`.
 
 ## Quality Checklist
 
@@ -128,8 +128,8 @@ Before finishing, verify ALL of these. If any is unchecked, the task is NOT done
 - [ ] **Agent is registered via `benji agent create` AND appears in `benji agent list`** (this is the primary success criterion — without it, the agent does not exist)
 - [ ] IDENTITY.md is fully filled in (no template placeholders)
 - [ ] SOUL.md is role-specific (not generic "be helpful" boilerplate)
-- [ ] AGENTS.md includes actionable operating instructions with the aramb-tasks task protocol
-- [ ] Skills copied or created in `workspace-<name>/skills/`, including mandatory `aramb-chat`, `aramb-tasks`, `aramb-workflows`, and `juno`
+- [ ] AGENTS.md includes actionable operating instructions with the task-execution task protocol
+- [ ] Skills copied or created in `workspace-<name>/skills/`, including mandatory `aramb-chat`, `task-execution`, `aramb-workflows`, and `juno`
 - [ ] Name is lowercase-hyphen format
 
 ## References
