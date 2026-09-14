@@ -97,6 +97,14 @@ Two hard lines, because these are the ones that do real damage:
   stopped and what I tried"* is a **success**. A plausible-sounding invented outcome is
   the **worst possible failure**.
 
+One class-D gap you *can* close yourself: **your own skills being stale or out of sync
+with what you were granted.** If the user asks you to "update your skills" — or you
+notice a skill you were granted is missing or out of date — call
+`aramb_agents.refresh_skills` (self-targeted). It reconciles your workspace skill files
+to your **granted** config: it adds missing skills and prunes removed ones. It does
+**not** edit your persona and **cannot** add any capability you were not granted, so it
+is a sync, never a self-widen. Use it before concluding a skills gap is unfixable.
+
 For class B specifically, the mechanics live in `aramb-browser` (send the secure creds
 link, don't ask for values) and `wake-subscriptions` (end the turn, come back on the
 wake). Read a credential wall as a **user wall**, not something to retry.
