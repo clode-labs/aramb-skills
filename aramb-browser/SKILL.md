@@ -17,248 +17,273 @@ argument-hint: "[task or URL]"
 
 # Aramb Browser
 
-All tools: `npx mcporter call aramb_browser.<tool> [param=value ...]`
-
-> **Heads-up — mcp server renamed.** The mcp server used to be
-> `aramb-browser` (hyphenated) and is now `aramb_browser` (underscored), to
-> match the rest of the `aramb_*` namespaces. The binary on disk is still
-> `aramb-browser`; only the mcp-server name changed. Always call
-> `aramb_browser.<tool>` — the hyphenated form is no longer registered, so a
-> `aramb-browser.<tool>` call will be rejected as an unknown server.
+All tools: `npx mcporter call aramb_browser.<tool> [param=value ...]`. The mcp server
+is `aramb_browser` (underscored); the hyphenated `aramb-browser.<tool>` is unregistered
+and rejected.
 
 ## Whose browser this is — the worker's, not the orchestrator's
 
 **The browser belongs to `task-agent`, the worker that executes briefs.** If you are an
-orchestrator holding a conversation with a user, driving a browser is not yours to do:
-browsing is work, work is delegated, and a browser flow is exactly the kind of job that
-blocks you for minutes while the user waits on a reply. Hand it to `task-agent` with a
-brief (see the `delegation` skill) and stay available.
+orchestrator holding a conversation with a user, browsing is not yours to do — it blocks
+you for minutes while the user waits. Hand it to `task-agent` with a brief (see the
+`delegation` skill) and stay available.
 
 If you are the worker, the rest of this skill is yours end to end. **The browser is
-YOURS**: you open it, you drive it, you own getting past what it hits, and you report
-the observed end state with evidence. Two consequences worth naming up front:
+YOURS**: you open it, drive it, own getting past what it hits, and report the observed
+end state with evidence. Two consequences:
 
-- **Always a named, persistent context — never an anonymous browser.** A context keeps
-  cookies and logged-in state alive across runs, so a user who signed into a site once
-  is still signed in next time. Pass the `context_name` you were given on every
-  `browser_create` (see *Contexts*). Requesting a fresh anonymous browser throws that
-  away and makes the user log in again.
-- **You do not talk to the user.** Everything a user hears comes from the orchestrator.
-  At a wall, you report what you saw — you do not address them directly.
+- **Always a named, persistent context — never anonymous.** A context keeps cookies and
+  logged-in state alive across runs. Pass the `context_name` you were given on every
+  `browser_create` (see *Contexts*); a fresh anonymous browser throws that away and makes
+  the user log in again.
+- **You do not talk to the user.** Everything a user hears comes from the orchestrator. At
+  a wall, report what you saw — don't address them directly.
 
 ## Know your channel — is there a viewer, or not?
 
-**Before you rely on ANY "show the user the browser" step, know which channel you are
-on.** brahmi tells you at dispatch (a no-viewer channel clause is injected into your
-system prompt on external surfaces); trust that fact over any instinct below.
+**Before you rely on ANY "show the user the browser" step, know your channel.** brahmi
+tells you at dispatch (a no-viewer clause is injected into your system prompt on external
+surfaces); trust that over any instinct.
 
 - **Console web chat (the workbench) — there IS a viewer.** The browser panel, the
-  `browser_session` chip, and "open it yourself" all work. Deliver the chip, and you may
-  offer the viewer route at a wall.
-- **External channels (WhatsApp / Slack / voice) — there is NO viewer.** No browser
-  panel, no session chip, no live page the user can open, nothing to "tap". You drive the
-  browser **autonomously**. NEVER tell the user to "tap the chip", "open the viewer",
-  "log in in the live browser", or "do it in the browser panel" — none of that exists
-  here, and saying so strands the user.
+  `browser_session` chip, and "open it yourself" all work.
+- **External channels (WhatsApp / Slack / voice) — there is NO viewer.** No panel, no
+  chip, no live page to "tap". Drive **autonomously**. NEVER tell the user to "tap the
+  chip", "open the viewer", "log in in the live browser", or "do it in the browser panel"
+  — none of that exists here, and saying so strands them.
 
-Every step below that mentions a chip, viewer, or panel is a **viewer-only** step. On a
-no-viewer channel, skip it and take the autonomous path instead — at a login or
-credential wall that means **check browser creds (`aramb_mcp.vault_list_browser_creds`) →
-`aramb_browser.vault_fill` if present, else `aramb_mcp.vaultlink_request_browser_creds_link`
-→ wake and resume** (see *Login & credential walls*), never "open the viewer".
+Every step below that mentions a chip/viewer/panel is **viewer-only**. On a no-viewer
+channel, skip it: at a login/credential wall that means **check browser creds
+(`aramb_mcp.vault_list_browser_creds`) → `vault_fill` if present, else
+`aramb_mcp.vaultlink_request_browser_creds_link` → wake and resume** (see *Credential &
+login walls*), never "open the viewer".
 
 ## Fetch hierarchy — reach for the browser LAST
 
-Before you open a browser, ask: **does this content actually need a rendered DOM, JS execution, a login, or visual inspection?** If not, fetch it the cheap, reliable way. The browser is 30–120s per call and **hiccups** under load (mid-run batch failures, partial fetches); `curl` / `git clone` do not. Routing public files through a headless browser is the single biggest cause of slow, flaky big-node runs — don't.
+Before opening a browser, ask: **does this content actually need a rendered DOM, JS, a
+login, or visual inspection?** If not, fetch it the cheap way. The browser is 30–120s per
+call and **hiccups** under load (mid-run batch failures, partial fetches); `curl` /
+`git clone` don't. Routing public files through a browser is the single biggest cause of
+slow, flaky runs.
 
-**Default to non-browser fetch for public / static content.** Use `curl`, `git clone --depth 1`, or `WebFetch` from Bash for:
+**Default to non-browser fetch for public / static content** — `curl`,
+`git clone --depth 1`, or `WebFetch`:
 
-- **Public GitHub repos & raw files** — `git clone --depth 1 https://github.com/<owner>/<repo>` or `curl -sL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>`. ~50× faster than driving the browser, and it never "hiccups."
-- **Plain HTML pages, raw/exported docs, and real API / JSON endpoints** whose content is in the response body, not assembled client-side. (Two traps: many "public" Notion / Google Docs / Drive pages are JS-rendered and return a near-empty shell to `curl`, and social `.json` URLs — Reddit / X / LinkedIn — return HTML, not JSON. Those are **browser** cases. When unsure, `curl` first and apply the escalation rule below.)
+- **Public GitHub repos & raw files** — `git clone --depth 1 https://github.com/<o>/<r>`
+  or `curl -sL https://raw.githubusercontent.com/<o>/<r>/<branch>/<path>`. ~50× faster,
+  never hiccups. Public repos need NO auth / GitHub toolkit / OAuth — never reason "the
+  toolkit isn't connected so I'll browser the API".
+- **Plain HTML, raw/exported docs, real API/JSON endpoints** whose content is in the
+  response body, not assembled client-side. (Traps: many "public" Notion/Google
+  Docs/Drive pages are JS-rendered and return an empty shell to `curl`; social `.json`
+  URLs — Reddit/X/LinkedIn — return HTML, not JSON. Those are **browser** cases.)
 
-**Public repos need NO auth, NO GitHub toolkit, NO OAuth.** Never reason "the GitHub toolkit isn't connected, so I'll use the browser to hit the API" — a public repo is a plain `git clone` / `curl`. If you discover an unmetered raw URL (e.g. `raw.githubusercontent.com`), `curl` it directly; do **not** route it through the browser.
+**Toolkit-unconnected fallback is curl, never the browser** — fall back to the
+unauthenticated public path, never scrape what `curl` can fetch.
 
-**Toolkit-unconnected fallback is curl, never the browser.** If a toolkit (GitHub, Sheets, …) isn't connected, fall back to the **unauthenticated** public path (`curl` / `clone` / public API). Never fall back to the browser to scrape what `curl` can fetch.
+**Use the browser ONLY for** content that genuinely needs it: JS/client-side-rendered
+pages, authenticated/gated content, visual inspection (Figma, Rive, canvas, web apps), or
+sites that return SPA HTML / 403 to a datacenter UA.
 
-**Use the browser ONLY for** content that genuinely requires a real, rendered browser:
+**Escalation — curl first, browser on failure.** If a `curl`/`WebFetch` of a
+supposedly-static page comes back as SPA HTML, an empty shell, a login/redirect, or 403,
+that page was rendered/restricted — switch to the browser. Content you already know needs
+JS/auth/visual inspection skips straight to the browser.
 
-- JS-rendered / client-side-rendered pages where the meaningful content isn't in the initial HTML.
-- Authenticated / gated content — login walls, dashboards behind auth.
-- Visual inspection — Figma, Rive, interactive web apps, canvas, anything you need to *see* rendered.
-- Sites that return SPA HTML or 403 to a datacenter UA (most half-restricted sites — the sections below cover these).
-
-**Never drive the browser to fetch a file you could `curl`.**
-
-**Escalation — curl first, browser on failure.** The hierarchy is a default, not a guess you're locked into. If a `curl` / `WebFetch` of a supposedly-static page comes back as **SPA HTML, a near-empty shell, a login/redirect, or a 403**, that page was actually rendered or restricted — switch to the browser for it. So the rule is: try the cheap fetch first for anything that *looks* public/static; escalate to the browser the moment the response proves it wasn't. Content you already know needs JS / auth / visual inspection (the list below) skips straight to the browser.
-
-## Use this for every (rendered / restricted) web touch — no exceptions
-
-For the content that *does* need a browser (per the Fetch hierarchy above), this skill is the only path — no escape hatch.
-
-URL visits to JS-rendered or restricted pages, search-engine queries, scraping, form interaction, JSON endpoints behind public sites (Reddit/X/LinkedIn `.json` returns HTML), JS evaluation, network inspection, live pricing/status — all of it.
-
-**Forbidden for this class of content:** built-in `WebSearch` / `WebFetch` / `Fetch`, `curl`, `wget`, `httpie`, Node `fetch`, Python `requests`, or any script that makes HTTP calls — against restricted / JS-rendered / gated sites they hit the datacenter-UA wall and return SPA HTML or 403. There is no "this restricted site is simple, let me just curl it" exception. (The opposite case — public/static files like GitHub raw — is exactly what the **Fetch hierarchy** sends to `curl`; don't browser those.)
+**Forbidden for rendered/restricted content:** `WebSearch` / `WebFetch` / `Fetch` /
+`curl` / `wget` / `httpie` / Node `fetch` / Python `requests` / any script HTTP — they hit
+the datacenter-UA wall and return SPA HTML or 403. No "this restricted site is simple, let
+me just curl it" exception.
 
 ## Deliver the session — viewer channels only
 
-**This whole section applies ONLY when there is a viewer (console web chat).** On a
-no-viewer channel (WhatsApp / Slack / voice), **skip every `browser_session` chip
-delivery here** — the chip is inert (nothing renders it) and a stray one only confuses the
-delivery path. See *Know your channel*, and drive autonomously per *Login & credential
-walls*.
+**Viewer (console web) only.** On a no-viewer channel, SKIP every chip delivery — the chip
+is inert and a stray one confuses the delivery path.
 
-When there IS a viewer, every browser session you open or attach to must be surfaced to the user via `aramb_mcp.chat_deliver_artifacts` with a `browser_session` artifact. The chip routes the workbench's browser panel to the live session so the user can see exactly what you're doing.
-
-**Fire it in two cases (viewer present) — no exceptions:**
-
-1. **Right after `browser_create` succeeds** (or right after a `browser_list` reuse hits an existing session you're about to drive). The first chip pins the workbench tab open before you do anything visible — the user shouldn't have to hunt for it after the fact.
-2. **Every time you're about to pause and ask the user for input or attention** — captcha challenge, login wall, "stop and ask" path, "open the viewer and clear it yourself" prompts. The chip is what gives the user a one-click route into the live browser; surfacing the question without the chip leaves them blind.
+When there IS a viewer, surface every session via `aramb_mcp.chat_deliver_artifacts` with
+a `browser_session` artifact (it routes the workbench panel to the live session). Fire it
+**(a) right after `browser_create` succeeds** (or a `browser_list` reuse you're about to
+drive — pins the tab open) and **(b) every time you pause to ask the user for input or
+attention** (captcha, login wall, stop-and-ask). Re-fire on each new attention-request.
 
 ```bash
 npx mcporter call aramb_mcp.chat_deliver_artifacts \
   project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
-  artifacts='[{"kind":"browser_session","session_id":"<session-id from browser_create footer>","title":"<short label>"}]' \
-  summary="<one-line context, e.g. 'LinkedIn login — open the viewer and sign in'>"
+  artifacts='[{"kind":"browser_session","session_id":"<Session ID from browser_create footer>","title":"<short label>"}]' \
+  summary="<one-line context>"
 ```
 
-- `session_id` is the **`Session ID` value from the `browser_create` response footer** — the opaque per-session id, e.g. `Session ID: <uuid>`. Copy that verbatim. Do **not** pass the `<app-slug>`: the slug is only the browser *name* (the `browser=` handle for page calls), and the workbench can't resolve a slug — delivering it makes the viewer fail to open. If you reused an existing browser via `browser_list`, take its `session_id` from that listing.
-- `title` is a short human label: `"LinkedIn login"`, `"Reddit feed scrape"`, `"captcha — needs you"`.
-- Copy `project_id` + `application_id` verbatim from the `## Current Context` block of your User Message — same rule as every other MCP tool.
-- Mentioning the session in chat prose without the artifact is forbidden — the workbench tab won't open from prose, and "open the viewer" instructions become dead text.
+- `session_id` = the **`Session ID` from the `browser_create` footer** (or `browser_list`
+  for a reuse) — the opaque per-session uuid, verbatim. **Not** the `<app-slug>` (the slug
+  is only the `browser=` handle; the workbench can't resolve it → viewer fails to open).
+- `title` = short label (`"LinkedIn login"`, `"captcha — needs you"`).
+- `project_id` + `application_id` verbatim from your User Message's `## Current Context`.
+- Prose mentions don't open the tab — the artifact is mandatory.
 
-Re-fire on every new attention-request even if you've already delivered the chip earlier in the conversation — each call repins the tab and signals "look here now".
-
-## Login & credential walls — check browser creds, then fill or collect
+## Credential & login walls — check the store, then fill or collect
 
 **A login / credential / payment wall is a *user wall* (class B in `driving-to-completion`),
-not a failure to retry.** The correct shape is always: **collect once and wait** — send the
-secure creds link, **end your turn**, and let the wake resume you. Never ask the user to
-type a credential value in chat, and never poll the user ("done yet?"). A timed retry
-against a wall you can't clear yourself is the wrong reflex here.
+not a failure to retry.** Shape: **collect once and wait** — check the store, fill if
+present; else send the secure link, end your turn, let the wake resume you. Never ask the
+user to type a credential value in chat, never poll ("done yet?"), never guess a password.
 
-When you hit a **login form, an auth wall, or a payment form**, run this fixed sequence. It
-is how you keep going without a human watching, and it is the single correct path.
+**Security model — internalise this.** Website logins live in a dedicated
+**browser-credential store**. **You never read a credential's value** — only its
+**metadata** (aliases, field names). The **browser** fetches and types the value itself via
+`vault_fill`; plaintext never passes through you or chat. This store is SEPARATE from your
+own agent vault (`vault_store_secret` / `vault_get_secret` / `vault_list_secrets`, the
+`vault-mcp` skill — your own API keys). Never `vault_get_secret` a website login, and never
+use `fill` / `fill_form` / `type_text` for a saved credential (those need a value you must
+not hold — a vault credential goes in **only** via `vault_fill`). You *can* fill a value you
+can't see — never tell the user the vault is "write-only" or that they must sign in by hand.
 
-**The browser-creds security model — internalise this first.** Website logins live in a
-dedicated **browser-credential store**, and **you (the agent) never read a browser
-credential's value** — not from chat, not from a tool. You only ever see its **metadata**
-(which aliases exist, what fields each has). To use one, the **browser** fetches and types
-the value itself via `vault_fill`; the plaintext never passes through you or the chat. That
-separation *is* the guarantee — do not try to read the value.
+**The sequence:**
 
-> This store is SEPARATE from your own agent vault (`vault_store_secret` /
-> `vault_get_secret` / `vault_list_secrets`, the `vault-mcp` skill), which holds **your own
-> API keys** for tasks. Those agent-vault tools are NOT for website logins, and you must
-> never use `vault_get_secret` to read a website credential — a browser credential's value
-> is never read into the agent at all.
+1. **Check the store FIRST** — `aramb_mcp.vault_list_browser_creds` returns each entry's
+   `alias`, `kind` (`site_creds` / `address` / `card`), and **field names** (never values).
+   This is the **only** list for browser logins — not `vault_list_secrets`.
+2. **Present → inform, confirm, then let the BROWSER fill.** If more than one could fit,
+   confirm which ("Use your saved `LINKEDIN_ACC1` login?"). Inform per the gate below, then
+   one `vault_fill` per field, then submit with a normal `click`. **On login success,
+   immediately `browser_save_context` into the managed `context_name`** (see *Contexts*).
 
-1. **Check the browser-creds store FIRST — always, before anything else.** Call
-   `aramb_mcp.vault_list_browser_creds` — it returns the aliases you have and each one's
-   field names (**metadata only, never values**). See whether creds for this site/alias
-   already exist.
-   - **Present →** go to step 2 (inform, then fill).
-   - **Absent →** go to step 3 (collect).
-2. **Present → inform, then let the BROWSER fill (you never touch the value).** After
-   informing (per the gate below), fill each field with `aramb_browser.vault_fill`:
-   `session_id` (the live session), `target` (the login/payment URL or origin), `key` in
-   the form `"ALIAS.field"` (e.g. `"linkedin.username"`), and the `selector` of the input.
-   One call per field. The browser fetches the value and types it directly; it returns only
-   confirmation, never the secret. Then continue the login / payment. **Once login
-   succeeds, immediately `browser_save_context` into the managed `context_name`** (if you
-   were given one) so the logged-in state is persisted before any crash — see *Contexts*.
-3. **Absent → collect. The path depends on whether there is a viewer** (see *Know your
-   channel*):
-   - **No viewer (WhatsApp / Slack / voice) → your FIRST action is
-     `aramb_mcp.vaultlink_request_browser_creds_link`**, with a short `alias` (e.g.
-     `"linkedin"`), the exact `fields` the form needs (e.g. `["username","password"]`), and
-     a human `label`. It sends the user a secure one-time link to add those fields to their
-     browser-creds store. Do NOT ask them to type the values in chat, and do NOT tell them
-     to "log in in the browser" — there is no browser they can reach. **This is the primary
-     action, not a fallback.** After emitting the link, **end your turn and set an
-     `aramb_mcp.wake_at`** so you come back when they've filled it (see the `wake-subscriptions`
-     skill's *Waking around browser work*). On the wake, **re-open the SAME managed browser
-     context** (same session id / `context_name`), re-check with
-     `aramb_mcp.vault_list_browser_creds`, then `aramb_browser.vault_fill` and continue.
-   - **Viewer present (console web) →** you may instead offer the viewer route ("open the
-     browser and sign in yourself"), OR still use `request_browser_creds_link` — both work,
-     and the link keeps the creds in the store for next time.
+   ```bash
+   # one field per call. key="ALIAS.field"; selector = the input's CSS selector on the page
+   # (find it via take_snapshot / evaluate_script). session_id = the live session id (footer
+   # / browser_list), NOT the app-slug. target = the URL the field is on.
+   npx mcporter call aramb_browser.vault_fill \
+     session_id=<session-id> target=https://www.linkedin.com/login \
+     key="LINKEDIN_ACC1.username" selector="#username"
+   npx mcporter call aramb_browser.vault_fill \
+     session_id=<session-id> target=https://www.linkedin.com/login \
+     key="LINKEDIN_ACC1.password" selector="#password"
+   ```
+   Errors: **404** session gone (`browser_list`); **422** precheck failed — page not on
+   `target`, or `selector` matched nothing → re-`take_snapshot` and retry; **504** browser
+   didn't ack → check `browser_session_info` and retry.
+3. **Absent → collect** (never ask for the raw value in chat):
+   - **No viewer → your FIRST action is `aramb_mcp.vaultlink_request_browser_creds_link`**
+     with `alias` (e.g. `"linkedin"`), exact `fields` (`["username","password"]`), and a
+     human `label`. It sends a secure one-time link. **Then end your turn and set
+     `aramb_mcp.wake_at`** (see `wake-subscriptions`). On wake: re-open the SAME
+     session/`context_name`, re-check `vault_list_browser_creds`, `vault_fill`, continue.
+   - **Viewer → ** offer the viewer route ("sign in yourself") OR still use the link (keeps
+     creds for next time). Both work.
 
-**Inform before you USE a stored credential (required).** Never fill a saved credential
-silently — tell the user first, then `vault_fill` (never reveal the value). Two tiers,
-keyed on the credential's **risk class** (structural, not guessed: class is `payment` iff
-the fields include `card_number` / `cvv` / `expiry` / `upi`, else `login`):
-- **Login-class** — inform **once** per task: *"Using your saved LinkedIn login to sign
-  in."* Don't re-nag every step.
-- **Payment-class** — stricter: inform **before EVERY transaction, with the amount and
-  recipient**: *"About to pay ₹3,499 to Flipkart with your saved card ending 1234 — going
-  ahead."* A single "once" is never enough for money; each charge is a distinct movement
-  and its amount is exactly what the user is consenting to.
+**Inform before you USE a stored credential** (risk class is structural: `payment` iff
+fields include `card_number`/`cvv`/`expiry`/`upi`, else `login`):
+- **Login-class** — inform **once** per task (*"Using your saved LinkedIn login."*).
+- **Payment-class** — inform **before EVERY transaction, with amount + recipient**
+  (*"About to pay ₹3,499 to Flipkart with your card ending 1234 — going ahead."*).
 
-`request_browser_creds_link` is emitted **only when nothing is stored** — never when the
-credential already exists (then you skip straight to inform-and-`vault_fill`). This is the
-primary fix for the WhatsApp case: at a login wall with no saved creds, the link is your
-next action, not "open the viewer".
+`request_browser_creds_link` fires **only when nothing is stored**; when a credential
+exists, skip straight to inform-and-`vault_fill`.
 
 ## Browser name = app slug. Always reuse.
 
-`name=<app-slug>` is mandatory on every `browser_create`. The app slug is in your workspace path (e.g. `/home/node/workspace/reddit-gather-a-9920b7f` → slug `reddit-gather-a-9920b7f`), in `$APPLICATION_SLUG`, and in the dispatch prompt. Never use generic names (`default`, `scraper`, `researcher`) — they collide across apps.
+`name=<app-slug>` is mandatory on every `browser_create`. The slug is in your workspace
+path (`/home/node/workspace/reddit-gather-a-9920b7f` → `reddit-gather-a-9920b7f`), in
+`$APPLICATION_SLUG`, and the dispatch prompt. Never use generic names (`default`,
+`scraper`) — they collide across apps.
 
-**Start every web task by listing.** Always:
+**Start every web task with `browser_list`:**
 
 ```bash
 npx mcporter call aramb_browser.browser_list
 ```
 
-- Slug matches an existing browser → **reuse it**. `new_page browser=<app-slug>`, capture `target` from the footer, navigate.
-- No match → run the provider flow below.
+- Slug matches → **reuse it**: `new_page browser=<app-slug>`, capture `target` from the
+  footer, navigate.
+- No match → run the provider flow.
 
-`browser_list` reconciles the local registry against **live sessions on the server**, so it also flags **orphaned live sessions** — ones that are still running (and still billing) but have no local entry, typically left behind by an earlier session that failed mid-handshake. If it reports one, close it before creating a new browser:
+`browser_list` reconciles the local registry against live server sessions, so it flags
+**orphaned live sessions** (still running + billing, no local entry, left by a mid-handshake
+failure). Close one before creating a new browser: `browser_destroy session_id=<id>`.
 
-```bash
-npx mcporter call aramb_browser.browser_destroy session_id=<id>
-```
-
-**Never call `browser_destroy`** — with two exceptions: (1) the aramb→steel provider fallback (below), where you destroy the aramb session precisely to recreate the same slug on steel; (2) closing an **orphaned live session** that `browser_list` surfaced (`browser_destroy session_id=<id>`). Outside those, the browser persists across tasks and sibling sub-agents on the same app; destroying it forces every other task to recreate. When your work is done, leave it.
+**Never call `browser_destroy`** — two exceptions: (1) the aramb→steel provider fallback
+(destroy the aramb session to recreate the same slug on steel); (2) closing an orphaned live
+session by id. Otherwise the browser persists across tasks and sibling sub-agents;
+destroying forces everyone to recreate. When done, leave it.
 
 ## `target=` on every page-level call
 
-Page-level tool responses end with a footer:
+Page-level responses end with a footer:
 
 ```
 --- browser: <app-slug> | target: <targetId> | url: <url>
 ```
 
-Pass **both** `browser=<app-slug>` AND `target=<targetId>` on every page-level call (`navigate_page`, `take_snapshot`, `take_screenshot`, `click`, `fill`, `select_page`, `close_page`, `list_pages`, `wait_for`, `evaluate_script`, `list_console_messages`, `list_network_requests`). Read the footer and carry `target` forward.
+Pass **both** `browser=<app-slug>` AND `target=<targetId>` on every page-level call
+(`navigate_page`, `take_snapshot`, `take_screenshot`, `click`, `fill`, `select_page`,
+`close_page`, `list_pages`, `wait_for`, `evaluate_script`, `list_console_messages`,
+`list_network_requests`). Read the footer and carry `target` forward — without it the call
+lands on whichever tab a sibling navigated last.
 
-Without `target=`, the call lands on whichever tab is "selected" — which is whatever tab a sibling sub-agent navigated last. Always pin the tab.
+Lifecycle tools (`browser_create`, `browser_list`, `browser_switch`, `browser_stats`,
+`browser_clients_list`, `browser_session_*`, `browser_context_*`, `browser_save_context`,
+`browser_load_context`, `new_page`) do NOT take `target=`.
 
-Lifecycle tools (`browser_create`, `browser_list`, `browser_switch`, `browser_stats`, `browser_clients_list`, `browser_session_*`, `browser_context_*`, `browser_save_context`, `browser_load_context`, `new_page`) do NOT take `target=`.
+## Interacting with elements — `click`/`fill` take a `uid` from `take_snapshot`
+
+**You cannot click or fill by CSS selector, text, or coordinates.** `click`, `fill`,
+`hover`, `drag` act on a **`uid`** — an opaque element id that exists *only* in
+`take_snapshot` output. Guessing a uid, or passing `selector=`/`text=`/`x=`/`y=`, is
+rejected with **`MCP error -32602 Invalid arguments`**. The loop is always **snapshot →
+read the uid → act on that uid → re-snapshot if the page changed**:
+
+```bash
+npx mcporter call aramb_browser.take_snapshot browser=<app-slug> target=<tid>   # each element line carries uid=…
+npx mcporter call aramb_browser.click browser=<app-slug> target=<tid> uid=<uid>
+npx mcporter call aramb_browser.fill  browser=<app-slug> target=<tid> uid=<uid> value="<text>"
+# fill also selects a <select> <option> (option's uid + its value). Many fields at once:
+npx mcporter call aramb_browser.fill_form browser=<app-slug> target=<tid> \
+  elements='[{"uid":"<u1>","value":"<v1>"},{"uid":"<u2>","value":"<v2>"}]'
+```
+
+**uids go stale on any DOM change** (navigation, a re-render, an SPA route change, content
+loading) — acting on a stale uid throws `-32602` / "no element for uid". Re-`take_snapshot`
+after anything that changes the page. (This is also why raw `evaluate_script` DOM clicks
+throw `Cannot read properties of null (reading 'click')` — snapshot-then-act instead.)
+
+**`select_page` / `new_page` use different args** (not `uid`/`target`):
+- `select_page pageId=<number> browser=<app-slug>` — `pageId` is the **numeric** index
+  from `list_pages` (0,1,2…), not a slug/url/target (a string is `-32602`). You rarely need
+  it — pin the tab with `target=` instead.
+- `new_page url="<url>" browser=<app-slug>` — takes a **`url`** (optional `background=true`),
+  no `target=`; returns a footer with the new `target` to carry forward.
+
+## mcporter exits non-zero even on success — judge by the body, not the exit code
+
+`npx mcporter call …` frequently returns a **non-zero shell exit (`Exit code 1`) on a fully
+successful call** — the body says `Successfully clicked on the element` and carries the
+normal `--- browser: … | target: …` footer. **Decide success/failure from the response
+body, never the exit code.** If the body reports success, it worked — do not retry or
+deviate. A real failure is an explicit error string in the body (`MCP error -32602`,
+`Target closed`, `upstream connection failed`, a stack trace), not a bare non-zero exit.
 
 ## Provider flow — aramb primary, steel fallback
 
-Only if `browser_list` had no match for your slug. **Always create on `provider=aramb` first:**
-
-```bash
-npx mcporter call aramb_browser.browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30
-```
-
-`aramb` is the primary provider (the server default). It runs with the residential proxy (`use_proxy`) and captcha auto-solving (`auto_solve_captcha`) defaulted on, so aramb clears most captchas itself with its built-in solvers. `browser_type=chrome` is required.
-
-Chain create + first navigate in one Bash call (shell `cwd` resets between mcporter calls; `&&` avoids drift):
+Only if `browser_list` had no match. **Always create on `provider=aramb` first** (the
+server default; residential proxy + captcha auto-solving default on; `browser_type=chrome`
+required). Chain create + first navigate in one Bash call (`cwd` resets between mcporter
+calls; `&&` avoids drift):
 
 ```bash
 npx mcporter call aramb_browser.browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 \
   && npx mcporter call aramb_browser.navigate_page browser=<app-slug> url=https://example.com
 ```
 
-### Steel is the fallback — only on aramb's incapability or unavailability
+**Optional `browser_create` inputs:**
+- `context_name=<slug>` — the **managed per-user context** (see *Contexts*); pass it
+  whenever the platform gave you one.
+- `session_context=<string>` — replay a previously captured context blob inline at create
+  (opaque value from `browser_save_context`, verbatim). Steel-only; distinct from
+  `context_name`. **Carry it onto the steel fallback** so login state survives.
+- `use_proxy=true|false` (default true), `auto_solve_captcha=true|false` (default true).
 
-Switch to `provider=steel` in exactly two cases, and only after aramb has actually failed:
-
-1. **aramb is unavailable** — `browser_create` fails, the session never reaches ready, or the provider returns 503.
-2. **aramb can't clear a captcha** — you hit a challenge and, after waiting ~60s (see the captcha steps below), aramb still hasn't solved it despite its solvers.
-
-To switch, **terminate the aramb session and recreate the same slug on steel**, reapplying any context you loaded so logged-in state carries over:
+**Steel is the fallback**, only after aramb has actually failed, in two cases: (1) **aramb
+unavailable** — create fails / never ready / 503; (2) **aramb can't clear a captcha** after
+~60s. Switch by terminating aramb and recreating the same slug on steel, reapplying context:
 
 ```bash
 npx mcporter call aramb_browser.browser_destroy browser=<app-slug> \
@@ -266,256 +291,160 @@ npx mcporter call aramb_browser.browser_destroy browser=<app-slug> \
   && npx mcporter call aramb_browser.navigate_page browser=<app-slug> url=<same-url>
 ```
 
-`browser_destroy browser=<app-slug>` unregisters the slug and auto-terminates its Aramb session. This is the **one sanctioned exception** to the never-destroy rule — provider fallback only, never to "reset" a working browser. Steel ships with its own residential proxy and managed captcha solving.
+`browser_destroy browser=<app-slug>` unregisters the slug and auto-terminates its aramb
+session — the one sanctioned destroy (fallback only, never to "reset" a working browser).
+Steel ships its own residential proxy + managed captcha solving.
 
-**Before switching, clean up a half-created session.** A `browser_create` can provision a live session and *then* fail the CDP handshake — the create (or the chained first `navigate_page`/`new_page`) returns an error like `Protocol error (Target.getBrowserContexts): Target closed` or `upstream connection failed`. The session is still live on the server even though the browser is unusable, so it will keep billing until it expires. This counts as "aramb unavailable" (trigger 1) — but do NOT just recreate on steel, or you leak the first session. Reconcile and close it first:
+**Before switching, clean up a half-created session.** A create can provision a live session
+then fail the CDP handshake (`Protocol error (Target.getBrowserContexts): Target closed` /
+`upstream connection failed`) — the session is still live and billing. This counts as "aramb
+unavailable", but do NOT just recreate on steel or you leak it: `browser_list`, then
+`browser_destroy browser=<app-slug>` (local entry) and/or `browser_destroy session_id=<id>`
+(orphan), THEN recreate on steel. **Every abandoned session gets a `browser_destroy`.**
 
-```bash
-npx mcporter call aramb_browser.browser_list
-# closes the slug's session if it registered locally:
-npx mcporter call aramb_browser.browser_destroy browser=<app-slug>
-# if browser_list shows an orphaned live session with no local entry, close it by id:
-npx mcporter call aramb_browser.browser_destroy session_id=<id>
-```
-
-Then recreate on steel with the switch command above. The rule: **every abandoned session gets a `browser_destroy` (by slug or by `session_id`) — never leave a failed session for TTL to reap.**
-
-Both providers fail → stop and report. Don't autonomously retry a third time or loop back to a provider that already failed.
-
-### Optional `browser_create` inputs
-
-- `context_name=<slug>` — the **managed per-user context** (see "Contexts" below). When the platform gives you a slug, always pass it: the platform loads that user's cookies/logged-in state on start and saves them before teardown, automatically. Distinct from `session_context` (Steel-only inline blob); use `context_name` for the managed per-user context.
-- `session_context=<string>` — replay a previously captured browser-context string (cookies + per-origin storage) inline at create time, instead of running `browser_load_context` afterwards. Pass the opaque value returned by `browser_save_context` verbatim. **Carry it onto the steel fallback too** — pass the same `session_context` (or re-run `browser_load_context` after create) so the fallback session keeps the logged-in state you loaded on aramb.
-- `use_proxy=true|false` — opt into the residential proxy. Defaults to true.
-- `auto_solve_captcha=true|false` — opt into automatic captcha solving. Defaults to true.
+Both providers fail → stop and report. Don't retry a third time or loop back to a failed
+provider.
 
 ### Captcha handling — aramb solves, steel is the fallback, then ask
 
-aramb clears most captchas (reCAPTCHA, Cloudflare Turnstile, hCaptcha, etc.) in the background with its own solvers. While a session is actively solving, the Aramb viewer UI shows a "solving captcha" status — don't interact with the page, navigate, or recreate the browser while it's in that state; wait for it to clear, then continue.
+aramb clears most captchas (reCAPTCHA, Turnstile, hCaptcha) in the background. While it's
+solving, the viewer shows "solving captcha" — don't interact, navigate, or recreate; wait,
+then continue. Step in order — never skip straight to asking:
 
-Step through it in order — never skip straight to asking the user:
+1. **Hit a challenge → wait 30-60s and re-check** (`navigate_page` reload, or
+   `evaluate_script` reads `location.href` / `document.title`). Most clear on their own.
+2. **Still blocked after ~60s → switch to steel** (fallback command above, reapply context);
+   give steel the same 30-60s.
+3. **Steel still blocked → branch on channel:**
+   - Is it actually a **login/credential wall**? → the vault path, not a captcha stop (see
+     *Credential & login walls*).
+   - **Viewer →** deliver the session chip, then ask the user (offer the viewer route).
+   - **No viewer →** report the hard block plainly — site, what you saw, what you need.
+     Never reference a chip/viewer/panel.
 
-1. **Hit a challenge → wait 30-60s and re-check.** `navigate_page` to refresh, or `evaluate_script` to read `location.href` / `document.title` / page content. Most pages clear on their own in that window.
-2. **Still blocked after ~60s → aramb couldn't solve it. Terminate and switch to steel** (the fallback command above), reapplying any loaded context. Give steel the same 30-60s to clear the challenge with its managed captcha solving, then re-check.
-3. **Steel still blocked after ~60s → the branch depends on the channel:**
-   - **First, is this actually a login/credential wall (not a captcha)?** If so, it's the
-     vault path, not a captcha stop — go to *Login & credential walls* (check vault →
-     `aramb_mcp.vaultlink_request_browser_creds_link` on a no-viewer channel).
-   - **Viewer present (console web) →** deliver the session chip (`aramb_mcp.chat_deliver_artifacts` with a `browser_session` artifact — see *Deliver the session*), then ask the user, offering the "open the viewer and clear it yourself" route.
-   - **No viewer (WhatsApp / Slack / voice) →** there is no chip and no viewer. For a genuine **hard block** (an unsolvable captcha with nothing stored to get past it), **report the blocker plainly** — what site, what you saw, what you need — and never reference a chip / viewer / panel. Don't tell the user to "open the browser".
+Don't retry a failed provider, don't loop, don't recreate beyond the single aramb→steel
+fallback. Viewer "ask the user" menu:
 
-Don't retry a provider that already failed, don't loop, and don't recreate the browser beyond the single aramb→steel fallback.
+> `<site>` is still blocked after aramb and steel. Looks like a `<captcha | login wall |
+> rate limit | generic block>`. How would you like to proceed?
+> - **Open the browser viewer and clear it yourself** — fastest; tell me when you're past.
+> - Wait and retry later · Try a different URL · Skip this site
 
-**Viewer channels only** — this "ask the user" menu assumes a workbench viewer. On a no-viewer channel, use *Login & credential walls* for a credential wall, or report the hard block plainly (above) — do not present the "open the browser viewer" option, it does not exist there.
-
-> `<site>` is still blocked after aramb and steel both tried. Looks like a `<captcha challenge | login wall | rate limit | empty body / generic block>`. How would you like to proceed?
->
-> - **Open the browser viewer in the app and clear the challenge yourself** — fastest and most reliable. Tell me when you're past the gate and I'll continue from the same session.
-> - Wait and retry later
-> - Try a different URL on the same site
-> - Skip this site
-
-Let the user pick. When they take the viewer route, **don't refresh, navigate, or recreate the browser** while they're working — same session = same cookies + challenge progress. After they confirm they're through, re-run your last `evaluate_script` to extract from the now-cleared page.
+When they take the viewer route, **don't refresh/navigate/recreate** while they work (same
+session = same cookies + progress). After they confirm, re-run your last `evaluate_script`.
 
 ## Contexts — persistent cookies + logged-in state
 
-A **context** is a tarball of cookies + per-origin storage keyed to a single end user. Replaying it on a fresh browser restores that user's logged-in sessions so they don't re-authenticate every chat.
+A **context** is a tarball of cookies + per-origin storage keyed to one end user; replaying
+it restores their logged-in sessions.
 
-### Managed per-user context — automatic, the default
-
-When your instructions give you a **context name** (a per-user slug the platform provides, e.g. `context_name=<slug>`), pass it straight through on `browser_create`:
+**Managed per-user context (the default).** When your instructions give a `context_name`,
+pass it on `browser_create`:
 
 ```bash
 npx mcporter call aramb_browser.browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 context_name=<slug>
 ```
 
-The platform then owns loading and the safety-net saves for that context, keyed to this user: it **loads it once the browser is ready** and **saves it before the browser is torn down** (plus a periodic background snapshot) — automatically. So a user who logged into a site in one chat is still logged in the next.
+The platform then **loads it once the browser is ready** and **saves it before teardown**
+(plus a periodic snapshot) — automatically, per user. For it you do NOT prompt the user, do
+NOT call `browser_load_context` (loading is automatic), and do NOT pass it as
+`session_context=`. First run has nothing to load — expected.
 
-**But save at milestones yourself — don't rely on teardown alone.** The automatic saves are a safety net, not a guarantee: if the browser container crashes or is OOM-killed *before* teardown, everything since the last save is lost (a browser that just died can't be snapshotted). So the moment you reach a **meaningful state milestone** — login succeeded, a consent/cookie banner accepted, 2FA passed, any point where losing the state would mean redoing real work — save it immediately into the **same** managed context:
+**But save at milestones yourself** — the auto-saves are a safety net, not a guarantee: if
+the container crashes or is OOM-killed before teardown, everything since the last save is
+lost. The moment you reach a milestone (login succeeded, consent accepted, 2FA passed —
+anywhere losing state means redoing real work), save into the **same** managed context:
 
 ```bash
 npx mcporter call aramb_browser.browser_save_context browser=<app-slug> context_name=<the-managed-slug>
 ```
 
-Use the exact `context_name` the platform gave you. This persists the logged-in cookies/storage right then, so a later crash reloads the milestone state instead of a stale one.
-
-For this managed context you do **NOT**:
-
-- prompt the user to load or save it — loading is automatic, and your milestone saves need no prompt;
-- call `browser_load_context` for it — loading stays automatic (you only *save* at milestones);
-- pass it as `session_context=` — that is a different (Steel-only, create-time) field. Use `context_name=`.
-
-First run for a user has nothing to load yet — that is expected; your first milestone save (or teardown) seeds it so the next chat picks it up. If no context name was given to you, just create normally; there is nothing to prompt for.
-
-### Manual named contexts — only when the user explicitly asks
-
-The commands below remain for the explicit case where a **user asks** to save or reuse a *named* login themselves (outside the managed per-user context). Only that user-driven flow prompts; never save/load a manual context without the user asking for it.
-
-### Commands
+**Manual named contexts** — only when a **user explicitly asks** to save/reuse a named login
+themselves. Never save/load a manual context unprompted.
 
 ```bash
-# List
 npx mcporter call aramb_browser.browser_context_list
-
-# Reserve a slot (required before first save)
-npx mcporter call aramb_browser.browser_context_create context_name=<name>
-
-# Save current browser state into the slot
+npx mcporter call aramb_browser.browser_context_create context_name=<name>    # reserve before first save
 npx mcporter call aramb_browser.browser_save_context browser=<app-slug> context_name=<name>
-
-# Apply a saved context onto a live browser
 npx mcporter call aramb_browser.browser_load_context browser=<app-slug> context_name=<name>
-
-# Delete (Redis record + S3 tarball)
-npx mcporter call aramb_browser.browser_context_destroy context_name=<name>
+npx mcporter call aramb_browser.browser_context_destroy context_name=<name>   # Redis record + S3 tarball
 ```
 
-Naming: one context per app-slug per logical identity (e.g. `reddit-gather-a-login`). Reuse the same name; re-save (after user approval) only when state has materially changed.
-
-Error behavior:
-
-- `browser_load_context` on a missing name → reserve + save first.
-- `browser_save_context` on a missing name → `browser_context_create` first.
-- `browser_context_create` on an existing name (409) → pick a new name or destroy the old one.
-- `browser_context_destroy` on a missing name → check `browser_context_list`.
+One context per app-slug per identity (`reddit-gather-a-login`); reuse the name, re-save
+(after approval) only when state materially changed. Errors: load/save on a missing name →
+`browser_context_create` first; create on an existing name (409) → new name or destroy old;
+destroy on a missing name → check `browser_context_list`.
 
 ## Rules (no exceptions)
 
-- **Rendered / restricted / authenticated / visual** web access goes through this skill — no `WebSearch` / `WebFetch` / `curl` / `wget` / script HTTP for those. **Public / static** content (GitHub repos & raw files, plain pages, JSON/APIs) goes the other way: `curl` / `git clone --depth 1` / `WebFetch`, never the browser (see the **Fetch hierarchy** at the top).
-- `browser_list` BEFORE `browser_create`. Reuse the matching slug.
-- `name=<app-slug>` on every `browser_create`. Never invent names.
+- **Rendered/restricted/authenticated/visual** → this skill, no `WebSearch`/`WebFetch`/
+  `curl`/`wget`/script HTTP. **Public/static** (GitHub repos & raw files, plain pages,
+  JSON/APIs) → `curl`/`git clone --depth 1`/`WebFetch`, never the browser.
+- `browser_list` BEFORE `browser_create`; reuse the matching slug. `name=<app-slug>` on
+  every create — never invent names. One browser per slug; siblings reuse via `new_page`.
+- **Resuming after an interruption (a "ran too long" cutoff, a wake, a retry) is not a fresh
+  start.** If you come back to only system notices, `browser_list` your slug and
+  re-`take_snapshot` the live session first — a half-built cart / mid-flow page means the
+  task is still in progress. Don't reply "there's no task" while your browser holds the work.
 - `browser=` AND `target=` on every page-level call.
-- One browser per app slug. Siblings reuse via `new_page`, not a second `browser_create`.
-- **Always create on `provider=aramb` first.** Steel is the fallback, used only when aramb is unavailable (create fails / never ready / 503) or can't clear a captcha after waiting ~60s. Never open on steel by default.
-- **Never call `browser_destroy`** — except to switch aramb→steel on the provider fallback (destroy the aramb session, recreate the slug on steel, reapply any loaded `session_context`). Otherwise TTL cleans up.
-- **Know your channel first (see *Know your channel*).** On a **no-viewer** channel (WhatsApp / Slack / voice) NEVER tell the user to "tap the chip", "open the viewer", "log in in the live browser", or "do it in the browser panel" — none of it exists there. Drive the browser autonomously.
-- **Deliver a `browser_session` artifact via `aramb_mcp.chat_deliver_artifacts` — VIEWER CHANNELS ONLY** — (a) immediately after `browser_create` succeeds, and (b) every time you stop to ask the user for input or attention. Both are mandatory **when there is a viewer**; on a no-viewer channel, SKIP the chip entirely (it's inert). Prose mentions don't open the workbench tab.
-- **At a login / auth / payment wall: check the browser-creds store FIRST** with `aramb_mcp.vault_list_browser_creds` (metadata only — you NEVER read a browser credential's value). If present → **inform before use** (login: once per task; payment: before each transaction, with amount + recipient), then `aramb_browser.vault_fill` (the browser types the value; you never see it). If absent → on a **no-viewer channel your FIRST action is `aramb_mcp.vaultlink_request_browser_creds_link(alias, fields, label)`**, then end the turn and `aramb_mcp.wake_at` to resume (see *Login & credential walls*). Never `vault_get_secret` a website login (that's your own separate API-key vault), and never "have the user log in" on a no-viewer channel.
-- **Managed per-user context: when given a `context_name`, always pass it on `browser_create`** — the platform auto-loads it on start and auto-saves it at teardown (plus a periodic snapshot), per user. Don't prompt for it, and don't call `browser_load_context` for it (loading is automatic). **DO call `browser_save_context` with the same `context_name` at each state milestone** (login succeeded, consent accepted, 2FA passed) so state survives a crash/OOM before teardown. Only the explicit, user-requested *manual* named-context flow prompts.
-- **A "Target closed" error mid-task usually self-heals — don't panic-recreate.** The tool now probes the session and, if it's still live, reconnects and retries transparently; a transient CDP blip won't reach you. If you *do* get an error that says the session is **confirmed terminated/gone**, that verdict came from a real status check — then (and only then) `browser_create` a fresh one. Don't `browser_destroy`+recreate on a bare "Target closed" you saw elsewhere.
-- `evaluate_script` uses `function=` (NOT `script=`). Body is a JS arrow function: `function="() => JSON.stringify(...)"`.
-- On CAPTCHA / bot wall / 403: **wait 30-60s** for aramb to clear it in the background, then re-check. Still blocked → **terminate aramb and switch to `provider=steel`** (reapply any loaded context) and give steel the same 30-60s. Only if steel is also still blocked: **viewer present** → deliver the session chip and stop to ask the user; **no viewer** → report the hard block plainly (site + what you saw + what you need), never reference a chip/viewer. Describe what you saw, never auto-recommend a specific fix. (A login/credential wall is the vault path, not this captcha stop — see *Login & credential walls*.)
-- Snapshots are heavy. Use only before click or when stuck. Prefer `evaluate_script` for data extraction.
-
-## Saved credentials — discover, confirm, then `vault_fill` (the value never reaches you)
-
-**When:** you hit a **login / auth wall**, or the task is **personalized /
-account-scoped** (sign in as the user, "my …", post / search / buy as them). Don't
-ask for a password in chat and don't guess — check what the user has saved and fill
-it with **`aramb_browser.vault_fill`**, which has the browser fetch the stored value
-and type it itself. The secret is never returned to you or placed in your context.
-
-> **You can fill a value you cannot see — there IS a tool.** Not being able to
-> read a saved credential is by design; it does **not** mean you can't use it.
-> `vault_fill` drives it into the page for you. Never tell the user the vault is
-> "write-only," that "there's no tool to fill it," or that they must sign in by
-> hand — discover the credential and fill each field yourself.
-
-> **Never use `fill` / `fill_form` / `type_text` for a saved credential.** Those
-> need a value you'd have to hold — you don't have it and must not handle it. A
-> vault credential goes in **only** via `vault_fill`. (`fill` is for ordinary,
-> non-secret form values you were given.)
-
-Flow:
-
-1. **Discover** what's saved: `aramb_mcp.vault_list_browser_creds` → each entry's
-   `alias`, `kind` (`site_creds` / `address` / `card`), and **field names** (never
-   values). A field is referenced as `"ALIAS.field"`, e.g. `LINKEDIN_ACC1.username`.
-   This is the **only** list for browser logins — **not** `vault_list_secrets`
-   (that is your own API keys; an empty or unrelated result there says nothing
-   about the user's saved logins).
-2. **Pick the relevant one and CONFIRM with the user** before filling — match by
-   site/task (and `kind`), then ask e.g. "Use your saved `LINKEDIN_ACC1` login?".
-   Don't silently choose when more than one could fit.
-   - **None relevant?** Ask the user to add it in their vault (the console, or the
-     channel's add-credential link), then continue — never ask for the raw value in
-     chat.
-3. On the live session, navigate to the login page and `take_snapshot` to get each
-   input's CSS selector.
-4. **Fill each required field one-by-one** (one `vault_fill` call per field — the
-   cred's field list tells you which: e.g. `username` then `password`), then submit
-   the form with a normal `click`:
-
-```bash
-# one field per call. key="ALIAS.field"; selector is the input on the page.
-# session_id = the live session id (from the browser_session chip / browser_list),
-# NOT the app-slug. target = the URL the field is on (fill is refused if the
-# session's active page is not on it).
-npx mcporter call aramb_browser.vault_fill \
-  session_id=<browser-session-id> target=https://www.linkedin.com/login \
-  key="LINKEDIN_ACC1.username" selector="#username"
-npx mcporter call aramb_browser.vault_fill \
-  session_id=<browser-session-id> target=https://www.linkedin.com/login \
-  key="LINKEDIN_ACC1.password" selector="#password"
-```
-
-- Errors: **404** = session gone (`browser_list`); **422** = precheck failed — the
-  page is not on `target`, or `selector` matched no field → re-`take_snapshot` and
-  retry with the right target/selector; **504** = the browser didn't ack in time →
-  check `browser_session_info` and retry.
+- **`click`/`fill`/`hover`/`drag` take a `uid` from `take_snapshot`** — never a selector,
+  text, or coordinates (`-32602`). Snapshot → act → re-snapshot after any DOM change (stale
+  uids also `-32602`). `select_page` takes a **numeric `pageId`** from `list_pages`;
+  `new_page` takes a **`url`**.
+- **mcporter's non-zero exit is not a failure** — judge by the response body, not the exit
+  code; `Exit code 1` with a "Successfully …" body = success, don't retry or deviate.
+- **Always create on `provider=aramb` first.** Steel is the fallback, only when aramb is
+  unavailable (create fails / never ready / 503) or can't clear a captcha after ~60s.
+- **Never call `browser_destroy`** except the aramb→steel fallback (recreate the slug on
+  steel, reapply `session_context`) or an orphaned session by id. Otherwise TTL cleans up.
+- **Know your channel.** No-viewer (WhatsApp/Slack/voice): NEVER say "tap the chip / open
+  the viewer / log in in the live browser / do it in the browser panel". Drive autonomously.
+- **Deliver a `browser_session` artifact — VIEWER ONLY** — after `browser_create`, and every
+  time you stop to ask the user. On a no-viewer channel SKIP it (inert). Prose won't open it.
+- **At a login/auth/payment wall: check the store FIRST** (`vault_list_browser_creds`,
+  metadata only). Present → inform (login: once; payment: per-transaction with amount +
+  recipient), then `vault_fill`. Absent → no-viewer: FIRST action is
+  `vaultlink_request_browser_creds_link(alias, fields, label)`, then end turn + `wake_at`.
+  Never `vault_get_secret` a website login; never "have the user log in" on a no-viewer
+  channel; never `fill`/`fill_form`/`type_text` a saved credential.
+- **Managed `context_name`: always pass it on `browser_create`** (auto-load + auto-save, per
+  user); don't prompt or `browser_load_context` for it. **DO `browser_save_context` with the
+  same name at each milestone** (login, consent, 2FA) so state survives a crash/OOM.
+- **A bare "Target closed" mid-task usually self-heals — don't panic-recreate.** The tool
+  probes the session and reconnects transparently. Only `browser_create` a fresh one when an
+  error says the session is **confirmed terminated/gone** (a real status check).
+- `evaluate_script` uses `function=` (NOT `script=`), a JS arrow function
+  (`function="() => JSON.stringify(...)"`). Use it for **reading data**, not clicking; guard
+  every DOM lookup with `?.`. To interact, snapshot-then-`click`/`fill` on a uid.
+- Snapshots are heavier than `evaluate_script` but are the **only** source of `uid`s — so
+  snapshot before every interaction (and after the page changes); `evaluate_script` for bulk
+  data extraction.
 
 ## Scenarios
 
-### Start a session
+### Login wall, no-viewer channel — check creds, fill or link
 ```bash
-npx mcporter call aramb_browser.browser_list
-# slug present → new_page browser=<app-slug>, capture target, navigate
-# slug absent  → browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 [context_name=<slug>]
-#                (pass context_name=<slug> when the platform gave you one — it auto-loads/saves per user)
-#                && navigate_page browser=<app-slug> url=...
-#                aramb unavailable OR can't clear a captcha after ~60s → browser_destroy browser=<app-slug>
-#                && browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30 [session_context=<value>]  (steel = fallback)
-
-# VIEWER CHANNELS ONLY — immediately after a successful create OR a list-reuse, deliver
-# the session chip. On a no-viewer channel (WhatsApp/Slack/voice) SKIP this — the chip is
-# inert; drive autonomously (see "Know your channel" + "Login & credential walls").
-npx mcporter call aramb_mcp.chat_deliver_artifacts \
-  project_id="<PROJECT_ID>" application_id="<APPLICATION_ID>" \
-  artifacts='[{"kind":"browser_session","session_id":"<session-id from browser_create footer>","title":"<short label>"}]' \
-  summary="Browser is up — opened the workbench tab so you can watch."
-```
-
-### Login wall on a no-viewer channel (WhatsApp/Slack/voice) — check creds, fill or link
-```bash
-# 1. Check the BROWSER-CREDS store FIRST (metadata only — you never read the value):
-npx mcporter call aramb_mcp.vault_list_browser_creds
-# 2a. PRESENT → inform (login: once; payment: amount + recipient), then let the BROWSER fill:
-npx mcporter call aramb_browser.vault_fill \
-  session_id=<session-id> target="https://www.linkedin.com/login" \
+npx mcporter call aramb_mcp.vault_list_browser_creds                       # metadata only
+# PRESENT → inform, then one vault_fill per field (browser types the value; continue login)
+npx mcporter call aramb_browser.vault_fill session_id=<id> target="https://www.linkedin.com/login" \
   key="linkedin.username" selector="#username"
-#      (one call per field; the browser types the value — it never returns to you) → continue login.
-# 2b. ABSENT → send the secure creds link (this is your FIRST action — not "open the viewer"):
-npx mcporter call aramb_mcp.vaultlink_request_browser_creds_link \
-  alias=linkedin fields='["username","password"]' label="LinkedIn login"
-#     then END the turn and set a timed wake to resume when they've filled it:
-npx mcporter call aramb_mcp.wake_at in="3m" \
-  message="creds link for linkedin sent — re-check vault_list_browser_creds, re-open browser session <session-id>/<context_name>, vault_fill, continue"
-# 3. On wake: vault_list_browser_creds → re-open the SAME session/context → vault_fill → continue login.
+# ABSENT → send the secure link FIRST (not "open the viewer"), then end turn + wake
+npx mcporter call aramb_mcp.vaultlink_request_browser_creds_link alias=linkedin fields='["username","password"]' label="LinkedIn login"
+npx mcporter call aramb_mcp.wake_at in="3m" message="creds link sent — re-check vault_list_browser_creds, re-open session <id>/<context_name>, vault_fill, continue"
 ```
 
-### Scrape Reddit / social — browser, never `.json` curl
+### Scrape / search — browser, never `.json` curl or WebSearch
 ```bash
-npx mcporter call aramb_browser.navigate_page browser=<app-slug> target=<tid> \
-  url="https://old.reddit.com/r/<sub>/top/?t=month"
+npx mcporter call aramb_browser.navigate_page browser=<app-slug> target=<tid> url="https://old.reddit.com/r/<sub>/top/?t=month"
 npx mcporter call aramb_browser.evaluate_script browser=<app-slug> target=<tid> \
-  function="() => Array.from(document.querySelectorAll('.thing.link')).map(el => ({title: el.querySelector('a.title')?.textContent?.trim(), url: el.querySelector('a.comments')?.href, score: el.querySelector('.score.unvoted')?.title}))"
-```
-
-### Search engine query — browser, not WebSearch
-```bash
-npx mcporter call aramb_browser.navigate_page browser=<app-slug> target=<tid> \
-  url="https://duckduckgo.com/?q=<query>"
-npx mcporter call aramb_browser.evaluate_script browser=<app-slug> target=<tid> \
-  function="() => Array.from(document.querySelectorAll('article')).map(a => ({title: a.querySelector('h2')?.innerText, url: a.querySelector('a')?.href}))"
+  function="() => Array.from(document.querySelectorAll('.thing.link')).map(el => ({title: el.querySelector('a.title')?.textContent?.trim(), url: el.querySelector('a.comments')?.href}))"
 ```
 
 ### Parallel sub-agents — one browser, isolated tabs
 ```bash
-# Agent A
-npx mcporter call aramb_browser.new_page browser=<app-slug>      # footer → target-A
+npx mcporter call aramb_browser.new_page browser=<app-slug>                 # footer → target-A
 npx mcporter call aramb_browser.navigate_page browser=<app-slug> target=<target-A> url=https://a.com
-# Agent B (no collision with A)
-npx mcporter call aramb_browser.new_page browser=<app-slug>      # footer → target-B
+npx mcporter call aramb_browser.new_page browser=<app-slug>                 # footer → target-B (no collision)
 npx mcporter call aramb_browser.navigate_page browser=<app-slug> target=<target-B> url=https://b.com
 ```
 
