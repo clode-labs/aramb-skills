@@ -200,10 +200,12 @@ npx mcporter call aramb_browser.browser_list
 **orphaned live sessions** (still running + billing, no local entry, left by a mid-handshake
 failure). Close one before creating a new browser: `browser_destroy session_id=<id>`.
 
-**Never call `browser_destroy`** — two exceptions: (1) the aramb→steel provider fallback
+**Never call `browser_destroy`** — three exceptions: (1) the aramb→steel provider fallback
 (destroy the aramb session to recreate the same slug on steel); (2) closing an orphaned live
-session by id. Otherwise the browser persists across tasks and sibling sub-agents;
-destroying forces everyone to recreate. When done, leave it.
+session by id; (3) changing `proxy_country` on an already-open browser (save context →
+destroy → recreate with the new country + same context — see *Geo-targeting the proxy
+exit*). Otherwise the browser persists across tasks and sibling sub-agents; destroying forces
+everyone to recreate. When done, leave it.
 
 ## `target=` on every page-level call
 
@@ -280,6 +282,35 @@ npx mcporter call aramb_browser.browser_create name=<app-slug> provider=aramb br
   (opaque value from `browser_save_context`, verbatim). Steel-only; distinct from
   `context_name`. **Carry it onto the steel fallback** so login state survives.
 - `use_proxy=true|false` (default true), `auto_solve_captcha=true|false` (default true).
+- `proxy_country=<ISO-3166 alpha-2>` — geo-target the residential proxy exit (see below).
+
+### Geo-targeting the proxy exit — `proxy_country`
+
+Some tasks only make sense from a specific country's IP; most are global. **Read the geo
+intent off the request and set `proxy_country` on the first `browser_create`:**
+
+- **Location-specific → the country's alpha-2 code**, inferred from the query ("pizza in
+  **NY**" → `US`, "broadband **UK**" → `GB`, "**Amazon.de**" / "news in **Germany**" →
+  `DE`, "restaurants in **Paris**" → `FR`; use the *country*, NY→`US` not a city).
+  Localized results, regional pricing, and geo-blocked content all want the matching
+  country so the site serves the right locale and doesn't treat you as out-of-region.
+- **Global / universal → omit it** (flight fares, generic docs, worldwide SaaS, crypto
+  prices, a specific global site the user named). Don't invent a country.
+
+```bash
+npx mcporter call aramb_browser.browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 proxy_country=US
+```
+
+**The allowed set is enforced.** If create is rejected with `proxy_country "XX" not
+allowed; allowed: GB, US, DE, …`, pick the closest allowed country or omit it. (Applies
+only to the residential proxy — rejected with `use_user_network`, which egresses via the
+user's own IP.)
+
+**`proxy_country` is fixed at create.** To change it on an open browser, recreate carrying
+the context: `browser_save_context` → `browser_destroy browser=<app-slug>` (a sanctioned
+destroy, same standing as the steel fallback) → `browser_create … proxy_country=<new>
+context_name=<same-slug>` (the managed context auto-reloads, so you resume logged in on the
+new exit). Setting it up front avoids this dance.
 
 **Steel is the fallback**, only after aramb has actually failed, in two cases: (1) **aramb
 unavailable** — create fails / never ready / 503; (2) **aramb can't clear a captcha** after
@@ -396,7 +427,9 @@ destroy on a missing name → check `browser_context_list`.
 - **Always create on `provider=aramb` first.** Steel is the fallback, only when aramb is
   unavailable (create fails / never ready / 503) or can't clear a captcha after ~60s.
 - **Never call `browser_destroy`** except the aramb→steel fallback (recreate the slug on
-  steel, reapply `session_context`) or an orphaned session by id. Otherwise TTL cleans up.
+  steel, reapply `session_context`), an orphaned session by id, or changing `proxy_country`
+  on an open browser (save context → destroy → recreate with the new country + same
+  context). Otherwise TTL cleans up.
 - **Know your channel.** No-viewer (WhatsApp/Slack/voice): NEVER say "tap the chip / open
   the viewer / log in in the live browser / do it in the browser panel". Drive autonomously.
 - **Deliver a `browser_session` artifact — VIEWER ONLY** — after `browser_create`, and every
