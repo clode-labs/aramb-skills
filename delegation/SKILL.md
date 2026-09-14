@@ -25,12 +25,26 @@ This skill is the *how*: two routes out, one brief grammar, one way to close.
 | Route | Target | Tool | Use when |
 |---|---|---|---|
 | **Internal** | `task-agent` — the generic executor that lives in your container | `aramb_mcp.tasks_create` | Nothing on your roster covers it. This is the default worker. |
-| **External** | a named agent from your roster | `aramb_mcp.a2a_send_message` | A roster agent's purpose covers this, or one has handled this kind of thing before. |
+| **External** | a named agent from your roster | `aramb_mcp.agents_list` → `aramb_mcp.a2a_send_message` | A roster agent's purpose covers this, or one has handled this kind of thing before. |
 
-**Your roster is injected into every turn.** Name, one-line purpose, `agent_id`, and
-what it handled before are already in front of you — so **do not call `agents_list` to
-go looking**. If the roster in front of you has no match, that is the answer: the work
-goes to `task-agent`.
+### Find the target FIRST — `aramb_mcp.agents_list`
+
+**Before you route anything, call `aramb_mcp.agents_list`.** It returns every agent in
+this workspace and what each one is for, and it is the ONLY truth about your team. That
+roster CHANGES — agents get created, hired and fired without anyone telling you — so
+your memory of who exists is not evidence.
+
+A roster injected into your turn is a convenience, **not a substitute**. If it is not
+actually in front of you, or you are about to tell the user that nothing suitable
+exists, call `aramb_mcp.agents_list` and look.
+
+**Never tell the user an agent does not exist without having just called
+`aramb_mcp.agents_list`.** Answering "you don't have an agent for that" from memory is
+exactly how a specialist that was sitting right there gets skipped and the work gets
+ground out by hand instead.
+
+Only when the roster genuinely has no match does the work go to `task-agent`. "Nothing
+fits" is a conclusion you reach after looking, never before.
 
 ## The brief — raw intent, never a procedure
 
