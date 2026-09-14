@@ -52,16 +52,17 @@ you supply the two halves it cannot know: the **letter** you want to read on wak
 the **trigger** that says the wait is over.
 
 ```
-aramb_mcp.wake_arm(
-  event_type     = "creds_stored",
-  correlation_id = "<AGENT_ID>:linkedin",
-  letter         = "<the letter — see below>",
-  trigger        = "the browser-creds store lists alias `linkedin` with a password field",
-  outcome_id     = "<OUTCOME_ID from your turn's '## This turn's outcome' block>"
-)
+npx mcporter call aramb_mcp.wake_arm \
+  event_type="creds_stored" \
+  correlation_id="<AGENT_ID>:linkedin" \
+  letter="<the letter — see below>" \
+  trigger="the browser-creds store lists alias `linkedin` with a password field" \
+  outcome_id="<OUTCOME_ID from your turn's '## This turn's outcome' block>"
 
-aramb_mcp.wake_waits()                       # what am I waiting on, right now?
-aramb_mcp.wake_cancel_wait(wake_id = "<ID>") # retire one that has served its purpose
+# what am I waiting on, right now?
+npx mcporter call aramb_mcp.wake_waits
+# retire one that has served its purpose
+npx mcporter call aramb_mcp.wake_cancel_wait wake_id="<ID>"
 ```
 
 **Only these events can be armed, and each one correlates on a specific id.** A

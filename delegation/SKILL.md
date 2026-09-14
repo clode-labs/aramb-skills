@@ -24,8 +24,8 @@ This skill is the *how*: two routes out, one brief grammar, one way to close.
 
 | Route | Target | Tool | Use when |
 |---|---|---|---|
-| **Internal** | `task-agent` — the generic executor that lives in your container | `aramb_mcp.tasks_create` | Nothing on your roster covers it. This is the default worker. |
-| **External** | a named agent from your roster | `aramb_mcp.agents_list` → `aramb_mcp.a2a_send_message` | A roster agent's purpose covers this, or one has handled this kind of thing before. |
+| **Internal** | `task-agent` — the generic executor that lives in your container | `npx mcporter call aramb_mcp.tasks_create` | Nothing on your roster covers it. This is the default worker. |
+| **External** | a named agent from your roster | `npx mcporter call aramb_mcp.agents_list` → `...a2a_send_message` | A roster agent's purpose covers this, or one has handled this kind of thing before. |
 
 ### Find the target FIRST — `aramb_mcp.agents_list`
 
@@ -76,18 +76,11 @@ Notice what is absent: which site, which tool, which order. That is the worker's
 ## Route A — internal, to `task-agent`
 
 ```
-aramb_mcp.tasks_create(
-  project_id      = "<PROJECT_ID>",
-  application_id  = "<APPLICATION_ID>",     # without it the task lands on the wrong app
-  tasks = [{
-    "unique_id":           1,
-    "name":                "Find data-engineer roles in Bangalore",
-    "assigned_agent":      "task-agent",
-    "description":         "<the brief — outcome, context, evidence, out of scope>",
-    "acceptance_criteria": "Five posting URLs that resolve, each with company and source named.",
-    "enable_checker":      false
-  }]
-)
+# without it the task lands on the wrong app
+npx mcporter call aramb_mcp.tasks_create \
+  project_id="<PROJECT_ID>" \
+  application_id="<APPLICATION_ID>" \
+  tasks='[{ "unique_id": 1, "name": "Find data-engineer roles in Bangalore", "assigned_agent": "task-agent", "description": "<the brief — outcome, context, evidence, out of scope>", "acceptance_criteria": "Five posting URLs that resolve, each with company and source named.", "enable_checker": false }]'
 ```
 
 Three fields decide whether this works:
@@ -107,8 +100,12 @@ Three fields decide whether this works:
 
 Then **end your turn**. Do not sit and poll. (How you come back: `wake-subscriptions`.)
 
-> **Notation.** The blocks above name the tool and its arguments. Call the tool. Do not
-> shell out to reach it — see *Hard lines*.
+> **How you call these.** `aramb_mcp.*` is **not** in your tool list — it never is. You
+> reach it by running `npx mcporter call` in **Bash**, exactly as shown. That IS the
+> sanctioned client, not a workaround. Arguments are `key="value"`; an array or object
+> argument is a JSON string (`tasks='[{...}]'`); `--output` is not supported.
+> What stays forbidden is going *around* the client: never `curl` the MCP endpoint,
+> never read `mcporter.json` or any bearer token, never script your own auth.
 
 ## Route B — external, to a roster agent
 
@@ -159,18 +156,19 @@ Close on evidence, in the worker's record and then with the user:
 
 ```
 # Done — with the evidence attached, not described.
-aramb_mcp.tasks_update(
-  project_id = "<PROJECT_ID>", task_id = "<TASK_ID>",
-  status     = "done",
-  summary    = "<what is now true — markdown, shown to the user>",
-  outputs    = {"summary": "<one paragraph, under 500 chars>", "files": ["<path>"]}
-)
+npx mcporter call aramb_mcp.tasks_update \
+  project_id="<PROJECT_ID>" \
+  task_id="<TASK_ID>" \
+  status="done" \
+  summary="<what is now true — markdown, shown to the user>" \
+  outputs='{"summary": "<one paragraph, under 500 chars>", "files": ["<path>"]}'
 
 # Failed — the work was attempted and did not land.
-aramb_mcp.tasks_update(
-  project_id = "<PROJECT_ID>", task_id = "<TASK_ID>",
-  status     = "failed", error = "<what actually stopped it>"
-)
+npx mcporter call aramb_mcp.tasks_update \
+  project_id="<PROJECT_ID>" \
+  task_id="<TASK_ID>" \
+  status="failed" \
+  error="<what actually stopped it>"
 ```
 
 - **Attach deliverables, don't describe them.** A file the user should open goes as an
@@ -188,9 +186,13 @@ aramb_mcp.tasks_update(
 
 ## Hard lines
 
-- **Never delegate through `Bash`.** `aramb_mcp.tasks_*` and `aramb_mcp.a2a_*` are the
-  only sanctioned way to dispatch work. Never `curl` the MCP endpoint, never read
-  `mcporter.json` or any bearer token, never script around the toolkit.
+- **`npx mcporter call aramb_mcp.tasks_*` / `aramb_mcp.a2a_*` is the only sanctioned way
+  to dispatch work** — and it runs in `Bash`, which is correct and expected. What is
+  forbidden is bypassing it: never `curl` the MCP endpoint, never read `mcporter.json`
+  or any bearer token, never script your own auth.
+- **Never fall back to doing the work yourself because a call failed.** A failed dispatch
+  is an ARGUMENT bug — read the error, fix the arguments, call again. Doing the job by
+  hand, or through a generic built-in sub-agent, is the one failure you must not make.
 - **Never claim an outcome a tool did not return.** Not "the worker says it's done" —
   the observed end state, or nothing.
 - **Never let a worker speak to the user.** Its report comes to you; what the user
