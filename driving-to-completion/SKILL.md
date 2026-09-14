@@ -7,7 +7,7 @@ description: >
   (a browser flow, an MCP call, a delegated agent, or something only the user can do),
   whenever you hit a failure or a wall, whenever you're ABOUT to tell the user you'll
   do something, and whenever a turn is running long. Pairs with `wake-subscriptions`
-  (how you come back) and `aramb-browser` / `aramb-orchestrator` (the boundaries you
+  (how you come back) and `aramb-browser` / `delegation` (the boundaries you
   hand off across). NOT for one-shot answers you can finish in the current turn.
 ---
 
