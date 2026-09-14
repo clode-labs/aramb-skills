@@ -20,10 +20,12 @@ the user eventually hears is written by the agent that dispatched you — not by
 Your record is the task row. It survives your session, a compaction, and your death.
 The transcript does not.
 
-> **Notation.** The blocks below name the tool and its arguments. **Call the tool.**
-> Do not shell out to reach it — no `npx mcporter call`, no `curl` at the MCP endpoint,
-> no reading `mcporter.json`. Driving the platform through Bash is the one regression
-> this contract exists to prevent.
+> **How you call these.** `aramb_mcp.*` is **not** in your tool list — it never is. You
+> reach it by running `npx mcporter call` in **Bash**, exactly as shown. That IS the
+> sanctioned client, not a workaround. Arguments are `key="value"`; an array or object
+> argument is a JSON string (`outputs='{...}'`); `--output` is not supported.
+> What stays forbidden is going *around* the client: never `curl` the MCP endpoint,
+> never read `mcporter.json` or any bearer token, never script your own auth.
 
 ## Your task id — copy it, never guess it
 
@@ -74,10 +76,10 @@ writing at its root clobbers other work.
 non-terminal task:
 
 ```
-aramb_mcp.tasks_update(
-  project_id  = "<PROJECT_ID>", task_id = "<TASK_ID>",
-  description = "<the full new description, including a ## Progress section>"
-)
+npx mcporter call aramb_mcp.tasks_update \
+  project_id="<PROJECT_ID>" \
+  task_id="<TASK_ID>" \
+  description="<the full new description, including a ## Progress section>"
 ```
 
 Patchable without a status: `description`, `task_name`, `acceptance_criteria`,
@@ -102,15 +104,13 @@ for it**.
 **Gate OFF → you are the terminal writer. Close `done`.**
 
 ```
-aramb_mcp.tasks_update(
-  project_id = "<PROJECT_ID>", task_id = "<TASK_ID>",
-  status     = "done",
-  summary    = "<what is now true — markdown, shown in chat>",
-  outputs    = {"summary": "<one paragraph, under 500 chars, for whoever reads this next>",
-                "files":   ["<path relative to the workspace root>"]},
-  artifacts  = [{"kind": "blob", "path": "/home/node/workspace/<WD>/report.pdf",
-                 "name": "report.pdf", "mime_hint": "application/pdf"}]
-)
+npx mcporter call aramb_mcp.tasks_update \
+  project_id="<PROJECT_ID>" \
+  task_id="<TASK_ID>" \
+  status="done" \
+  summary="<what is now true — markdown, shown in chat>" \
+  outputs='{"summary": "<one paragraph, under 500 chars, for whoever reads this next>", "files": ["<path relative to the workspace root>"]}' \
+  artifacts='[{"kind": "blob", "path": "/home/node/workspace/<WD>/report.pdf", "name": "report.pdf", "mime_hint": "application/pdf"}]'
 ```
 
 Writing `validating` with the gate off is **rejected**: nothing would ever audit it and
@@ -120,13 +120,12 @@ the task would strand. The corrective says so — read it and re-issue as `done`
 shape. Writing `done` here is rejected, because it would silently skip the audit.
 
 ```
-aramb_mcp.tasks_update(
-  project_id = "<PROJECT_ID>", task_id = "<TASK_ID>",
-  status     = "validating",
-  summary    = "Frontend deployed.",
-  artifacts  = [{"kind": "url", "url": "https://abc.proxy.clode.space",
-                 "title": "Frontend", "environment": "deployed"}]
-)
+npx mcporter call aramb_mcp.tasks_update \
+  project_id="<PROJECT_ID>" \
+  task_id="<TASK_ID>" \
+  status="validating" \
+  summary="Frontend deployed." \
+  artifacts='[{"kind": "url", "url": "https://abc.proxy.clode.space", "title": "Frontend", "environment": "deployed"}]'
 ```
 
 **A corrective tool result is the contract talking. It is a teach signal, not a
@@ -173,16 +172,25 @@ Pick the ending that is **true**, not the one that reads best.
 
 ```
 # Failed — it was attempted and did not work.
-aramb_mcp.tasks_update(project_id="<PROJECT_ID>", task_id="<TASK_ID>",
-  status="failed", error="<what actually stopped it>", retryable=false)
+npx mcporter call aramb_mcp.tasks_update \
+  project_id="<PROJECT_ID>" \
+  task_id="<TASK_ID>" \
+  status="failed" \
+  error="<what actually stopped it>" \
+  retryable="false"
 
 # Stuck in a way another agent can unstick.
-aramb_mcp.tasks_update(project_id="<PROJECT_ID>", task_id="<TASK_ID>",
-  status="needs_master_attention", error="<the specific blocker>")
+npx mcporter call aramb_mcp.tasks_update \
+  project_id="<PROJECT_ID>" \
+  task_id="<TASK_ID>" \
+  status="needs_master_attention" \
+  error="<the specific blocker>"
 
 # Only a human can answer. ASK FIRST with aramb_mcp.chat_ask_question, then park.
-aramb_mcp.tasks_update(project_id="<PROJECT_ID>", task_id="<TASK_ID>",
-  status="awaiting_user_input")
+npx mcporter call aramb_mcp.tasks_update \
+  project_id="<PROJECT_ID>" \
+  task_id="<TASK_ID>" \
+  status="awaiting_user_input"
 ```
 
 - **`retryable=false`** means *deterministic — re-running changes nothing* (quota gone,
