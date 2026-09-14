@@ -143,7 +143,9 @@ separation *is* the guarantee — do not try to read the value.
    `session_id` (the live session), `target` (the login/payment URL or origin), `key` in
    the form `"ALIAS.field"` (e.g. `"linkedin.username"`), and the `selector` of the input.
    One call per field. The browser fetches the value and types it directly; it returns only
-   confirmation, never the secret. Then continue the login / payment.
+   confirmation, never the secret. Then continue the login / payment. **Once login
+   succeeds, immediately `browser_save_context` into the managed `context_name`** (if you
+   were given one) so the logged-in state is persisted before any crash — see *Contexts*.
 3. **Absent → collect. The path depends on whether there is a viewer** (see *Know your
    channel*):
    - **No viewer (WhatsApp / Slack / voice) → your FIRST action is
@@ -307,15 +309,23 @@ When your instructions give you a **context name** (a per-user slug the platform
 npx mcporter call aramb_browser.browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 context_name=<slug>
 ```
 
-The platform then owns the whole lifecycle for that context, keyed to this user: it **loads it once the browser is ready** and **saves it before the browser is torn down** — automatically, on every session. So a user who logged into a site in one chat is still logged in the next.
+The platform then owns loading and the safety-net saves for that context, keyed to this user: it **loads it once the browser is ready** and **saves it before the browser is torn down** (plus a periodic background snapshot) — automatically. So a user who logged into a site in one chat is still logged in the next.
+
+**But save at milestones yourself — don't rely on teardown alone.** The automatic saves are a safety net, not a guarantee: if the browser container crashes or is OOM-killed *before* teardown, everything since the last save is lost (a browser that just died can't be snapshotted). So the moment you reach a **meaningful state milestone** — login succeeded, a consent/cookie banner accepted, 2FA passed, any point where losing the state would mean redoing real work — save it immediately into the **same** managed context:
+
+```bash
+npx mcporter call aramb_browser.browser_save_context browser=<app-slug> context_name=<the-managed-slug>
+```
+
+Use the exact `context_name` the platform gave you. This persists the logged-in cookies/storage right then, so a later crash reloads the milestone state instead of a stale one.
 
 For this managed context you do **NOT**:
 
-- prompt the user to load or save it — it is automatic and per-user;
-- call `browser_save_context` / `browser_load_context` for it — the platform already does, on start and on teardown;
+- prompt the user to load or save it — loading is automatic, and your milestone saves need no prompt;
+- call `browser_load_context` for it — loading stays automatic (you only *save* at milestones);
 - pass it as `session_context=` — that is a different (Steel-only, create-time) field. Use `context_name=`.
 
-First run for a user has nothing to load yet — that is expected; the platform saves it at teardown so the next chat picks it up. If no context name was given to you, just create normally; there is nothing to prompt for.
+First run for a user has nothing to load yet — that is expected; your first milestone save (or teardown) seeds it so the next chat picks it up. If no context name was given to you, just create normally; there is nothing to prompt for.
 
 ### Manual named contexts — only when the user explicitly asks
 
@@ -361,7 +371,8 @@ Error behavior:
 - **Know your channel first (see *Know your channel*).** On a **no-viewer** channel (WhatsApp / Slack / voice) NEVER tell the user to "tap the chip", "open the viewer", "log in in the live browser", or "do it in the browser panel" — none of it exists there. Drive the browser autonomously.
 - **Deliver a `browser_session` artifact via `aramb_mcp.chat_deliver_artifacts` — VIEWER CHANNELS ONLY** — (a) immediately after `browser_create` succeeds, and (b) every time you stop to ask the user for input or attention. Both are mandatory **when there is a viewer**; on a no-viewer channel, SKIP the chip entirely (it's inert). Prose mentions don't open the workbench tab.
 - **At a login / auth / payment wall: check the browser-creds store FIRST** with `aramb_mcp.vault_list_browser_creds` (metadata only — you NEVER read a browser credential's value). If present → **inform before use** (login: once per task; payment: before each transaction, with amount + recipient), then `aramb_browser.vault_fill` (the browser types the value; you never see it). If absent → on a **no-viewer channel your FIRST action is `aramb_mcp.vaultlink_request_browser_creds_link(alias, fields, label)`**, then end the turn and `aramb_mcp.wake_at` to resume (see *Login & credential walls*). Never `vault_get_secret` a website login (that's your own separate API-key vault), and never "have the user log in" on a no-viewer channel.
-- **Managed per-user context: when given a `context_name`, always pass it on `browser_create`** — the platform auto-loads it on start and auto-saves it before teardown, per user. Do NOT prompt for it and do NOT call `browser_save_context`/`browser_load_context` for it. Only the explicit, user-requested *manual* named-context flow prompts.
+- **Managed per-user context: when given a `context_name`, always pass it on `browser_create`** — the platform auto-loads it on start and auto-saves it at teardown (plus a periodic snapshot), per user. Don't prompt for it, and don't call `browser_load_context` for it (loading is automatic). **DO call `browser_save_context` with the same `context_name` at each state milestone** (login succeeded, consent accepted, 2FA passed) so state survives a crash/OOM before teardown. Only the explicit, user-requested *manual* named-context flow prompts.
+- **A "Target closed" error mid-task usually self-heals — don't panic-recreate.** The tool now probes the session and, if it's still live, reconnects and retries transparently; a transient CDP blip won't reach you. If you *do* get an error that says the session is **confirmed terminated/gone**, that verdict came from a real status check — then (and only then) `browser_create` a fresh one. Don't `browser_destroy`+recreate on a bare "Target closed" you saw elsewhere.
 - `evaluate_script` uses `function=` (NOT `script=`). Body is a JS arrow function: `function="() => JSON.stringify(...)"`.
 - On CAPTCHA / bot wall / 403: **wait 30-60s** for aramb to clear it in the background, then re-check. Still blocked → **terminate aramb and switch to `provider=steel`** (reapply any loaded context) and give steel the same 30-60s. Only if steel is also still blocked: **viewer present** → deliver the session chip and stop to ask the user; **no viewer** → report the hard block plainly (site + what you saw + what you need), never reference a chip/viewer. Describe what you saw, never auto-recommend a specific fix. (A login/credential wall is the vault path, not this captcha stop — see *Login & credential walls*.)
 - Snapshots are heavy. Use only before click or when stuck. Prefer `evaluate_script` for data extraction.
