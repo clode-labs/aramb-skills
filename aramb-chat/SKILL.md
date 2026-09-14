@@ -64,7 +64,7 @@ Use when automated resolution has failed and human intervention is required.
 
 Every user-facing deliverable (file you wrote, URL you exposed) MUST be surfaced as a chip. Two surfaces, same `artifacts` payload shape:
 
-- **In a task (team mode)**: pass `artifacts` on your `aramb_mcp.tasks_update` close call (with the explicit `task_id` from your User Message). See the `aramb-tasks` skill for that path.
+- **In a task (team mode)**: pass `artifacts` on your `aramb_mcp.tasks_update` close call (with the explicit `task_id` from your User Message).
 - **Outside a task (solo, mid-task recall, master direct response)**: call `aramb_mcp.chat_deliver_artifacts` with the same `artifacts` payload.
 
 ```bash

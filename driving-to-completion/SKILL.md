@@ -7,7 +7,7 @@ description: >
   (a browser flow, an MCP call, a delegated agent, or something only the user can do),
   whenever you hit a failure or a wall, whenever you're ABOUT to tell the user you'll
   do something, and whenever a turn is running long. Pairs with `wake-subscriptions`
-  (how you come back) and `aramb-browser` / `aramb-orchestrator` (the boundaries you
+  (how you come back) and `aramb-browser` / `delegation` (the boundaries you
   hand off across). NOT for one-shot answers you can finish in the current turn.
 ---
 
@@ -20,38 +20,57 @@ carry that across the boundary to a real outcome. Four disciplines make that rel
 **keep a durable record**, **probe before you promise**, **classify what you hit before
 you react**, and **checkpoint before you run out**.
 
-## Keep an errand record — your durable memory of the job
+## The outcome record — your durable memory of the job
 
 The chat transcript compacts, and when it does you lose "what the user asked for and
-how far we got". An **errand record** is the durable thing that survives the run, the
+how far we got". The **outcome record** is the durable thing that survives the run, the
 wake, your own death, and compaction. Answer *"what are you working on?"* **from the
 record**, never from memory.
 
-The errand tools are the `aramb_mcp.errands_*` family — create one, update it (append a
-progress note), get it, list active ones, and close it (exact names per your tool list;
-the spec's close verb is `close`). **These verb names are provisional until brahmi #1089
-lands and are not in your tool list yet.** So:
+**You do not create it — the platform does, on every turn**, from the user's message. It
+is a `tasks` row opened in status `open` with `goal` set to the user's ask **in their
+own words**, and it starts UNROUTED: nobody has yet said who is going to do this.
 
-- **Check first (this is the probe rule below applied to yourself):** if the
-  `aramb_mcp.errands_*` tools are present, use them. If they are not, fall back to the
-  resume packet in `wake-subscriptions` as your durable record until they land — do not
-  claim to have "logged" or "filed" an errand you have no tool to write.
+- **Its id is handed to you in your turn prompt**, in the **`## This turn's outcome`**
+  block (`outcome_id: …`). That is the only place you learn it, and everything that
+  anchors to the outcome needs it — including every `aramb_mcp.wake_arm` you arm.
+- **Read it back with `aramb_mcp.tasks_list_me`** (or `aramb_mcp.tasks_list`) to recover
+  the goal, the acceptance criteria, and where you left off. On a wake, read it *before*
+  you form a view of what happened.
+- The record is **why the platform can catch you going dark**: an open outcome with no
+  live wait gets a safety check-in armed on it at your turn boundary, and a run that
+  ends saying nothing while an outcome is still open gets one forced report — then the
+  user is told directly. None of that is a substitute for you driving it.
 
-When the tools are present:
+Your three jobs on that record:
 
-- **Open an errand** the moment you accept something that won't finish this turn —
-  before you start the work, not after.
-- **`desired_state` carries a structured platform predicate wherever one exists** —
-  *agent published*, *test green*, *trigger active*, *toolkit connected*. On this
-  platform "done" is a **queryable row**, not a judgement, so write the check, not prose.
-  Use prose only where the outcome genuinely can't be expressed as a platform state.
-- **Append progress at each real state change**, with concrete ids/URLs — never
-  "made progress".
-- **Close honestly:** `errands_complete` with the evidence, or `errands_abandon` with
-  the real reason. Never leave an errand `active` that you have stopped driving.
+1. **Route it.** Decide which of the three routes takes it — **self** (you answer it in a
+   sentence or two), **internal** (`aramb_mcp.tasks_create` to a worker), **external**
+   (`aramb_mcp.a2a_send_message` to a roster agent). The delegating routes stamp the
+   ownership onto the task they create, so routing is something you *do*, not a field you
+   fill in. How to pick, and how to write the brief: `delegation`.
+2. **Append progress at each real state change**, with concrete ids and URLs — never
+   "made progress". Patch it with `aramb_mcp.tasks_update`, sending the full new
+   `description` with your progress section inside it (the update replaces, it does not
+   append). Acceptance criteria that turn out to be wrong get patched too, not ignored.
+3. **Close it honestly, and say why.** `aramb_mcp.tasks_update` with a terminal status —
+   `done` with the evidence, or `failed` with what actually stopped it. **Work dropped
+   because its premise died is ABANDONED, and abandoned is not failed** — recording it as
+   failed loses the reason and invites a retry of something that should not be retried.
+   The platform's turn prompt calls this the `terminal_reason`; `aramb_mcp.tasks_update`
+   does not take it as its own argument today, so **put the real reason in the close
+   text** — `summary` on a `done`, `error` on a `failed` — where it is recorded either
+   way.
 
-The one thing never to do: **answer "what are you doing?" from memory when a record
-exists.** Read the record.
+**Prefer a platform predicate over prose** wherever one exists. On this platform "done"
+is usually a **queryable row** — *agent published*, *trigger active*, *toolkit
+connected*, *the file parses* — not a judgement. Write the acceptance criteria as the
+check you can run; use prose only where the outcome genuinely cannot be expressed as a
+state.
+
+Two things never to do: **answer "what are you doing?" from memory when a record
+exists**, and **leave an outcome open that you have stopped driving**. If you have
+stopped, close it or say plainly that it is blocked and on whom.
 
 ## Probe capability before you promise
 
@@ -104,8 +123,8 @@ wake). Read a credential wall as a **user wall**, not something to retry.
 ## Checkpoint before you run out
 
 When you notice a turn running long or a budget / turn limit approaching: **stop taking
-new work and write a checkpoint.** Put it in the errand record if you have one, else in
-your next wake's resume packet (see `wake-subscriptions`). The checkpoint carries:
+new work and write a checkpoint.** Put it in the outcome record as a progress note, and
+in the letter of your next wake (see `wake-subscriptions`). The checkpoint carries:
 
 - completed work,
 - exact current state, with durable ids/URLs,

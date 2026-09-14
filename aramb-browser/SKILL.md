@@ -26,6 +26,26 @@ All tools: `npx mcporter call aramb_browser.<tool> [param=value ...]`
 > `aramb_browser.<tool>` — the hyphenated form is no longer registered, so a
 > `aramb-browser.<tool>` call will be rejected as an unknown server.
 
+## Whose browser this is — the worker's, not the orchestrator's
+
+**The browser belongs to `task-agent`, the worker that executes briefs.** If you are an
+orchestrator holding a conversation with a user, driving a browser is not yours to do:
+browsing is work, work is delegated, and a browser flow is exactly the kind of job that
+blocks you for minutes while the user waits on a reply. Hand it to `task-agent` with a
+brief (see the `delegation` skill) and stay available.
+
+If you are the worker, the rest of this skill is yours end to end. **The browser is
+YOURS**: you open it, you drive it, you own getting past what it hits, and you report
+the observed end state with evidence. Two consequences worth naming up front:
+
+- **Always a named, persistent context — never an anonymous browser.** A context keeps
+  cookies and logged-in state alive across runs, so a user who signed into a site once
+  is still signed in next time. Pass the `context_name` you were given on every
+  `browser_create` (see *Contexts*). Requesting a fresh anonymous browser throws that
+  away and makes the user log in again.
+- **You do not talk to the user.** Everything a user hears comes from the orchestrator.
+  At a wall, you report what you saw — you do not address them directly.
+
 ## Know your channel — is there a viewer, or not?
 
 **Before you rely on ANY "show the user the browser" step, know which channel you are

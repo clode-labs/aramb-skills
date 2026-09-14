@@ -169,7 +169,7 @@ When you need an agent that doesn't exist, use the create-agent skill with this 
 name: lowercase-hyphen-format
 role: one-line description of what the agent does
 skills:
-  - aramb-tasks                     # always include -- every agent needs task management
+  - task-execution                  # always include -- how the agent receives a task and reports on it
   - aramb-toolkits                  # always include -- the single toolkit surface: discover + execute tools, connections, trigger catalog, github credential (gmail, slack, sheets, github, ...). github = execute GITHUB_GET_GIT_CREDENTIAL + native git/gh
   - aramb-skills                    # always include -- search, inspect, and download skills from the registry
   - aramb-browser                   # include when the agent needs to visit URLs, scrape pages, fill forms, or do any web interaction

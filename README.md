@@ -216,4 +216,4 @@ git pull origin main
 - **Version**: 2.0
 - **Date**: 2025-01-23
 - **Status**: Reference Documentation
-- **Related**: aramb-agents (consumer), aramb-orchestrator (assigner)
+- **Related**: aramb-agents (consumer), delegation (assigner), task-execution (worker)
