@@ -152,10 +152,10 @@ can't see — never tell the user the vault is "write-only" or that they must si
    # (find it via take_snapshot / evaluate_script). session_id = the live session id (footer
    # / browser_list), NOT the app-slug. target = the URL the field is on.
    npx mcporter call aramb_browser.vault_fill \
-     session_id=<session-id> target=https://www.linkedin.com/login \
+     session_id=<session-id> app_id=<APPLICATION_ID> target=https://www.linkedin.com/login \
      key="LINKEDIN_ACC1.username" selector="#username"
    npx mcporter call aramb_browser.vault_fill \
-     session_id=<session-id> target=https://www.linkedin.com/login \
+     session_id=<session-id> app_id=<APPLICATION_ID> target=https://www.linkedin.com/login \
      key="LINKEDIN_ACC1.password" selector="#password"
    ```
    Errors: **404** session gone (`browser_list`); **422** precheck failed — page not on
@@ -189,7 +189,7 @@ path (`/home/node/workspace/reddit-gather-a-9920b7f` → `reddit-gather-a-9920b7
 **Start every web task with `browser_list`:**
 
 ```bash
-npx mcporter call aramb_browser.browser_list
+npx mcporter call aramb_browser.browser_list app_id=<APPLICATION_ID>
 ```
 
 - Slug matches → **reuse it**: `new_page browser=<app-slug>`, capture `target` from the
@@ -198,7 +198,8 @@ npx mcporter call aramb_browser.browser_list
 
 `browser_list` reconciles the local registry against live server sessions, so it flags
 **orphaned live sessions** (still running + billing, no local entry, left by a mid-handshake
-failure). Close one before creating a new browser: `browser_destroy session_id=<id>`.
+failure). Close one before creating a new browser:
+`browser_destroy app_id=<APPLICATION_ID> session_id=<id>`.
 
 **Never call `browser_destroy`** — three exceptions: (1) the aramb→steel provider fallback
 (destroy the aramb session to recreate the same slug on steel); (2) closing an orphaned live
@@ -271,9 +272,34 @@ required). Chain create + first navigate in one Bash call (`cwd` resets between 
 calls; `&&` avoids drift):
 
 ```bash
-npx mcporter call aramb_browser.browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 \
+npx mcporter call aramb_browser.browser_create name=<app-slug> app_id=<APPLICATION_ID> provider=aramb browser_type=chrome ttl_minutes=30 \
   && npx mcporter call aramb_browser.navigate_page browser=<app-slug> url=https://example.com
 ```
+
+### `app_id` is REQUIRED — pass it on every Aramb/ikki call
+
+**Always pass `app_id=<APPLICATION_ID>`** — the `application_id` copied verbatim from the
+`## Current Context` block of your User Message (the same value you use for
+`aramb_mcp.chat_deliver_artifacts`). Do **not** rely on it being picked up from the
+environment: the platform's `ARAMB_APP_ID` default is **unreliable** — it is *not injected
+at all* for some agents (e.g. a project with no cloud claim), and when you hold more than
+one application it carries only **one arbitrary** app, so a session silently gets tracked
+under the wrong one. A missing/empty app_id makes the call fail with **`app_id is required`**.
+(The tool description says "auto from the environment — do not pass app_id"; that guidance
+is wrong for this runtime. Pass it.)
+
+Pass `app_id` on **every command that reaches Aramb/ikki** — provisioning, session,
+context, and vault calls:
+
+- `browser_create`, `browser_list`, `browser_destroy`
+- `browser_session_list`, `browser_session_info`, `browser_session_extend`, `browser_clients_list`
+- `browser_context_list`, `browser_context_create`, `browser_context_destroy`, `browser_save_context`, `browser_load_context`
+- `vault_fill`
+
+**Page-level calls do NOT take `app_id`** (`navigate_page`, `take_snapshot`, `click`,
+`fill`, `select_page`, `new_page`, `close_page`, `list_pages`, `wait_for`,
+`evaluate_script`, `list_console_messages`, `list_network_requests`), nor do the
+local-registry `browser_switch` / `browser_stats`.
 
 **Optional `browser_create` inputs:**
 - `context_name=<slug>` — the **managed per-user context** (see *Contexts*); pass it
@@ -298,7 +324,7 @@ intent off the request and set `proxy_country` on the first `browser_create`:**
   prices, a specific global site the user named). Don't invent a country.
 
 ```bash
-npx mcporter call aramb_browser.browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 proxy_country=US
+npx mcporter call aramb_browser.browser_create name=<app-slug> app_id=<APPLICATION_ID> provider=aramb browser_type=chrome ttl_minutes=30 proxy_country=US
 ```
 
 **The allowed set is enforced.** If create is rejected with `proxy_country "XX" not
@@ -317,8 +343,8 @@ unavailable** — create fails / never ready / 503; (2) **aramb can't clear a ca
 ~60s. Switch by terminating aramb and recreating the same slug on steel, reapplying context:
 
 ```bash
-npx mcporter call aramb_browser.browser_destroy browser=<app-slug> \
-  && npx mcporter call aramb_browser.browser_create name=<app-slug> provider=steel browser_type=chrome ttl_minutes=30 [session_context=<value>] \
+npx mcporter call aramb_browser.browser_destroy browser=<app-slug> app_id=<APPLICATION_ID> \
+  && npx mcporter call aramb_browser.browser_create name=<app-slug> app_id=<APPLICATION_ID> provider=steel browser_type=chrome ttl_minutes=30 [session_context=<value>] \
   && npx mcporter call aramb_browser.navigate_page browser=<app-slug> url=<same-url>
 ```
 
@@ -330,8 +356,9 @@ Steel ships its own residential proxy + managed captcha solving.
 then fail the CDP handshake (`Protocol error (Target.getBrowserContexts): Target closed` /
 `upstream connection failed`) — the session is still live and billing. This counts as "aramb
 unavailable", but do NOT just recreate on steel or you leak it: `browser_list`, then
-`browser_destroy browser=<app-slug>` (local entry) and/or `browser_destroy session_id=<id>`
-(orphan), THEN recreate on steel. **Every abandoned session gets a `browser_destroy`.**
+`browser_destroy browser=<app-slug> app_id=<APPLICATION_ID>` (local entry) and/or
+`browser_destroy app_id=<APPLICATION_ID> session_id=<id>` (orphan), THEN recreate on steel.
+**Every abandoned session gets a `browser_destroy`.**
 
 Both providers fail → stop and report. Don't retry a third time or loop back to a failed
 provider.
@@ -373,7 +400,7 @@ it restores their logged-in sessions.
 pass it on `browser_create`:
 
 ```bash
-npx mcporter call aramb_browser.browser_create name=<app-slug> provider=aramb browser_type=chrome ttl_minutes=30 context_name=<slug>
+npx mcporter call aramb_browser.browser_create name=<app-slug> app_id=<APPLICATION_ID> provider=aramb browser_type=chrome ttl_minutes=30 context_name=<slug>
 ```
 
 The platform then **loads it once the browser is ready** and **saves it before teardown**
@@ -387,18 +414,19 @@ lost. The moment you reach a milestone (login succeeded, consent accepted, 2FA p
 anywhere losing state means redoing real work), save into the **same** managed context:
 
 ```bash
-npx mcporter call aramb_browser.browser_save_context browser=<app-slug> context_name=<the-managed-slug>
+npx mcporter call aramb_browser.browser_save_context browser=<app-slug> app_id=<APPLICATION_ID> context_name=<the-managed-slug>
 ```
 
 **Manual named contexts** — only when a **user explicitly asks** to save/reuse a named login
 themselves. Never save/load a manual context unprompted.
 
 ```bash
-npx mcporter call aramb_browser.browser_context_list
-npx mcporter call aramb_browser.browser_context_create context_name=<name>    # reserve before first save
-npx mcporter call aramb_browser.browser_save_context browser=<app-slug> context_name=<name>
-npx mcporter call aramb_browser.browser_load_context browser=<app-slug> context_name=<name>
-npx mcporter call aramb_browser.browser_context_destroy context_name=<name>   # Redis record + S3 tarball
+# every browser_context_* / save / load call takes app_id=<APPLICATION_ID> too (omitted for brevity)
+npx mcporter call aramb_browser.browser_context_list app_id=<APPLICATION_ID>
+npx mcporter call aramb_browser.browser_context_create app_id=<APPLICATION_ID> context_name=<name>   # reserve before first save
+npx mcporter call aramb_browser.browser_save_context browser=<app-slug> app_id=<APPLICATION_ID> context_name=<name>
+npx mcporter call aramb_browser.browser_load_context browser=<app-slug> app_id=<APPLICATION_ID> context_name=<name>
+npx mcporter call aramb_browser.browser_context_destroy app_id=<APPLICATION_ID> context_name=<name>   # Redis record + S3 tarball
 ```
 
 One context per app-slug per identity (`reddit-gather-a-login`); reuse the name, re-save
@@ -413,6 +441,11 @@ destroy on a missing name → check `browser_context_list`.
   JSON/APIs) → `curl`/`git clone --depth 1`/`WebFetch`, never the browser.
 - `browser_list` BEFORE `browser_create`; reuse the matching slug. `name=<app-slug>` on
   every create — never invent names. One browser per slug; siblings reuse via `new_page`.
+- **`app_id=<APPLICATION_ID>` on every Aramb/ikki call** (`browser_create`/`_list`/`_destroy`,
+  `browser_session_*`, `browser_clients_list`, `browser_context_*`/save/load, `vault_fill`) —
+  the `application_id` from your `## Current Context`. Don't trust the env default (missing
+  for some agents, wrong app when you hold several); a missing one fails `app_id is required`.
+  Page-level calls and `browser_switch`/`browser_stats` don't take it. See *`app_id` is REQUIRED*.
 - **Resuming after an interruption (a "ran too long" cutoff, a wake, a retry) is not a fresh
   start.** If you come back to only system notices, `browser_list` your slug and
   re-`take_snapshot` the live session first — a half-built cart / mid-flow page means the
@@ -459,7 +492,7 @@ destroy on a missing name → check `browser_context_list`.
 ```bash
 npx mcporter call aramb_mcp.vault_list_browser_creds                       # metadata only
 # PRESENT → inform, then one vault_fill per field (browser types the value; continue login)
-npx mcporter call aramb_browser.vault_fill session_id=<id> target="https://www.linkedin.com/login" \
+npx mcporter call aramb_browser.vault_fill session_id=<id> app_id=<APPLICATION_ID> target="https://www.linkedin.com/login" \
   key="linkedin.username" selector="#username"
 # ABSENT → send the secure link FIRST (not "open the viewer"), then end turn + wake
 npx mcporter call aramb_mcp.vaultlink_request_browser_creds_link alias=linkedin fields='["username","password"]' label="LinkedIn login"
